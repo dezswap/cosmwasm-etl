@@ -1,0 +1,75 @@
+
+collector:
+  chainId:
+  # TODO: modify data store e.g.) websocket, rpc
+  node:
+    grpc:
+      host: # Domain or ip
+      port: # Port of the host
+      backoffdelay: # retry delay e.g.) 3s, 1m
+      noTls: # true - direct IP connection / false - tls is enabled that its cert should be set first
+    failover_lcd_host:
+  pair_factory_contract_address:
+
+parser:
+  chainId: # string
+  errTolerance: # uint
+  targetApp: # dezswap, terraswap
+  node:
+    grpc:
+      host: # Domain or ip
+      port: # Port of the host
+      backoffdelay: # retry delay e.g.) 3s, 1m
+      noTls: # true - direct IP connection / false - tls is enabled that its cert should be set first
+    failover_lcd_host:
+  sameHeightTolerance: # uint
+
+
+aggregator:
+  chainId:
+    srcDb:
+      host:
+      port:
+      database:
+      username:
+      password:
+    destDb:
+      host:
+      port:
+      database:
+      username:
+      password:
+    # UTC timezone e.g. 2022-10-13 06:30:05
+    startTs:
+    cleanDups:
+
+sentry:
+  # "https://putYourSentry@sentry.io/Id"
+  dsn:
+
+log:
+  # panic, fatal, error, warn, info, debug, trace
+  level: info
+  formatJson: true
+  # prod, dev
+  env:
+
+
+grpc:
+  host: # Domain or ip
+  port: # Port of the host
+  backoffdelay: # retry delay e.g.) 3s, 1m
+  noTls: # true - direct IP connection / false - tls is enabled that its cert should be set first
+
+rdb:
+  host:
+  port:
+  database:
+  username:
+  password:
+
+s3:
+  bucket:
+  region:
+  key:
+  secret:

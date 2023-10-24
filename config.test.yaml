@@ -1,0 +1,24 @@
+aggregator:
+  chainId: cube_47-5
+  priceToken: ibc/5BDD47E9E73BF91C14497E254F0A751F1A7D3A6084343F66EA7CEE834A384651
+  srcDb:
+    host: localhost
+    port: 5432
+    database: cosmwasm-etl
+    username: app
+    password: appPW
+  destDb:
+    host: localhost
+    port: 5432
+    database: cosmwasm-etl
+    username: app
+    password: appPW
+  cleanDups: true
+
+log:
+  # panic, fatal, error, warn, info, debug, trace
+  level: debug
+  formatJson: false
+  # prod, dev
+  env: dev
+  chainId: columbus-5

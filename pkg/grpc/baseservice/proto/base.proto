@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+import "google/protobuf/empty.proto";
+import "google/api/annotations.proto";
+
+option go_package = "github.com/iamport/iamport-base/network/baseservice/generated/baseservice";
+
+service Base {
+    rpc GetServiceInfo(google.protobuf.Empty) returns (ServiceInfoResponse) {}
+}
+
+message ServiceInfoResponse {
+}

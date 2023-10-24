@@ -1,0 +1,177 @@
+name: Dezswap Aggregator Deploy
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    branches: [main]
+    types:
+      - completed
+
+env:
+  APP_TYPE: aggregator
+  # AWS
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  ECR_REPOSITORY: cosmwasm-etl
+  ECS_CLUSTER: cosmwasm-etl
+  # XPLA testnet
+  CUBE_ECS_SERVICE: cube-cosmwasm-etl-aggregator
+  CUBE_TASK_DEFINITION: cube-cosmwasm-etl-aggregator
+  CUBE_CONTAINER_NAME: cube-cosmwasm-etl-aggregator
+  # XPLA mainnet
+  DIMENSION_ECS_SERVICE: dimension-cosmwasm-etl-aggregator
+  DIMENSION_TASK_DEFINITION: dimension-cosmwasm-etl-aggregator
+  DIMENSION_CONTAINER_NAME: dimension-cosmwasm-etl-aggregator
+
+
+jobs:
+  on-failure:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+    steps:
+      - run: |
+          echo 'The triggering workflow failed'
+          exit 1
+
+  build:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    name: build aggregator image
+    runs-on: ubuntu-latest
+    environment: production
+    outputs:
+      cube-tag: ${{ steps.build-image.outputs.cube-tag }}
+      dimension-tag: ${{ steps.build-image.outputs.dimension-tag }}
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: 1.18
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v3
+        with:
+          args: --timeout=5m --enable=unparam --enable=misspell --enable=prealloc --tests=false
+
+      - name: Tests
+        shell: bash
+        env:
+          TEST_CONFIG: ${{ secrets.TEST_CONFIG }}
+        run: |
+          echo "$TEST_CONFIG" > config.yaml
+          make test
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1.7.0
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1.5.1
+
+      - name: Build, tag, and push image to Amazon ECR
+        id: build-image
+        working-directory: .
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          CUBE_CONFIG: ${{ secrets.CUBE_AGGREGATOR_CONFIG }}
+          DIMENSION_CONFIG: ${{ secrets.DIMENSION_AGGREGATOR_CONFIG }}
+          APP_TYPE: ${{ env.APP_TYPE }}
+        run: |
+          IMAGE_TAG=$APP_TYPE-`git rev-parse --short HEAD`
+          docker build --build-arg APP_TYPE=$APP_TYPE -t $ECR_REGISTRY/$ECR_REPOSITORY:latest -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+
+          echo "FROM $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          COPY config.yaml /app/config.yaml" > Dockerfile.final
+
+          configs=("$CUBE_CONFIG" "$DIMENSION_CONFIG")
+          networks=("cube" "dimension")
+          for i in "${!configs[@]}"; do
+            echo "${configs[i]}" > config.yaml
+            docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:${networks[i]}-$IMAGE_TAG -f Dockerfile.final .
+            echo "${networks[i]}-tag=${networks[i]}-$IMAGE_TAG" >> $GITHUB_OUTPUT
+          done
+          docker image push -a $ECR_REGISTRY/$ECR_REPOSITORY
+
+  deploy-cube-aggregator:
+    name: Deploy Cube Aggregator
+    runs-on: ubuntu-latest
+    needs: build
+    environment: production
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1.7.0
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1.5.1
+
+      - name: Download Task Definition
+        id: download-task-definition
+        working-directory: .
+        run: |
+          aws ecs describe-task-definition --task-definition ${{ env.CUBE_TASK_DEFINITION }} | jq '.taskDefinition' > ${{ env.CUBE_TASK_DEFINITION }}.json
+
+      - name: Fill in the new image ID in the Amazon ECS task definition
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1.1.1
+        with:
+          task-definition: ./${{ env.CUBE_TASK_DEFINITION }}.json
+          container-name: ${{ env.CUBE_CONTAINER_NAME }}
+          image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY}}:${{ needs.build.outputs.cube-tag }}
+
+      - name: Deploy Amazon ECS task definition
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1.4.10
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service: ${{ env.CUBE_ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+
+  deploy-dimension-aggregator:
+    name: Deploy Dimension Aggregator
+    runs-on: ubuntu-latest
+    needs: build
+    environment: production
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1.7.0
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1.5.1
+
+      - name: Download Task Definition
+        id: download-task-definition
+        working-directory: .
+        run: |
+          aws ecs describe-task-definition --task-definition ${{ env.DIMENSION_TASK_DEFINITION }} | jq '.taskDefinition' > ${{ env.DIMENSION_TASK_DEFINITION }}.json
+
+      - name: Fill in the new image ID in the Amazon ECS task definition
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1.1.1
+        with:
+          task-definition: ./${{ env.DIMENSION_TASK_DEFINITION }}.json
+          container-name: ${{ env.DIMENSION_CONTAINER_NAME }}
+          image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY}}:${{ needs.build.outputs.dimension-tag }}
+
+      - name: Deploy Amazon ECS task definition
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1.4.10
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service: ${{ env.DIMENSION_ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
