@@ -6,8 +6,8 @@ const (
 )
 
 const (
-	MainnetV2Height = 12270542
-	TestnetV2Height = 12270542
+	MainnetV2Height = 11543129
+	TestnetV2Height = 11543129
 )
 
 var FactoryAddress = map[string]string{
@@ -23,8 +23,8 @@ const (
 	WithdrawAction = PairAction("withdraw_liquidity")
 )
 const (
-	WasmV1TransferAction = "transfer"
-	WasmV2TransferAction = "transfer_from"
+	WasmTransferAction     = "transfer"
+	WasmTransferFromAction = "transfer_from"
 )
 
 const (
@@ -34,9 +34,10 @@ const (
 	PairProvideMatchedLen        = PairProvideShareIdx + 1
 	PairV2ProvideMatchedLen      = PairV2ProvideShareIdx + 1
 	PairWithdrawMatchedLen       = PairWithdrawWithdrawShareIdx + 1
+	PairInitialProvideMatchedLen = PairInitialProvideToIdx + 1
 	WasmCommonTransferMatchedLen = WasmCommonTransferActionIdx + 1
 	WasmV1TransferMatchedLen     = WasmTransferToIdx + 1
-	WasmV2TransferMatchedLen     = WasmV2TransferToIdx + 1
+	WasmV2TransferMatchedLen     = WasmTransferFromToIdx + 1
 	TransferMatchedLen           = TransferAmountIdx + 1
 )
 
@@ -87,6 +88,13 @@ const (
 )
 
 const (
+	PairInitialProvideAddrIdx = iota
+	PairInitialProvideActionIdx
+	PairInitialProvideAmountIdx
+	PairInitialProvideToIdx
+)
+
+const (
 	WasmCommonTransferCw20AddrIdx = iota
 	WasmCommonTransferActionIdx
 )
@@ -98,10 +106,10 @@ const (
 )
 
 const (
-	WasmV2TransferAmountIdx = iota + WasmCommonTransferMatchedLen
-	WasmV2TransferByIdx
-	WasmV2TransferFromIdx
-	WasmV2TransferToIdx
+	WasmTransferFromAmountIdx = iota + WasmCommonTransferMatchedLen
+	WasmTransferFromByIdx
+	WasmTransferFromFromIdx
+	WasmTransferFromToIdx
 )
 
 const (

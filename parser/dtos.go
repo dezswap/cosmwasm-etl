@@ -35,13 +35,13 @@ type ParsedTx struct {
 	Hash      string    `json:"hash"`
 	Timestamp time.Time `json:"timestamp"` // timestamp of a block
 
-	Type             TxType  `json:"type" faker:"parserTxType"`
-	Sender           string  `json:"sender"`
-	ContractAddr     string  `json:"contractAddr"`
-	Assets           []Asset `json:"assets"`
-	LpAddr           string  `json:"lpAddr"`
-	LpAmount         string  `json:"lpAmount" faker:"amountString"`
-	CommissionAmount string  `json:"commissionAmount" faker:"amountString"`
+	Type             TxType   `json:"type" faker:"parserTxType"`
+	Sender           string   `json:"sender"`
+	ContractAddr     string   `json:"contractAddr"`
+	Assets           [2]Asset `json:"assets"`
+	LpAddr           string   `json:"lpAddr"`
+	LpAmount         string   `json:"lpAmount" faker:"amountString"`
+	CommissionAmount string   `json:"commissionAmount" faker:"amountString"`
 
 	Meta map[string]interface{} `json:"meta" faker:"meta"`
 }

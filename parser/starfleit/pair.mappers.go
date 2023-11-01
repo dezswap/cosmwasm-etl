@@ -99,7 +99,7 @@ func (m *pairMapperMixin) swapMatchedToParsedTx(res eventlog.MatchedResult, pair
 	}
 	returnIdx := (offerIdx + 1) % 2
 
-	assets := []parser.Asset{
+	assets := [2]parser.Asset{
 		{Addr: pair.Assets[0]},
 		{Addr: pair.Assets[1]},
 	}
@@ -134,7 +134,7 @@ func (m *pairMapperMixin) provideMatchedToParsedTx(res eventlog.MatchedResult, p
 		Type:         parser.Provide,
 		Sender:       res[sf.PairProvideSenderIdx].Value,
 		ContractAddr: res[sf.PairAddrIdx].Value,
-		Assets:       assets,
+		Assets:       [2]parser.Asset{assets[0], assets[1]},
 		LpAddr:       pair.LpAddr,
 		LpAmount:     res[sf.PairProvideShareIdx].Value,
 	}, nil
@@ -161,7 +161,7 @@ func (m *pairMapperMixin) withdrawMatchedToParsedTx(res eventlog.MatchedResult, 
 		Type:         parser.Withdraw,
 		Sender:       res[sf.PairWithdrawSenderIdx].Value,
 		ContractAddr: res[sf.PairAddrIdx].Value,
-		Assets:       assets,
+		Assets:       [2]parser.Asset{assets[0], assets[1]},
 		LpAddr:       pair.LpAddr,
 		LpAmount:     res[sf.PairWithdrawWithdrawShareIdx].Value,
 	}, nil
@@ -194,7 +194,7 @@ func (m *pairV2Mapper) provideMatchedToParsedTx(res eventlog.MatchedResult, pair
 		Type:         parser.Provide,
 		Sender:       res[sf.PairV2ProvideSenderIdx].Value,
 		ContractAddr: res[sf.PairAddrIdx].Value,
-		Assets:       assets,
+		Assets:       [2]parser.Asset{assets[0], assets[1]},
 		LpAddr:       pair.LpAddr,
 		LpAmount:     res[sf.PairV2ProvideShareIdx].Value,
 		Meta:         meta,

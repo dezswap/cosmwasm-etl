@@ -12,11 +12,13 @@ import (
 	"github.com/pkg/errors"
 )
 
+const migTableName = "aggregator_migration"
+
 func main() {
 	rollBack := os.Args[1:]
 	c := configs.New().Rdb
 
-	url := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable", c.Username, c.Password, c.Host, c.Port, c.Database)
+	url := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable&x-migrations-table=%s", c.Username, c.Password, c.Host, c.Port, c.Database, migTableName)
 	m, err := migrate.New("file://db/migrations/aggregator", url)
 	if err != nil {
 		panic(err)

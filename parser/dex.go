@@ -120,6 +120,15 @@ func (p *dexApp) insert(height uint64, txs []ParsedTx, pools []PoolInfo) error {
 	return nil
 }
 
+func (p *DexMixin) HasProvide(pairTxs []*ParsedTx) bool {
+	for _, tx := range pairTxs {
+		if tx.Type == Provide {
+			return true
+		}
+	}
+	return false
+}
+
 func (p *DexMixin) RemoveDuplicatedTxs(pairTxs []*ParsedTx, transferTxs []*ParsedTx) []ParsedTx {
 	txs := []ParsedTx{}
 	for idx, tx := range transferTxs {

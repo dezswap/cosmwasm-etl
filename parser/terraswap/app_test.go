@@ -115,12 +115,12 @@ func rawLogs(logStr string) eventlog.LogResults {
 
 var (
 	pair           = parser.Pair{ContractAddr: "PAIR_ADDR", Assets: []string{"Asset0", "Asset1"}, LpAddr: "Lp"}
-	createTx       = parser.ParsedTx{"", time.Time{}, parser.CreatePair, "sender", "PAIR_ADDR", []parser.Asset{{"Asset0", "1000"}, {"Asset1", "1000"}}, "Lp", "1000", "", nil}
-	swapTx         = parser.ParsedTx{"", time.Time{}, parser.Swap, "sender", "PAIR_ADDR", []parser.Asset{{"Asset0", "1000"}, {"Asset1", "-1000"}}, "", "", "1", nil}
-	provideTx      = parser.ParsedTx{"", time.Time{}, parser.Provide, "sender", "PAIR_ADDR", []parser.Asset{{"Asset0", "1000"}, {"Asset1", "1000"}}, "Lp", "1000", "", nil}
-	withdrawTx     = parser.ParsedTx{"", time.Time{}, parser.Withdraw, "sender", "PAIR_ADDR", []parser.Asset{{"Asset0", "-1000"}, {"Asset1", "-1000"}}, "Lp", "1000", "", nil}
-	transferTx     = parser.ParsedTx{"", time.Time{}, parser.Transfer, "sender", "PAIR_ADDR", []parser.Asset{{"Asset0", ""}, {"Asset1", "1000"}}, "", "", "", make(map[string]interface{})}
-	wasmTransferTx = parser.ParsedTx{"", time.Time{}, parser.Transfer, "sender", "PAIR_ADDR", []parser.Asset{{"Asset0", "1000"}, {"Asset1", ""}}, "", "", "", make(map[string]interface{})}
+	createTx       = parser.ParsedTx{"", time.Time{}, parser.CreatePair, "sender", "PAIR_ADDR", [2]parser.Asset{{"Asset0", "1000"}, {"Asset1", "1000"}}, "Lp", "1000", "", nil}
+	swapTx         = parser.ParsedTx{"", time.Time{}, parser.Swap, "sender", "PAIR_ADDR", [2]parser.Asset{{"Asset0", "1000"}, {"Asset1", "-1000"}}, "", "", "1", nil}
+	provideTx      = parser.ParsedTx{"", time.Time{}, parser.Provide, "sender", "PAIR_ADDR", [2]parser.Asset{{"Asset0", "1000"}, {"Asset1", "1000"}}, "Lp", "1000", "", nil}
+	withdrawTx     = parser.ParsedTx{"", time.Time{}, parser.Withdraw, "sender", "PAIR_ADDR", [2]parser.Asset{{"Asset0", "-1000"}, {"Asset1", "-1000"}}, "Lp", "1000", "", nil}
+	transferTx     = parser.ParsedTx{"", time.Time{}, parser.Transfer, "sender", "PAIR_ADDR", [2]parser.Asset{{"Asset0", ""}, {"Asset1", "1000"}}, "", "", "", make(map[string]interface{})}
+	wasmTransferTx = parser.ParsedTx{"", time.Time{}, parser.Transfer, "sender", "PAIR_ADDR", [2]parser.Asset{{"Asset0", "1000"}, {"Asset1", ""}}, "", "", "", make(map[string]interface{})}
 )
 
 const (

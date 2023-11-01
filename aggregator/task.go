@@ -18,8 +18,8 @@ import (
 	"github.com/dezswap/cosmwasm-etl/pkg/util"
 )
 
-const LP_HISTORY_UPDATE_LIMIT = 100
-const WAIT_PERIOD_SEC = 10 * time.Second
+const LpHistoryUpdateLimit = 100
+const WaitPeriod = 10 * time.Second
 
 type task interface {
 	Schedule(ctx context.Context, startTs time.Time) error
@@ -63,11 +63,12 @@ type pairStatsUpdateTask struct {
 	srcDb      parser.ReadRepository
 }
 
-type pairStatsIn24hUpdateTask struct {
+type pairStatsRecentUpdateTask struct {
 	taskImpl
 
 	priceToken string
 	srcDb      parser.ReadRepository
+	timeRange  time.Duration
 }
 
 type accountStatsUpdateTask struct {
@@ -78,7 +79,7 @@ type accountStatsUpdateTask struct {
 
 var _ task = &accountStatsUpdateTask{}
 
-func NewLpHistoryTask(config configs.AggregatorConfig, srcRepo parser.ReadRepository, destRepo repo.Repo, logger logging.Logger) *lpHistoryTask {
+func newLpHistoryTask(config configs.AggregatorConfig, srcRepo parser.ReadRepository, destRepo repo.Repo, logger logging.Logger) *lpHistoryTask {
 	return &lpHistoryTask{
 		taskImpl: taskImpl{
 			chainId:  config.ChainId,
@@ -133,7 +134,7 @@ func (t *lpHistoryTask) Execute(_ time.Time, _ time.Time) error {
 	}
 
 	for {
-		txs, err := t.srcDb.GetParsedTxsWithLimit(t.lastProcessedHeight+1, LP_HISTORY_UPDATE_LIMIT)
+		txs, err := t.srcDb.GetParsedTxsWithLimit(t.lastProcessedHeight+1, LpHistoryUpdateLimit)
 		if err != nil {
 			return err
 		}
@@ -239,7 +240,7 @@ func (t lpHistoryTask) generateHistory(latestLpMap map[uint64][]string, txs []sc
 	return history, nil
 }
 
-func NewRouterTask(config configs.AggregatorConfig, logger logging.Logger) (*routerTask, error) {
+func newRouterTask(config configs.AggregatorConfig, logger logging.Logger) (*routerTask, error) {
 	srcRepo := router.NewSrcRepo(config.ChainId, config.SrcDb)
 	r, err := router.New(srcRepo, config.Router, logger)
 	if err != nil {
@@ -292,7 +293,7 @@ func (t *routerTask) LastProcessedHeight() uint64 {
 	return t.lastProcessedHeight
 }
 
-func NewPriceTask(config configs.AggregatorConfig, destRepo repo.Repo, logger logging.Logger, parentTasks []task) (*priceTask, error) {
+func newPriceTask(config configs.AggregatorConfig, destRepo repo.Repo, logger logging.Logger, parentTasks []task) (*priceTask, error) {
 	srcRepo := price.NewRepo(config.ChainId, config.SrcDb)
 	pt, err := price.New(srcRepo, config.PriceToken, logger)
 	if err != nil {
@@ -372,8 +373,8 @@ func (t *priceTask) LastProcessedHeight() uint64 {
 	return t.lastProcessedHeight
 }
 
-func NewPairStatsIn24hUpdateTask(config configs.AggregatorConfig, srcRepo parser.ReadRepository, destRepo repo.Repo, logger logging.Logger, parentTasks []task) *pairStatsIn24hUpdateTask {
-	return &pairStatsIn24hUpdateTask{
+func newPairStatsRecentUpdateTask(config configs.AggregatorConfig, srcRepo parser.ReadRepository, destRepo repo.Repo, logger logging.Logger, parentTasks []task) *pairStatsRecentUpdateTask {
+	return &pairStatsRecentUpdateTask{
 		taskImpl: taskImpl{
 			chainId:     config.ChainId,
 			destDb:      destRepo,
@@ -383,10 +384,11 @@ func NewPairStatsIn24hUpdateTask(config configs.AggregatorConfig, srcRepo parser
 		},
 		priceToken: config.PriceToken,
 		srcDb:      srcRepo,
+		timeRange:  48 * time.Hour,
 	}
 }
 
-func (t *pairStatsIn24hUpdateTask) Schedule(ctx context.Context, _ time.Time) error {
+func (t *pairStatsRecentUpdateTask) Schedule(ctx context.Context, _ time.Time) error {
 	ts := time.Now()
 	done := false
 	for {
@@ -395,11 +397,11 @@ func (t *pairStatsIn24hUpdateTask) Schedule(ctx context.Context, _ time.Time) er
 			done = true
 			break
 		case <-time.After(time.Until(ts)):
-			if err := t.Execute(ts.Add(-24*time.Hour), ts); err != nil {
+			if err := t.Execute(ts.Add(-t.timeRange), ts); err != nil {
 				errChan <- err
 			}
 			ts = ts.Truncate(t.interval).Add(t.interval)
-			t.logger.Debugf("The task for pair stats in 24h has been finished in goroutine.")
+			t.logger.Debugf("The task for pair stats recent has been finished in goroutine.")
 		}
 		if done {
 			break
@@ -409,10 +411,10 @@ func (t *pairStatsIn24hUpdateTask) Schedule(ctx context.Context, _ time.Time) er
 	return nil
 }
 
-func (t *pairStatsIn24hUpdateTask) Execute(start time.Time, end time.Time) error {
+func (t *pairStatsRecentUpdateTask) Execute(start time.Time, end time.Time) error {
 	if t.lastProcessedHeight == 0 {
 		var err error
-		t.lastProcessedHeight, err = t.destDb.LastHeightOfPairStatsIn24h()
+		t.lastProcessedHeight, err = t.destDb.LastHeightOfPairStatsRecent()
 		if err != nil {
 			return err
 		}
@@ -427,14 +429,14 @@ func (t *pairStatsIn24hUpdateTask) Execute(start time.Time, end time.Time) error
 		return err
 	}
 
-	var stats []schemas.PairStatsIn24h
+	var stats []schemas.PairStatsRecent
 	if endHeight > t.lastProcessedHeight {
 		waitUntilReachingHeight(&t.parentTasks, endHeight)
 
 		if startHeight <= t.lastProcessedHeight {
 			startHeight = t.lastProcessedHeight + 1
 		}
-		txs, err := t.srcDb.GetParsedTxsInRecent24h(startHeight, endHeight)
+		txs, err := t.srcDb.GetRecentParsedTxs(startHeight, endHeight)
 		if err != nil {
 			return err
 		}
@@ -450,7 +452,7 @@ func (t *pairStatsIn24hUpdateTask) Execute(start time.Time, end time.Time) error
 			tokenIds = append(tokenIds, key)
 		}
 
-		priceMap, err := t.srcDb.PriceInRecent24h(startHeight, endHeight, tokenIds, t.priceToken)
+		priceMap, err := t.srcDb.RecentPrices(startHeight, endHeight, tokenIds, t.priceToken)
 		if err != nil {
 			return err
 		}
@@ -467,28 +469,28 @@ func (t *pairStatsIn24hUpdateTask) Execute(start time.Time, end time.Time) error
 	}
 
 	if len(stats) > 0 {
-		err = t.destDb.UpdatePairStatsIn24h(dbTx, stats)
+		err = t.destDb.UpdatePairStatsRecent(dbTx, stats)
 		if err != nil {
 			return err
 		}
 	}
 
-	err = t.destDb.DeletePairStatsIn24h(dbTx, start)
+	err = t.destDb.DeletePairStatsRecent(dbTx, start)
 	if err != nil {
 		return err
 	}
 	if dbTx = dbTx.Commit(); dbTx.Error != nil {
-		return errors.Wrap(dbTx.Error, "pairStatsIn24hUpdateTask.Execute")
+		return errors.Wrap(dbTx.Error, "pairStatsRecentUpdateTask.Execute")
 	}
 
 	t.lastProcessedHeight = endHeight
 
-	t.logger.Infof("Complete pair stats in 24h update.")
+	t.logger.Infof("Complete pair stats recent update.")
 
 	return nil
 }
 
-func (t pairStatsIn24hUpdateTask) generateStats(txs []schemas.ParsedTxWithPrice, priceMap map[uint64][]schemas.Price) ([]schemas.PairStatsIn24h, error) {
+func (t pairStatsRecentUpdateTask) generateStats(txs []schemas.ParsedTxWithPrice, priceMap map[uint64][]schemas.Price) ([]schemas.PairStatsRecent, error) {
 	type pairStat struct {
 		PairId             uint64
 		ChainId            string
@@ -508,7 +510,7 @@ func (t pairStatsIn24hUpdateTask) generateStats(txs []schemas.ParsedTxWithPrice,
 		Timestamp          float64
 	}
 
-	stats := make([]schemas.PairStatsIn24h, 0)
+	stats := make([]schemas.PairStatsRecent, 0)
 	currStatMap := make(map[uint64]pairStat, 0)
 	for _, tx := range txs {
 		price0, err := t.searchPrice(tx.Price0, tx.Height, priceMap)
@@ -561,7 +563,7 @@ func (t pairStatsIn24hUpdateTask) generateStats(txs []schemas.ParsedTxWithPrice,
 		stat := currStatMap[tx.PairId]
 		if stat.Height != tx.Height {
 			if stat.Height > 0 { // is not first
-				stats = append(stats, schemas.PairStatsIn24h{
+				stats = append(stats, schemas.PairStatsRecent{
 					PairId:             stat.PairId,
 					ChainId:            t.chainId,
 					Volume0:            stat.Volume0.String(),
@@ -625,7 +627,7 @@ func (t pairStatsIn24hUpdateTask) generateStats(txs []schemas.ParsedTxWithPrice,
 	// flush remains
 	for _, s := range currStatMap {
 		if s.Height > 0 {
-			stats = append(stats, schemas.PairStatsIn24h{
+			stats = append(stats, schemas.PairStatsRecent{
 				PairId:             s.PairId,
 				ChainId:            t.chainId,
 				Volume0:            s.Volume0.String(),
@@ -650,7 +652,7 @@ func (t pairStatsIn24hUpdateTask) generateStats(txs []schemas.ParsedTxWithPrice,
 	return stats, nil
 }
 
-func (t pairStatsIn24hUpdateTask) searchPrice(tokenIdStr string, targetHeight uint64, priceMap map[uint64][]schemas.Price) (types.Dec, error) {
+func (t pairStatsRecentUpdateTask) searchPrice(tokenIdStr string, targetHeight uint64, priceMap map[uint64][]schemas.Price) (types.Dec, error) {
 	tokenId, err := strconv.ParseUint(tokenIdStr, 10, 64)
 	if err != nil {
 		return types.ZeroDec(), err
@@ -672,11 +674,11 @@ func (t pairStatsIn24hUpdateTask) searchPrice(tokenIdStr string, targetHeight ui
 	return price, nil
 }
 
-func (t *pairStatsIn24hUpdateTask) LastProcessedHeight() uint64 {
+func (t *pairStatsRecentUpdateTask) LastProcessedHeight() uint64 {
 	return t.lastProcessedHeight
 }
 
-func NewPairStatsUpdateTask(config configs.AggregatorConfig, srcRepo parser.ReadRepository, destRepo repo.Repo, logger logging.Logger, parentTasks []task) *pairStatsUpdateTask {
+func newPairStatsUpdateTask(config configs.AggregatorConfig, srcRepo parser.ReadRepository, destRepo repo.Repo, logger logging.Logger, parentTasks []task) *pairStatsUpdateTask {
 	return &pairStatsUpdateTask{
 		taskImpl: taskImpl{
 			chainId:     config.ChainId,
@@ -880,7 +882,7 @@ func waitUntilReachingHeight(parentTasks *[]task, targetHeight uint64) {
 	for _, t := range *parentTasks {
 		for {
 			if t.LastProcessedHeight() < targetHeight {
-				time.Sleep(WAIT_PERIOD_SEC)
+				time.Sleep(WaitPeriod)
 			} else {
 				break
 			}

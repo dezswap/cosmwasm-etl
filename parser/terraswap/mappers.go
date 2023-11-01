@@ -50,7 +50,7 @@ func (m *createPairMapper) MatchedToParsedTx(res eventlog.MatchedResult, optiona
 		Type:         parser.CreatePair,
 		Sender:       "",
 		ContractAddr: res[t.FactoryPairAddrIdx].Value,
-		Assets: []parser.Asset{
+		Assets: [2]parser.Asset{
 			{Addr: assets[0]},
 			{Addr: assets[1]},
 		},
@@ -98,7 +98,7 @@ func (m *pairMapper) swapMatchedToParsedTx(res eventlog.MatchedResult, pair pars
 	}
 	returnIdx := (offerIdx + 1) % 2
 
-	assets := []parser.Asset{
+	assets := [2]parser.Asset{
 		{Addr: pair.Assets[0]},
 		{Addr: pair.Assets[1]},
 	}
@@ -133,7 +133,7 @@ func (m *pairMapper) provideMatchedToParsedTx(res eventlog.MatchedResult, pair p
 		Type:         parser.Provide,
 		Sender:       res[t.PairSenderIdx].Value,
 		ContractAddr: res[t.PairAddrIdx].Value,
-		Assets:       assets,
+		Assets:       [2]parser.Asset{assets[0], assets[1]},
 		LpAddr:       pair.LpAddr,
 		LpAmount:     res[t.PairProvideShareIdx].Value,
 	}, nil
@@ -160,7 +160,7 @@ func (m *pairMapper) withdrawMatchedToParsedTx(res eventlog.MatchedResult, pair 
 		Type:         parser.Withdraw,
 		Sender:       res[t.PairSenderIdx].Value,
 		ContractAddr: res[t.PairAddrIdx].Value,
-		Assets:       assets,
+		Assets:       [2]parser.Asset{assets[0], assets[1]},
 		LpAddr:       pair.LpAddr,
 		LpAmount:     res[t.PairWithdrawWithdrawShareIdx].Value,
 	}, nil
@@ -175,7 +175,7 @@ func (m *initialProvideMapper) MatchedToParsedTx(res eventlog.MatchedResult, opt
 		Type:         parser.InitialProvide,
 		Sender:       "",
 		ContractAddr: res[t.PairInitialProvideToIdx].Value,
-		Assets:       []parser.Asset{},
+		Assets:       [2]parser.Asset{},
 		LpAddr:       res[t.PairInitialProvideAddrIdx].Value,
 		LpAmount:     res[t.PairInitialProvideAmountIdx].Value,
 		Meta:         nil,
@@ -193,7 +193,7 @@ func (m *wasmTransferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optio
 		msg := fmt.Sprintf("wasmTransferMapper.MatchedToParsedTx no pair(%s)", res[t.WasmTransferToIdx].Value)
 		return nil, errors.New(msg)
 	}
-	assets := []parser.Asset{
+	assets := [2]parser.Asset{
 		{Addr: pair.Assets[0]},
 		{Addr: pair.Assets[1]},
 	}
@@ -228,7 +228,7 @@ func (m *transferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals
 		msg := fmt.Sprintf("transferMapper.MatchedToParsedTx no pair(%s)", res[t.TransferRecipientIdx].Value)
 		return nil, errors.New(msg)
 	}
-	assets := []parser.Asset{
+	assets := [2]parser.Asset{
 		{Addr: pair.Assets[0]},
 		{Addr: pair.Assets[1]},
 	}

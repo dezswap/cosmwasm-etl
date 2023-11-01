@@ -51,19 +51,19 @@ func New(c configs.Config, logger logging.Logger) Aggregator {
 	destRepo := repo.New(c.Aggregator.ChainId, c.Aggregator.DestDb)
 
 	// init tasks
-	rt, err := NewRouterTask(c.Aggregator, logger)
+	rt, err := newRouterTask(c.Aggregator, logger)
 	if err != nil {
 		panic(err)
 	}
-	lht := NewLpHistoryTask(c.Aggregator, srcRepo, destRepo, logger)
-	pt, err := NewPriceTask(c.Aggregator, destRepo, logger, []task{lht})
+	lht := newLpHistoryTask(c.Aggregator, srcRepo, destRepo, logger)
+	pt, err := newPriceTask(c.Aggregator, destRepo, logger, []task{lht})
 	if err != nil {
 		panic(err)
 	}
 	tasks := []task{
 		rt, lht, pt,
-		NewPairStatsIn24hUpdateTask(c.Aggregator, srcRepo, destRepo, logger, []task{pt}),
-		NewPairStatsUpdateTask(c.Aggregator, srcRepo, destRepo, logger, []task{pt}),
+		newPairStatsRecentUpdateTask(c.Aggregator, srcRepo, destRepo, logger, []task{pt}),
+		newPairStatsUpdateTask(c.Aggregator, srcRepo, destRepo, logger, []task{pt}),
 	}
 
 	return &aggregatorImpl{

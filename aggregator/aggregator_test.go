@@ -16,11 +16,11 @@ type repoMock struct {
 
 	calledGetParsedTxsWithLimit bool
 
-	updatedLpHistory    []schemas.LpHistory
-	updatedPairStats24h []schemas.PairStatsIn24h
-	updatedPairStats    []schemas.PairStats30m
-	updatedAccountStats schemas.HAccountStats30m
-	updatedAccounts     []string
+	updatedLpHistory       []schemas.LpHistory
+	updatedPairStatsRecent []schemas.PairStatsRecent
+	updatedPairStats       []schemas.PairStats30m
+	updatedAccountStats    schemas.HAccountStats30m
+	updatedAccounts        []string
 }
 
 func TestMain(m *testing.M) {
@@ -66,13 +66,13 @@ func (r *repoMock) LastHeightOfPrice() (uint64, error) {
 	return args.Get(0).(uint64), args.Error(1)
 }
 
-func (r *repoMock) GetParsedTxsInRecent24h(_ uint64, _ uint64) ([]schemas.ParsedTxWithPrice, error) {
-	args := r.Mock.MethodCalled("GetParsedTxsInRecent24h")
+func (r *repoMock) GetRecentParsedTxs(_ uint64, _ uint64) ([]schemas.ParsedTxWithPrice, error) {
+	args := r.Mock.MethodCalled("GetRecentParsedTxs")
 	return args.Get(0).([]schemas.ParsedTxWithPrice), args.Error(1)
 }
 
-func (r *repoMock) PriceInRecent24h(_ uint64, _ uint64, _ []string, _ string) (map[uint64][]schemas.Price, error) {
-	args := r.Mock.MethodCalled("PriceInRecent24h")
+func (r *repoMock) RecentPrices(_ uint64, _ uint64, _ []string, _ string) (map[uint64][]schemas.Price, error) {
+	args := r.Mock.MethodCalled("RecentPrices")
 	return args.Get(0).(map[uint64][]schemas.Price), args.Error(1)
 }
 
@@ -131,7 +131,7 @@ func (r *repoMock) CommissionAmountInPair(_ uint64, _ float64, _ float64) (strin
 }
 
 // aggregator/repo/repository.go interface
-func (r *repoMock) LastHeightOfPairStatsIn24h() (uint64, error) {
+func (r *repoMock) LastHeightOfPairStatsRecent() (uint64, error) {
 	return 0, nil
 }
 
@@ -160,8 +160,8 @@ func (r *repoMock) BeginTx() (*gorm.DB, error) {
 	return args.Get(0).(*gorm.DB), args.Error(1)
 }
 
-func (r *repoMock) UpdatePairStatsIn24h(_ *gorm.DB, stats []schemas.PairStatsIn24h) error {
-	r.updatedPairStats24h = stats
+func (r *repoMock) UpdatePairStatsRecent(_ *gorm.DB, stats []schemas.PairStatsRecent) error {
+	r.updatedPairStatsRecent = stats
 	return nil
 }
 
@@ -180,7 +180,7 @@ func (r *repoMock) UpdateLpHistory(history []schemas.LpHistory) error {
 	return nil
 }
 
-func (r *repoMock) DeletePairStatsIn24h(_ *gorm.DB, _ time.Time) error {
+func (r *repoMock) DeletePairStatsRecent(_ *gorm.DB, _ time.Time) error {
 	return nil
 }
 

@@ -17,11 +17,11 @@ import (
 // Implemented level & limitation within mock service:
 //  0. Bucket is not considered
 
-//  1. PutObject - Used Mutex-supporting map and stores the path - binary into there. The bucket is ignored.
-//  2. GetObject - Load the binary from the given path. The bucket is ignored.
-//  3. ListObjectsV2 - Get filelist from the Mutex map. The restriction - multiple page + 1000 objects per a call - are not implemented yet
-//  4. CopyObject - copy the binary from the given source path to the given renamed path
-//  5. DeleteObject - delete the key-binary from the mutex map
+// 1. PutObject - Used Mutex-supporting map and stores the path - binary into there. The bucket is ignored.
+// 2. GetObject - Load the binary from the given path. The bucket is ignored.
+// 3. ListObjectsV2 - Get filelist from the Mutex map. The restriction - multiple page + 1000 objects per a call - are not implemented yet
+// 4. CopyObject - copy the binary from the given source path to the given renamed path
+// 5. DeleteObject - delete the key-binary from the mutex map
 type mockS3Service struct {
 	member sync.Map
 }

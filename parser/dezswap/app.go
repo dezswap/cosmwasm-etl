@@ -64,7 +64,6 @@ func (p *dezswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]parser.ParsedTx
 	pairTxs := []*parser.ParsedTx{}
 	wasmTransferTxs := []*parser.ParsedTx{}
 	transferTxs := []*parser.ParsedTx{}
-	initialProvideTxs := []*parser.ParsedTx{}
 	for _, raw := range tx.LogResults {
 		ptxs, err := p.Parsers.PairActionParser.Parse(tx.Hash, tx.Timestamp, eventlog.LogResults{raw})
 		if err != nil {
@@ -73,11 +72,13 @@ func (p *dezswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]parser.ParsedTx
 		pairTxs = append(pairTxs, ptxs...)
 
 		// find initial provide to a pair
-		ipTxs, err := p.Parsers.InitialProvide.Parse(tx.Hash, tx.Timestamp, eventlog.LogResults{raw})
-		if err != nil {
-			return nil, errors.Wrap(err, "parseTxs")
+		if p.HasProvide(ptxs) {
+			ipTxs, err := p.Parsers.InitialProvide.Parse(tx.Hash, tx.Timestamp, eventlog.LogResults{raw})
+			if err != nil {
+				return nil, errors.Wrap(err, "parseTxs")
+			}
+			pairTxs = append(pairTxs, ipTxs...)
 		}
-		initialProvideTxs = append(initialProvideTxs, ipTxs...)
 
 		wtxs, err := p.Parsers.WasmTransfer.Parse(tx.Hash, tx.Timestamp, eventlog.LogResults{raw})
 		if err != nil {
@@ -94,11 +95,6 @@ func (p *dezswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]parser.ParsedTx
 	for _, ptx := range pairTxs {
 		ptx.Sender = tx.Sender
 		txDtos = append(txDtos, *ptx)
-	}
-
-	for _, ipTx := range initialProvideTxs {
-		ipTx.Sender = tx.Sender
-		txDtos = append(txDtos, *ipTx)
 	}
 
 	txDtos = append(txDtos, p.RemoveDuplicatedTxs(pairTxs, wasmTransferTxs)...)

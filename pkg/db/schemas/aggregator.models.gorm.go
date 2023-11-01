@@ -16,8 +16,8 @@ func (Account) TableName() string {
 	return "account"
 }
 
-func (PairStatsIn24h) TableName() string {
-	return "pair_stats_in_24h"
+func (PairStatsRecent) TableName() string {
+	return "pair_stats_recent"
 }
 
 func (PairStats30m) TableName() string {

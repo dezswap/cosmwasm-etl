@@ -30,8 +30,8 @@ type ReadRepository interface {
 	HeightOnTimestamp(timestamp float64) (uint64, error)
 	LastHeightOfPrice() (uint64, error)
 	GetParsedTxsWithLimit(startHeight uint64, limit int) ([]schemas.ParsedTxWithPrice, error)
-	GetParsedTxsInRecent24h(startHeight uint64, endHeight uint64) ([]schemas.ParsedTxWithPrice, error)
-	PriceInRecent24h(startHeight uint64, endHeight uint64, targetTokens []string, priceToken string) (map[uint64][]schemas.Price, error)
+	GetRecentParsedTxs(startHeight uint64, endHeight uint64) ([]schemas.ParsedTxWithPrice, error)
+	RecentPrices(startHeight uint64, endHeight uint64, targetTokens []string, priceToken string) (map[uint64][]schemas.Price, error)
 	GetParsedTxsWithPriceOfPair(pairId uint64, priceToken string, startTs float64, endTs float64) ([]schemas.ParsedTxWithPrice, error)
 	PairStats(startTs float64, endTs float64, priceToken string) ([]schemas.PairStats30m, error)
 	LiquiditiesOfPairStats(startTs float64, endTs float64, priceToken string) (map[uint64]schemas.PairStats30m, error)
@@ -186,8 +186,8 @@ order by pt.height asc, p.id asc
 	return res, nil
 }
 
-// GetParsedTxsInRecent24h return value is ordered by ascending height
-func (r *readRepoImpl) GetParsedTxsInRecent24h(startHeight uint64, endHeight uint64) ([]schemas.ParsedTxWithPrice, error) {
+// GetRecentParsedTxs return value is ordered by ascending height
+func (r *readRepoImpl) GetRecentParsedTxs(startHeight uint64, endHeight uint64) ([]schemas.ParsedTxWithPrice, error) {
 	query := `
 select p.id pair_id,
        pt.asset0_amount,
@@ -214,13 +214,13 @@ where pt.chain_id = ?
 `
 	res := []schemas.ParsedTxWithPrice{}
 	if tx := r.db.Raw(query, r.chainId, startHeight, endHeight).Scan(&res); tx.Error != nil {
-		return nil, errors.Wrap(tx.Error, "repo.GetParsedTxsInRecent24h")
+		return nil, errors.Wrap(tx.Error, "repo.GetRecentParsedTxs")
 	}
 
 	return res, nil
 }
 
-func (r *readRepoImpl) PriceInRecent24h(startHeight uint64, endHeight uint64, targetTokens []string, priceToken string) (map[uint64][]schemas.Price, error) {
+func (r *readRepoImpl) RecentPrices(startHeight uint64, endHeight uint64, targetTokens []string, priceToken string) (map[uint64][]schemas.Price, error) {
 	query := `
 select 0 height,
        id as token_id,
@@ -239,7 +239,7 @@ where p.chain_id = ?
 	query += "and t.id in (" + strings.Join(targetTokens, ",") + ") order by height"
 	res := []schemas.Price{}
 	if tx := r.db.Raw(query, priceToken, r.chainId, startHeight, endHeight).Scan(&res); tx.Error != nil {
-		return nil, errors.Wrap(tx.Error, "repo.PriceInRecent24h")
+		return nil, errors.Wrap(tx.Error, "repo.RecentPrices")
 	}
 
 	priceMap := make(map[uint64][]schemas.Price)

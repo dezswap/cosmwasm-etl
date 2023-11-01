@@ -28,13 +28,13 @@ var Logger logging.Logger
 
 type Repo interface {
 	LatestTimestampOfPairStats() (float64, error)
-	LastHeightOfPairStatsIn24h() (uint64, error)
+	LastHeightOfPairStatsRecent() (uint64, error)
 	LastLpHistory(height uint64) ([]schemas.LpHistory, error)
 	LastLiquidity(pairId uint64, timestamp float64) ([TupleLength]string, error)
 	BeginTx() (*gorm.DB, error)
-	UpdatePairStatsIn24h(tx *gorm.DB, stats []schemas.PairStatsIn24h) error
+	UpdatePairStatsRecent(tx *gorm.DB, stats []schemas.PairStatsRecent) error
 	UpdateLpHistory(history []schemas.LpHistory) error
-	DeletePairStatsIn24h(tx *gorm.DB, deleteBefore time.Time) error
+	DeletePairStatsRecent(tx *gorm.DB, deleteBefore time.Time) error
 
 	DeleteDuplicates(end time.Time) error
 	UpdatePairStats(stats []schemas.PairStats30m) error
@@ -107,8 +107,8 @@ func (r *repoImpl) LatestTimestampOfPairStats() (float64, error) {
 	return ts, nil
 }
 
-func (r *repoImpl) LastHeightOfPairStatsIn24h() (uint64, error) {
-	row := r.db.Model(schemas.PairStatsIn24h{}).Where("chain_id = ?", r.chainId).Select("coalesce(max(height), 0)").Row()
+func (r *repoImpl) LastHeightOfPairStatsRecent() (uint64, error) {
+	row := r.db.Model(schemas.PairStatsRecent{}).Where("chain_id = ?", r.chainId).Select("coalesce(max(height), 0)").Row()
 	if err := row.Err(); err != nil {
 		return 0, err
 	}
@@ -176,10 +176,10 @@ func (r *repoImpl) BeginTx() (*gorm.DB, error) {
 	return tx, nil
 }
 
-func (r *repoImpl) UpdatePairStatsIn24h(tx *gorm.DB, stats []schemas.PairStatsIn24h) error {
-	tx = tx.Model(schemas.PairStatsIn24h{}).CreateInBatches(stats, len(stats))
+func (r *repoImpl) UpdatePairStatsRecent(tx *gorm.DB, stats []schemas.PairStatsRecent) error {
+	tx = tx.Model(schemas.PairStatsRecent{}).CreateInBatches(stats, len(stats))
 	if tx.Error != nil {
-		return errors.Wrap(tx.Error, "repo.UpdatePairStatsIn24h")
+		return errors.Wrap(tx.Error, "repo.UpdatePairStatsRecent")
 	}
 
 	return nil
@@ -193,12 +193,12 @@ func (r *repoImpl) UpdateLpHistory(history []schemas.LpHistory) error {
 	return nil
 }
 
-func (r *repoImpl) DeletePairStatsIn24h(tx *gorm.DB, deleteBefore time.Time) error {
+func (r *repoImpl) DeletePairStatsRecent(tx *gorm.DB, deleteBefore time.Time) error {
 	tx = tx.Where(
 		"timestamp < ?", deleteBefore.Unix()).Delete(
-		&schemas.PairStatsIn24h{})
+		&schemas.PairStatsRecent{})
 	if tx.Error != nil {
-		return errors.Wrap(tx.Error, "repo.Delete24hPassed")
+		return errors.Wrap(tx.Error, "repo.DeletePairStatsRecent")
 	}
 
 	return nil
@@ -211,7 +211,7 @@ func (r *repoImpl) DeleteDuplicates(ts time.Time) error {
 	if tx := r.db.Where("height >= (select min(height) from parsed_tx where timestamp >= ?) and chain_id = ?", util.ToEpoch(ts), r.chainId).Delete(&schemas.Price{}); tx.Error != nil {
 		return tx.Error
 	}
-	if tx := r.db.Where("timestamp >= ? and chain_id = ?", util.ToEpoch(ts), r.chainId).Delete(&schemas.PairStatsIn24h{}); tx.Error != nil {
+	if tx := r.db.Where("timestamp >= ? and chain_id = ?", util.ToEpoch(ts), r.chainId).Delete(&schemas.PairStatsRecent{}); tx.Error != nil {
 		return tx.Error
 	}
 	end := ts.Truncate(30 * time.Minute).Add(30 * time.Minute).UTC()

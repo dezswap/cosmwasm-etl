@@ -38,12 +38,6 @@ func FakeParserPoolInfoTxs() []PoolInfo {
 func FakeParserParsedTxs() []ParsedTx {
 	txs := []ParsedTx{}
 	_ = faker.FakeData(&txs)
-	for idx := range txs {
-		for len(txs[idx].Assets) < 2 {
-			_ = faker.FakeData(&txs[idx].Assets)
-		}
-		txs[idx].Assets = txs[idx].Assets[0:2]
-	}
 	return txs
 }
 

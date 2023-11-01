@@ -71,6 +71,15 @@ func (p *starfleitApp) ParseTxs(tx parser.RawTx, height uint64) ([]parser.Parsed
 		}
 		pairTxs = append(pairTxs, ptxs...)
 
+		// find initial provide to a pair
+		if p.HasProvide(ptxs) {
+			ipTxs, err := p.Parsers.InitialProvide.Parse(tx.Hash, tx.Timestamp, eventlog.LogResults{raw})
+			if err != nil {
+				return nil, errors.Wrap(err, "parseTxs")
+			}
+			pairTxs = append(pairTxs, ipTxs...)
+		}
+
 		// find transfer from user
 		wtxs, err := p.Parsers.WasmTransfer.Parse(tx.Hash, tx.Timestamp, eventlog.LogResults{raw})
 		if err != nil {
@@ -110,6 +119,12 @@ func (p *starfleitApp) updateParsers(pairs map[string]parser.Pair, height uint64
 		return errors.Wrap(err, "updateParsers")
 	}
 	p.Parsers.PairActionParser = parser.NewParser(pairFinder, pairMapper)
+
+	initialProvideFinder, err := sf.CreatePairInitialProvideRuleFinder(pairFilter)
+	if err != nil {
+		return errors.Wrap(err, "updateParsers")
+	}
+	p.Parsers.InitialProvide = parser.NewParser(initialProvideFinder, &initialProvideMapper{})
 
 	wasmTransferFinder, err := sf.CreateWasmCommonTransferRuleFinder()
 	if err != nil {

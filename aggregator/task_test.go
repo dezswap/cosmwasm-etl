@@ -88,7 +88,7 @@ func TestLpHistoryTaskExecute(t *testing.T) {
 	assert.Equal(expected[0], rp.updatedLpHistory[0])
 }
 
-func TestPairStats24hUpdateTaskExecute(t *testing.T) {
+func TestPairStatsRecentUpdateTaskExecute(t *testing.T) {
 	assert := assert.New(t)
 
 	height := uint64(100000)
@@ -154,7 +154,7 @@ func TestPairStats24hUpdateTaskExecute(t *testing.T) {
 		},
 	}
 
-	expected := []schemas.PairStatsIn24h{
+	expected := []schemas.PairStatsRecent{
 		{
 			PairId:             1,
 			ChainId:            "",
@@ -178,11 +178,11 @@ func TestPairStats24hUpdateTaskExecute(t *testing.T) {
 	rp := repoMock{}
 	rp.On("HeightOnTimestamp").Return(txs[0].Height, nil)
 	rp.On("LastHeightOfPrice").Return(txs[len(txs)-1].Height, nil)
-	rp.On("GetParsedTxsInRecent24h", mock.Anything, mock.Anything, mock.Anything).Return(txs, nil)
-	rp.On("PriceInRecent24h", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(priceMap, nil)
+	rp.On("GetRecentParsedTxs", mock.Anything, mock.Anything, mock.Anything).Return(txs, nil)
+	rp.On("RecentPrices", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(priceMap, nil)
 	rp.On("BeginTx").Return(&gorm.DB{Statement: &gorm.Statement{ConnPool: &ConnPool{}}}, nil)
 
-	task := pairStatsIn24hUpdateTask{
+	task := pairStatsRecentUpdateTask{
 		taskImpl: taskImpl{
 			chainId: "",
 			destDb:  &rp,
@@ -194,7 +194,7 @@ func TestPairStats24hUpdateTaskExecute(t *testing.T) {
 
 	err := task.Execute(time.Time{}, time.Time{})
 	assert.NoError(err)
-	assert.Equal(expected[0], rp.updatedPairStats24h[len(rp.updatedPairStats24h)-1])
+	assert.Equal(expected[0], rp.updatedPairStatsRecent[len(rp.updatedPairStatsRecent)-1])
 }
 
 func TestPairStatsUpdateTaskExecute(t *testing.T) {

@@ -150,7 +150,7 @@ var withdrawRule = eventlog.Rule{Type: eventlog.WasmType, Items: eventlog.RuleIt
 var wasmTransferRule = eventlog.Rule{Type: eventlog.WasmType, Until: "_contract_address", Items: eventlog.RuleItems{
 	eventlog.RuleItem{Key: "_contract_address", Filter: nil},
 	eventlog.RuleItem{Key: "action", Filter: func(v string) bool {
-		return v == string(WasmV1TransferAction) || v == string(WasmV2TransferAction)
+		return v == string(WasmTransferAction) || v == string(WasmTransferFromAction)
 	}},
 }}
 

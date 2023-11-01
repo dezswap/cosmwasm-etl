@@ -56,7 +56,7 @@ type ParsedTxWithPrice struct {
 	Timestamp         float64 `json:"timestamp"`
 }
 
-type PairStatsIn24h struct {
+type PairStatsRecent struct {
 	PairId             uint64  `json:"pair_id"`
 	ChainId            string  `json:"chain_id"`
 	Volume0            string  `json:"volume0"`
