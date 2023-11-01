@@ -16,7 +16,7 @@ require (
 	github.com/evalphobia/logrus_sentry v0.8.2
 	github.com/gogo/protobuf v1.3.3
 	github.com/golang-migrate/migrate/v4 v4.15.2
-	github.com/golang/protobuf v1.5.2
+	github.com/golang/protobuf v1.5.3
 	github.com/lib/pq v1.10.6
 	github.com/pkg/errors v0.9.1
 	github.com/sirupsen/logrus v1.8.1
@@ -24,9 +24,9 @@ require (
 	github.com/stretchr/testify v1.8.0
 	github.com/tendermint/tendermint v0.34.19
 	github.com/thoas/go-funk v0.9.2
-	google.golang.org/genproto v0.0.0-20220519153652-3a47de7e79bd
-	google.golang.org/grpc v1.47.0
-	google.golang.org/protobuf v1.28.0
+	google.golang.org/genproto v0.0.0-20230410155749-daa745c078e1
+	google.golang.org/grpc v1.56.3
+	google.golang.org/protobuf v1.30.0
 	gorm.io/driver/postgres v1.3.8
 	gorm.io/gorm v1.23.8
 	sigs.k8s.io/yaml v1.2.0
@@ -56,7 +56,7 @@ require (
 	github.com/btcsuite/btcd v0.22.0-beta // indirect
 	github.com/certifi/gocertifi v0.0.0-20210507211836-431795d63e8d // indirect
 	github.com/cespare/xxhash v1.1.0 // indirect
-	github.com/cespare/xxhash/v2 v2.1.2 // indirect
+	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/confio/ics23/go v0.7.0 // indirect
 	github.com/cosmos/btcutil v1.0.4 // indirect
 	github.com/cosmos/go-bip39 v1.0.0 // indirect
@@ -77,7 +77,7 @@ require (
 	github.com/go-kit/log v0.2.0 // indirect
 	github.com/go-logfmt/logfmt v0.5.1 // indirect
 	github.com/godbus/dbus v0.0.0-20190726142602-4481cbc300e2 // indirect
-	github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b // indirect
+	github.com/golang/glog v1.1.0 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/btree v1.0.1 // indirect
 	github.com/gorilla/mux v1.8.0 // indirect
@@ -141,10 +141,10 @@ require (
 	go.etcd.io/bbolt v1.3.6 // indirect
 	go.uber.org/atomic v1.9.0 // indirect
 	golang.org/x/crypto v0.0.0-20220411220226-7b82a4e95df4 // indirect
-	golang.org/x/net v0.0.0-20220617184016-355a448f1bc9 // indirect
-	golang.org/x/sys v0.1.0 // indirect
-	golang.org/x/term v0.0.0-20210927222741-03fcf44c2211 // indirect
-	golang.org/x/text v0.3.8 // indirect
+	golang.org/x/net v0.9.0 // indirect
+	golang.org/x/sys v0.7.0 // indirect
+	golang.org/x/term v0.7.0 // indirect
+	golang.org/x/text v0.9.0 // indirect
 	gopkg.in/ini.v1 v1.66.6 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
