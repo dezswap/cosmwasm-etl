@@ -1,12 +1,13 @@
 package price
 
 import (
+	"sync"
+	"time"
+
 	"github.com/cosmos/cosmos-sdk/types"
 	"github.com/dezswap/cosmwasm-etl/pkg/db/schemas"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 	"github.com/dezswap/cosmwasm-etl/pkg/util"
-	"sync"
-	"time"
 )
 
 type Price interface {
@@ -142,7 +143,7 @@ func (p *priceImpl) updateDirectSwapPrice(tx schemas.ParsedTx) error {
 		return err
 	}
 
-	if err := p.repo.UpdateDirectPrice(tx.Height, targetToken, price.String(), p.priceToken, isReverse); err != nil {
+	if err := p.repo.UpdateDirectPrice(tx.Height, tx.Id, targetToken, price.String(), p.priceToken, isReverse); err != nil {
 		return err
 	}
 
@@ -210,7 +211,7 @@ func (p *priceImpl) updateIndirectSwapPrice(tx schemas.ParsedTx) error {
 	if err != nil {
 		return err
 	}
-	asset1AmountD, err := util.StringAmountToDecimal(tx.Asset1Amount, decimals0)
+	asset1AmountD, err := util.StringAmountToDecimal(tx.Asset1Amount, decimals1)
 	if err != nil {
 		return err
 	}
@@ -267,11 +268,11 @@ func (p *priceImpl) updateIndirectSwapPrice(tx schemas.ParsedTx) error {
 		}
 	}
 
-	if err := p.repo.UpdateRoutePrice(tx.Height, tx.Asset0, price0.Abs().String(), p.priceToken, route0); err != nil {
+	if err := p.repo.UpdateRoutePrice(tx.Height, tx.Id, tx.Asset0, price0.Abs().String(), p.priceToken, route0); err != nil {
 		return err
 	}
 
-	if err := p.repo.UpdateRoutePrice(tx.Height, tx.Asset1, price1.Abs().String(), p.priceToken, route1); err != nil {
+	if err := p.repo.UpdateRoutePrice(tx.Height, tx.Id, tx.Asset1, price1.Abs().String(), p.priceToken, route1); err != nil {
 		return err
 	}
 

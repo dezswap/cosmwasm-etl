@@ -38,36 +38,30 @@ var (
 		},
 	}
 
-	accountStats = []schemas.HAccountStats30m{
+	accountStats = []schemas.AccountStats30m{
 		{
-			YearUtc:       2022,
-			MonthUtc:      10,
-			DayUtc:        13,
-			HourUtc:       4,
-			MinuteUtc:     30,
-			Ts:            1665636627,
-			ChainId:       chainName,
-			AccountId:     accounts[0].Id,
-			PairId:        0,
-			TxCnt:         2,
-			Asset0Amount:  "38517017",
-			Asset1Amount:  "1398850",
-			TotalLpAmount: "3627963",
+			YearUtc:   2022,
+			MonthUtc:  10,
+			DayUtc:    13,
+			HourUtc:   4,
+			MinuteUtc: 30,
+			Timestamp: 1665636627,
+			ChainId:   chainName,
+			Address:   accounts[0].Address,
+			PairId:    0,
+			TxCnt:     2,
 		},
 		{
-			YearUtc:       2022,
-			MonthUtc:      10,
-			DayUtc:        13,
-			HourUtc:       4,
-			MinuteUtc:     30,
-			Ts:            1665636627,
-			ChainId:       chainName,
-			AccountId:     accounts[1].Id,
-			PairId:        1,
-			TxCnt:         1,
-			Asset0Amount:  "13517017",
-			Asset1Amount:  "909068",
-			TotalLpAmount: "447645",
+			YearUtc:   2022,
+			MonthUtc:  10,
+			DayUtc:    13,
+			HourUtc:   4,
+			MinuteUtc: 30,
+			Timestamp: 1665636627,
+			ChainId:   chainName,
+			Address:   accounts[1].Address,
+			PairId:    1,
+			TxCnt:     1,
 		},
 	}
 )
@@ -181,26 +175,23 @@ func TestUpdatePairStats(t *testing.T) {
 func TestUpdateAccountStats(t *testing.T) {
 	assert := assert.New(t)
 
-	expected := schemas.NewUserStat30min(chainName, util.ToTime(1665637200), 3, 1)
+	expected := schemas.NewAccountStat30min(chainName, util.ToTime(1665637200), 3, "xplaaabb")
 	expected.TxCnt = 1
-	expected.Asset0Amount = "13517017"
-	expected.Asset1Amount = "909068"
-	expected.TotalLpAmount = "447645"
 
 	db, gormDb, err := initDb(testConfig.Aggregator.DestDb)
 	assert.NoError(err)
 	defer db.Close()
 
 	// prepare
-	gormDb.Exec(`TRUNCATE TABLE h_account_stats_30m`)
+	gormDb.Exec(`TRUNCATE TABLE account_stats_30m`)
 
 	// execute
 	repo := New(chainName, testConfig.Aggregator.DestDb)
 	defer repo.Close()
-	err = repo.UpdateAccountStats(expected)
+	err = repo.UpdateAccountStats([]schemas.AccountStats30m{expected})
 
 	// verify
-	actual := []schemas.HAccountStats30m{}
+	actual := []schemas.AccountStats30m{}
 	gormDb.Find(&actual)
 
 	assert.NoError(err)
@@ -210,12 +201,9 @@ func TestUpdateAccountStats(t *testing.T) {
 	assert.Equal(expected.DayUtc, actual[0].DayUtc)
 	assert.Equal(expected.HourUtc, actual[0].HourUtc)
 	assert.Equal(expected.MinuteUtc, actual[0].MinuteUtc)
-	assert.Equal(expected.Ts, actual[0].Ts)
+	assert.Equal(expected.Timestamp, actual[0].Timestamp)
 	assert.Equal(expected.PairId, actual[0].PairId)
 	assert.Equal(expected.TxCnt, actual[0].TxCnt)
-	assert.Equal(expected.Asset0Amount, actual[0].Asset0Amount)
-	assert.Equal(expected.Asset1Amount, actual[0].Asset1Amount)
-	assert.Equal(expected.TotalLpAmount, actual[0].TotalLpAmount)
 }
 
 func TestCreateAccounts(t *testing.T) {

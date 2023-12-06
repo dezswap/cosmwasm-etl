@@ -1,8 +1,9 @@
 package schemas
 
 import (
-	"github.com/lib/pq"
 	"time"
+
+	"github.com/lib/pq"
 
 	"github.com/dezswap/cosmwasm-etl/pkg/util"
 )
@@ -29,6 +30,7 @@ type Price struct {
 	Price        string `json:"price"`
 	PriceTokenId uint64 `json:"price_token_id"`
 	RouteId      uint64 `json:"route_id"`
+	TxId         uint64 `json:"tx_id"`
 }
 
 type Route struct {
@@ -103,22 +105,17 @@ type PairStats30m struct {
 	Timestamp          float64 `json:"timestamp"`
 }
 
-type HAccountStats30m struct {
-	Id            uint64
-	YearUtc       int
-	MonthUtc      int
-	DayUtc        int
-	HourUtc       int
-	MinuteUtc     int
-	Ts            float64
-	ChainId       string
-	AccountId     uint64
-	PairId        uint64
-	TxCnt         uint64
-	Asset0Amount  string
-	Asset1Amount  string
-	TotalLpAmount string
-	CreatedAt     float64
+type AccountStats30m struct {
+	YearUtc   int     `json:"year_utc"`
+	MonthUtc  int     `json:"month_utc"`
+	DayUtc    int     `json:"day_utc"`
+	HourUtc   int     `json:"hour_utc"`
+	MinuteUtc int     `json:"minute_utc"`
+	Address   string  `json:"address"`
+	PairId    uint64  `json:"pair_id"`
+	ChainId   string  `json:"chain_id"`
+	TxCnt     uint64  `json:"tx_cnt"`
+	Timestamp float64 `json:"timestamp"`
 }
 
 func NewPairStat30min(chainId string, priceToken string, end time.Time, pairId uint64) PairStats30m {
@@ -135,16 +132,16 @@ func NewPairStat30min(chainId string, priceToken string, end time.Time, pairId u
 	}
 }
 
-func NewUserStat30min(chainId string, end time.Time, pairId uint64, userId uint64) HAccountStats30m {
-	return HAccountStats30m{
+func NewAccountStat30min(chainId string, end time.Time, pairId uint64, accountAddress string) AccountStats30m {
+	return AccountStats30m{
 		YearUtc:   end.Year(),
 		MonthUtc:  int(end.Month()),
 		DayUtc:    end.Day(),
 		HourUtc:   end.Hour(),
 		MinuteUtc: end.Minute(),
-		Ts:        util.ToEpoch(end),
-		ChainId:   chainId,
-		AccountId: userId,
+		Timestamp: util.ToEpoch(end),
+		Address:   accountAddress,
 		PairId:    pairId,
+		ChainId:   chainId,
 	}
 }

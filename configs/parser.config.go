@@ -15,16 +15,11 @@ type ParserConfig struct {
 	SameHeightTolerance uint
 	ErrTolerance        uint
 
-	NodeConfig *NodeConfig
+	NodeConfig NodeConfig
 }
 
 func parserConfig(v *viper.Viper) ParserConfig {
-	var nodeC *NodeConfig
-	nodeV := v.Sub("parser.node")
-	if nodeV != nil {
-		c := nodeConfig(nodeV)
-		nodeC = &c
-	}
+
 	v.SetDefault("parser.sameHeightTolerance", PARSER_SAME_HEIGHT_TOLERANCE)
 	return ParserConfig{
 		ChainId:             v.GetString("parser.chainId"),
@@ -32,6 +27,9 @@ func parserConfig(v *viper.Viper) ParserConfig {
 		SameHeightTolerance: v.GetUint("parser.sameHeightTolerance"),
 		ErrTolerance:        v.GetUint("parser.errTolerance"),
 
-		NodeConfig: nodeC,
+		NodeConfig: NodeConfig{
+			GrpcConfig:      grpcConfig(v, "parser.node"),
+			FailoverLcdHost: v.GetString("parser.node.failover_lcd_host"),
+		},
 	}
 }

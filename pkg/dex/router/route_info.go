@@ -14,7 +14,7 @@ type routeInfo interface {
 }
 
 type routeInfoImpl struct {
-	maxRouteLen uint
+	maxHopCount uint
 	// from, to, pair address
 	initialPairMap map[int]map[int]string
 	// from, to, path indexes
@@ -28,13 +28,11 @@ type routeInfoImpl struct {
 var _ routeInfo = &routeInfoImpl{}
 
 // newRouteInfo implements cache
-func newRouteInfo(pairs []Pair, maxPathLen uint, repo SrcRepo) (routeInfo, error) {
-	if maxPathLen > MAX_ROUTE_PATH_LEN {
-		maxPathLen = MAX_ROUTE_PATH_LEN
+func newRouteInfo(pairs []Pair, maxHopCount uint, repo SrcRepo) (routeInfo, error) {
+	if maxHopCount > MAX_ROUTE_HOP_COUNT {
+		maxHopCount = MAX_ROUTE_HOP_COUNT
 	}
-	ri := routeInfoImpl{
-		maxRouteLen: maxPathLen,
-	}
+	ri := routeInfoImpl{maxHopCount: maxHopCount}
 
 	ri.setIndex(pairs)
 	ri.setPairMap(pairs)
@@ -152,9 +150,9 @@ func (ri *routeInfoImpl) setRoutesMap(repo SrcRepo) error {
 }
 
 // findAllRoutes finds all routes from the given start index
-// it runs recursively until it reaches the maxRouteLen
-func (ri *routeInfoImpl) findAllRoutes(start, current int, route []int, visited map[int]bool, pathLen uint) {
-	if pathLen > ri.maxRouteLen {
+// it runs recursively until it reaches the maxHopCount
+func (ri *routeInfoImpl) findAllRoutes(start, current int, route []int, visited map[int]bool, hopCount uint) {
+	if hopCount > ri.maxHopCount {
 		return
 	}
 
@@ -177,7 +175,7 @@ func (ri *routeInfoImpl) findAllRoutes(start, current int, route []int, visited 
 		routes := ri.routesMap[start][to]
 		ri.routesMap[start][to] = append(routes, newRoute)
 		visited[to] = true
-		ri.findAllRoutes(start, to, newRoute, visited, pathLen+1)
+		ri.findAllRoutes(start, to, newRoute, visited, hopCount+1)
 		visited[to] = false
 	}
 }

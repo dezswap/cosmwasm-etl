@@ -26,7 +26,7 @@ type aggregatorImpl struct {
 	cleanDups  bool
 	srcDbConn  parser.ReadRepository
 	destDbConn repo.Repo
-	tasks      []task
+	tasks      []scheduler
 
 	logger logging.Logger
 }
@@ -50,20 +50,9 @@ func New(c configs.Config, logger logging.Logger) Aggregator {
 	srcRepo := parser.NewReadRepo(c.Aggregator.ChainId, c.Aggregator.SrcDb)
 	destRepo := repo.New(c.Aggregator.ChainId, c.Aggregator.DestDb)
 
-	// init tasks
-	rt, err := newRouterTask(c.Aggregator, logger)
+	taskSchedulers, err := initTaskSchedulers(c.Aggregator, srcRepo, destRepo, logger)
 	if err != nil {
 		panic(err)
-	}
-	lht := newLpHistoryTask(c.Aggregator, srcRepo, destRepo, logger)
-	pt, err := newPriceTask(c.Aggregator, destRepo, logger, []task{lht})
-	if err != nil {
-		panic(err)
-	}
-	tasks := []task{
-		rt, lht, pt,
-		newPairStatsRecentUpdateTask(c.Aggregator, srcRepo, destRepo, logger, []task{pt}),
-		newPairStatsUpdateTask(c.Aggregator, srcRepo, destRepo, logger, []task{pt}),
 	}
 
 	return &aggregatorImpl{
@@ -72,9 +61,26 @@ func New(c configs.Config, logger logging.Logger) Aggregator {
 		cleanDups:  c.Aggregator.CleanDups,
 		srcDbConn:  srcRepo,
 		destDbConn: destRepo,
-		tasks:      tasks,
+		tasks:      taskSchedulers,
 		logger:     logger,
 	}
+}
+
+func initTaskSchedulers(config configs.AggregatorConfig, srcRepo parser.ReadRepository, destRepo repo.Repo, logger logging.Logger) ([]scheduler, error) {
+	lht := newLpHistoryTask(config, srcRepo, destRepo, logger)
+	pt, err := newPriceTask(config, destRepo, logger, []task{lht})
+	if err != nil {
+		return nil, err
+	}
+
+	return []scheduler{
+		newIntervalScheduler(newRouterTask(config, logger), logger),
+		newIntervalScheduler(lht, logger),
+		newIntervalScheduler(pt, logger),
+		newIntervalScheduler(newPairStatsRecentUpdateTask(config, srcRepo, destRepo, logger, []task{pt}), logger),
+		newPredeterminedTimeScheduler(newPairStatsUpdateTask(config, srcRepo, destRepo, logger, []task{pt}), config.StartTs, logger),
+		newPredeterminedTimeScheduler(newAccountStatsUpdateTask(config, srcRepo, destRepo, logger), config.StartTs, logger),
+	}, nil
 }
 
 func (a aggregatorImpl) Run() error {
@@ -123,9 +129,9 @@ func (a aggregatorImpl) runTasks(ctx context.Context) {
 
 	for _, t := range a.tasks {
 		wg.Add(1)
-		go func(tk task) {
+		go func(tk scheduler) {
 			defer wg.Done()
-			if err := tk.Schedule(ctx, a.startTs); err != nil {
+			if err := tk.Schedule(ctx); err != nil {
 				errChan <- err
 			}
 		}(t)

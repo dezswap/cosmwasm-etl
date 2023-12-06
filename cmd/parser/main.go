@@ -30,7 +30,7 @@ const (
 )
 
 func getCollectorReadStore(c *configs.Config) collector_store.ReadStore {
-	if c.Parser.NodeConfig != nil {
+	if c.Parser.NodeConfig.GrpcConfig.Host != "" {
 		nodeConf := c.Parser.NodeConfig
 		serviceDesc := grpc.GetServiceDesc("collector", nodeConf.GrpcConfig)
 		httpClient := &http.Client{

@@ -49,7 +49,7 @@ func GetServiceDesc(alias string, c configs.GrpcConfig) ServiceDesc {
 		alias:           alias,
 		destination:     c.Host,
 		destinationPort: c.Port,
-		backoffMaxDelay: c.BackoffMaxDelay.Duration,
+		backoffMaxDelay: c.BackoffDelay.Duration,
 		noTLS:           c.NoTLS,
 	}
 }

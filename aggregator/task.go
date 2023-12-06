@@ -1,16 +1,16 @@
 package aggregator
 
 import (
-	"context"
+	"math"
+	"strconv"
+	"time"
+
 	"github.com/cosmos/cosmos-sdk/types"
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/pkg/dex/price"
 	"github.com/dezswap/cosmwasm-etl/pkg/dex/router"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 	"github.com/pkg/errors"
-	"math"
-	"strconv"
-	"time"
 
 	"github.com/dezswap/cosmwasm-etl/aggregator/repo"
 	"github.com/dezswap/cosmwasm-etl/pkg/db/parser"
@@ -22,20 +22,27 @@ const LpHistoryUpdateLimit = 100
 const WaitPeriod = 10 * time.Second
 
 type task interface {
-	Schedule(ctx context.Context, startTs time.Time) error
 	Execute(start time.Time, end time.Time) error
 	LastProcessedHeight() uint64
+}
+
+type predeterminedTimeTask interface {
+	task
+	StartTimestamp(startTs time.Time) (time.Time, error)
 }
 
 type taskImpl struct {
 	chainId     string
 	destDb      repo.Repo
-	interval    time.Duration
 	parentTasks []task
 	logger      logging.Logger
 
 	// State
 	lastProcessedHeight uint64
+}
+
+func (t *taskImpl) LastProcessedHeight() uint64 {
+	return t.lastProcessedHeight
 }
 
 type lpHistoryTask struct {
@@ -47,7 +54,9 @@ type lpHistoryTask struct {
 type routerTask struct {
 	taskImpl
 
-	router router.Router
+	router  router.Router
+	srcDb   router.SrcRepo
+	pairCnt int
 }
 
 type priceTask struct {
@@ -77,46 +86,15 @@ type accountStatsUpdateTask struct {
 	srcDb parser.ReadRepository
 }
 
-var _ task = &accountStatsUpdateTask{}
-
-func newLpHistoryTask(config configs.AggregatorConfig, srcRepo parser.ReadRepository, destRepo repo.Repo, logger logging.Logger) *lpHistoryTask {
+func newLpHistoryTask(config configs.AggregatorConfig, srcRepo parser.ReadRepository, destRepo repo.Repo, logger logging.Logger) task {
 	return &lpHistoryTask{
 		taskImpl: taskImpl{
-			chainId:  config.ChainId,
-			destDb:   destRepo,
-			interval: 5 * time.Minute,
-			logger:   logger,
+			chainId: config.ChainId,
+			destDb:  destRepo,
+			logger:  logger,
 		},
 		srcDb: srcRepo,
 	}
-}
-
-func (t *lpHistoryTask) Schedule(ctx context.Context, _ time.Time) error {
-	startTs := time.Now()
-	done := false
-	for {
-		select {
-		case <-ctx.Done():
-			done = true
-			break
-		case <-time.After(time.Until(startTs)):
-			if err := t.Execute(startTs, time.Time{}); err != nil {
-				errChan <- err
-			}
-			next := startTs.Truncate(t.interval).Add(t.interval)
-			if next.Before(time.Now()) {
-				startTs = time.Now().Truncate(t.interval).Add(t.interval)
-			} else {
-				startTs = next
-			}
-			t.logger.Debugf("The task for lp history has been finished in goroutine.")
-		}
-		if done {
-			break
-		}
-	}
-
-	return nil
 }
 
 func (t *lpHistoryTask) Execute(_ time.Time, _ time.Time) error {
@@ -156,10 +134,6 @@ func (t *lpHistoryTask) Execute(_ time.Time, _ time.Time) error {
 	t.logger.Infof("Complete lp history update.")
 
 	return nil
-}
-
-func (t *lpHistoryTask) LastProcessedHeight() uint64 {
-	return t.lastProcessedHeight
 }
 
 func (t lpHistoryTask) generateHistory(latestLpMap map[uint64][]string, txs []schemas.ParsedTxWithPrice) ([]schemas.LpHistory, error) {
@@ -240,104 +214,48 @@ func (t lpHistoryTask) generateHistory(latestLpMap map[uint64][]string, txs []sc
 	return history, nil
 }
 
-func newRouterTask(config configs.AggregatorConfig, logger logging.Logger) (*routerTask, error) {
+func newRouterTask(config configs.AggregatorConfig, logger logging.Logger) task {
 	srcRepo := router.NewSrcRepo(config.ChainId, config.SrcDb)
-	r, err := router.New(srcRepo, config.Router, logger)
-	if err != nil {
-		return &routerTask{}, err
-	}
 
 	return &routerTask{
 		taskImpl: taskImpl{
-			chainId:  config.ChainId,
-			interval: 5 * time.Minute,
-			logger:   logger,
+			chainId: config.ChainId,
+			logger:  logger,
 		},
-		router: r,
-	}, nil
+		router: router.New(srcRepo, config.Router, logger),
+		srcDb:  srcRepo,
+	}
 }
 
-func (t *routerTask) Schedule(ctx context.Context, _ time.Time) error {
-	startTs := time.Now()
-	done := false
-	for {
-		select {
-		case <-ctx.Done():
-			done = true
-			break
-		case <-time.After(time.Until(startTs)):
-			if err := t.Execute(startTs, time.Time{}); err != nil {
-				errChan <- err
-			}
-			next := startTs.Truncate(t.interval).Add(t.interval)
-			if next.Before(time.Now()) {
-				startTs = time.Now().Truncate(t.interval).Add(t.interval)
-			} else {
-				startTs = next
-			}
-			t.logger.Debugf("The task for route has been finished in goroutine.")
-		}
-		if done {
-			break
-		}
+func (t *routerTask) Execute(_ time.Time, _ time.Time) error {
+	pairs, err := t.srcDb.Pairs()
+	if err != nil {
+		return err
+	}
+
+	if len(pairs) > t.pairCnt {
+		t.pairCnt = len(pairs)
+		return t.router.Update()
 	}
 
 	return nil
 }
 
-func (t *routerTask) Execute(_ time.Time, _ time.Time) error {
-	return t.router.Update()
-}
-
-func (t *routerTask) LastProcessedHeight() uint64 {
-	return t.lastProcessedHeight
-}
-
-func newPriceTask(config configs.AggregatorConfig, destRepo repo.Repo, logger logging.Logger, parentTasks []task) (*priceTask, error) {
-	srcRepo := price.NewRepo(config.ChainId, config.SrcDb)
-	pt, err := price.New(srcRepo, config.PriceToken, logger)
+func newPriceTask(config configs.AggregatorConfig, destRepo repo.Repo, logger logging.Logger, parentTasks []task) (task, error) {
+	pt, err := price.New(price.NewRepo(config.ChainId, config.SrcDb), config.PriceToken, logger)
 	if err != nil {
-		return &priceTask{}, err
+		return nil, err
 	}
 
 	return &priceTask{
 		taskImpl: taskImpl{
 			chainId:     config.ChainId,
 			destDb:      destRepo,
-			interval:    5 * time.Minute,
 			parentTasks: parentTasks,
 			logger:      logger,
 		},
 		priceTracker: pt,
 	}, nil
-}
-
-func (t *priceTask) Schedule(ctx context.Context, _ time.Time) error {
-	startTs := time.Now()
-	done := false
-	for {
-		select {
-		case <-ctx.Done():
-			done = true
-			break
-		case <-time.After(time.Until(startTs)):
-			if err := t.Execute(startTs, time.Time{}); err != nil {
-				errChan <- err
-			}
-			next := startTs.Truncate(t.interval).Add(t.interval)
-			if next.Before(time.Now()) {
-				startTs = time.Now().Truncate(t.interval).Add(t.interval)
-			} else {
-				startTs = next
-			}
-			t.logger.Debugf("The task for price has been finished in goroutine.")
-		}
-		if done {
-			break
-		}
-	}
-
-	return nil
 }
 
 func (t *priceTask) Execute(_ time.Time, _ time.Time) error {
@@ -369,16 +287,11 @@ func (t *priceTask) Execute(_ time.Time, _ time.Time) error {
 	}
 }
 
-func (t *priceTask) LastProcessedHeight() uint64 {
-	return t.lastProcessedHeight
-}
-
-func newPairStatsRecentUpdateTask(config configs.AggregatorConfig, srcRepo parser.ReadRepository, destRepo repo.Repo, logger logging.Logger, parentTasks []task) *pairStatsRecentUpdateTask {
+func newPairStatsRecentUpdateTask(config configs.AggregatorConfig, srcRepo parser.ReadRepository, destRepo repo.Repo, logger logging.Logger, parentTasks []task) task {
 	return &pairStatsRecentUpdateTask{
 		taskImpl: taskImpl{
 			chainId:     config.ChainId,
 			destDb:      destRepo,
-			interval:    5 * time.Minute,
 			parentTasks: parentTasks,
 			logger:      logger,
 		},
@@ -388,30 +301,7 @@ func newPairStatsRecentUpdateTask(config configs.AggregatorConfig, srcRepo parse
 	}
 }
 
-func (t *pairStatsRecentUpdateTask) Schedule(ctx context.Context, _ time.Time) error {
-	ts := time.Now()
-	done := false
-	for {
-		select {
-		case <-ctx.Done():
-			done = true
-			break
-		case <-time.After(time.Until(ts)):
-			if err := t.Execute(ts.Add(-t.timeRange), ts); err != nil {
-				errChan <- err
-			}
-			ts = ts.Truncate(t.interval).Add(t.interval)
-			t.logger.Debugf("The task for pair stats recent has been finished in goroutine.")
-		}
-		if done {
-			break
-		}
-	}
-
-	return nil
-}
-
-func (t *pairStatsRecentUpdateTask) Execute(start time.Time, end time.Time) error {
+func (t *pairStatsRecentUpdateTask) Execute(_ time.Time, end time.Time) error {
 	if t.lastProcessedHeight == 0 {
 		var err error
 		t.lastProcessedHeight, err = t.destDb.LastHeightOfPairStatsRecent()
@@ -419,7 +309,8 @@ func (t *pairStatsRecentUpdateTask) Execute(start time.Time, end time.Time) erro
 			return err
 		}
 	}
-	startHeight, err := t.srcDb.HeightOnTimestamp(util.ToEpoch(start))
+	startTs := end.Add(-1 * t.timeRange)
+	startHeight, err := t.srcDb.HeightOnTimestamp(util.ToEpoch(startTs))
 	if err != nil {
 		return err
 	}
@@ -475,7 +366,7 @@ func (t *pairStatsRecentUpdateTask) Execute(start time.Time, end time.Time) erro
 		}
 	}
 
-	err = t.destDb.DeletePairStatsRecent(dbTx, start)
+	err = t.destDb.DeletePairStatsRecent(dbTx, startTs)
 	if err != nil {
 		return err
 	}
@@ -674,16 +565,11 @@ func (t pairStatsRecentUpdateTask) searchPrice(tokenIdStr string, targetHeight u
 	return price, nil
 }
 
-func (t *pairStatsRecentUpdateTask) LastProcessedHeight() uint64 {
-	return t.lastProcessedHeight
-}
-
-func newPairStatsUpdateTask(config configs.AggregatorConfig, srcRepo parser.ReadRepository, destRepo repo.Repo, logger logging.Logger, parentTasks []task) *pairStatsUpdateTask {
+func newPairStatsUpdateTask(config configs.AggregatorConfig, srcRepo parser.ReadRepository, destRepo repo.Repo, logger logging.Logger, parentTasks []task) predeterminedTimeTask {
 	return &pairStatsUpdateTask{
 		taskImpl: taskImpl{
 			chainId:     config.ChainId,
 			destDb:      destRepo,
-			interval:    30 * time.Minute,
 			parentTasks: parentTasks,
 			logger:      logger,
 		},
@@ -692,53 +578,12 @@ func newPairStatsUpdateTask(config configs.AggregatorConfig, srcRepo parser.Read
 	}
 }
 
-func (t *pairStatsUpdateTask) Schedule(ctx context.Context, startTs time.Time) error {
-	startTs, err := t.startTimestamp(startTs)
-	if err != nil {
-		return err
-	}
-
-	start, end := t.timeframe(startTs)
-	done := false
-
-	for end.Before(time.Now()) {
-		if done {
-			return nil
-		}
-		if err := t.Execute(start, end); err != nil {
-			errChan <- err
-		}
-		start = end
-		end = end.Add(t.interval)
-	}
-
-	for {
-		select {
-		case <-ctx.Done():
-			done = true
-			break
-		case <-time.After(time.Until(end)):
-			if err := t.Execute(start, end); err != nil {
-				errChan <- err
-			}
-			start = end
-			end = end.Add(t.interval)
-			t.logger.Debugf("The task for pair stats by 30m has been finished in goroutine.")
-		}
-		if done {
-			break
-		}
-	}
-
-	return nil
-}
-
-func (t pairStatsUpdateTask) startTimestamp(startTs time.Time) (time.Time, error) {
+func (t pairStatsUpdateTask) StartTimestamp(startTs time.Time) (time.Time, error) {
 	if !startTs.IsZero() {
 		return startTs, nil
 	}
 
-	destTsF, err := t.destDb.LatestTimestampOfPairStats()
+	destTsF, err := t.destDb.LatestTimestamp(schemas.PairStats30m{}.TableName())
 	if err != nil {
 		return time.Time{}, err
 	}
@@ -754,13 +599,6 @@ func (t pairStatsUpdateTask) startTimestamp(startTs time.Time) (time.Time, error
 	}
 
 	return destTs, nil
-}
-
-func (pairStatsUpdateTask) timeframe(ts time.Time) (time.Time, time.Time) {
-	start := ts.Truncate(30 * time.Minute).UTC()
-	end := start.Add(30 * time.Minute).UTC()
-
-	return start, end
 }
 
 func (t *pairStatsUpdateTask) Execute(start time.Time, end time.Time) error {
@@ -803,77 +641,72 @@ func (t *pairStatsUpdateTask) Execute(start time.Time, end time.Time) error {
 	return nil
 }
 
-func (t *pairStatsUpdateTask) LastProcessedHeight() uint64 {
-	return t.lastProcessedHeight
+func newAccountStatsUpdateTask(config configs.AggregatorConfig, srcRepo parser.ReadRepository, destRepo repo.Repo, logger logging.Logger) predeterminedTimeTask {
+	return &accountStatsUpdateTask{
+		taskImpl: taskImpl{
+			chainId: config.ChainId,
+			destDb:  destRepo,
+			logger:  logger,
+		},
+		srcDb: srcRepo,
+	}
 }
 
-func (t *accountStatsUpdateTask) Schedule(_ context.Context, _ time.Time) error {
-	// TODO: implement
-	return t.Execute(time.Time{}, time.Time{})
+func (t *accountStatsUpdateTask) StartTimestamp(startTs time.Time) (time.Time, error) {
+	if !startTs.IsZero() {
+		return startTs, nil
+	}
+
+	destTsF, err := t.destDb.LatestTimestamp(schemas.AccountStats30m{}.TableName())
+	if err != nil {
+		return time.Time{}, err
+	}
+	srcTsF, err := t.srcDb.OldestTxTimestamp()
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	destTs := util.ToTime(destTsF)
+	srcTs := util.ToTime(srcTsF)
+	if destTs.Before(srcTs) {
+		return srcTs, nil
+	}
+
+	return destTs, nil
 }
 
 func (t *accountStatsUpdateTask) Execute(start time.Time, end time.Time) error {
 	startEpoch, endEpoch := util.ToEpoch(start), util.ToEpoch(end)
 
-	if err := t.updateAccounts(startEpoch, endEpoch); err != nil {
-		return err
-	}
-
-	accounts, err := t.destDb.Accounts(endEpoch)
+	stats, err := t.srcDb.AccountStats(startEpoch, endEpoch)
 	if err != nil {
 		return err
 	}
 
-	for id, address := range accounts {
-		pairIds, err := t.srcDb.NewPairIds(address, startEpoch, endEpoch)
+	if len(stats) > 0 {
+		for i, s := range stats {
+			s.YearUtc = end.Year()
+			s.MonthUtc = int(end.Month())
+			s.DayUtc = end.Day()
+			s.HourUtc = end.Hour()
+			s.MinuteUtc = end.Minute()
+			s.Timestamp = endEpoch
+			s.ChainId = t.chainId
+			stats[i] = s
+		}
+
+		err = t.destDb.UpdateAccountStats(stats)
 		if err != nil {
 			return err
 		}
-		if pis, err := t.destDb.HoldingPairIds(id); err != nil {
-			return err
-		} else {
-			pairIds = append(pairIds, pis...)
-		}
-
-		for _, pairId := range pairIds {
-			stats := schemas.NewUserStat30min(t.chainId, end, pairId, id)
-
-			stats.TxCnt, err = t.srcDb.TxCountOfAccount(address, pairId, startEpoch, endEpoch)
-			if err != nil {
-				return err
-			}
-
-			stats.Asset0Amount, stats.Asset1Amount, stats.TotalLpAmount, err = t.srcDb.AssetAmountInPairOfAccount(address, pairId, startEpoch, endEpoch)
-			if err != nil {
-				return err
-			}
-
-			if err := t.destDb.UpdateAccountStats(stats); err != nil {
-				return err
-			}
-		}
 	}
 
-	t.logger.Infof("Complete account stats update.")
-
-	return nil
-}
-
-func (t *accountStatsUpdateTask) LastProcessedHeight() uint64 {
-	return t.lastProcessedHeight
-}
-
-func (t accountStatsUpdateTask) updateAccounts(startEpoch float64, endEpoch float64) error {
-	accounts, err := t.srcDb.NewAccounts(startEpoch, endEpoch)
+	t.lastProcessedHeight, err = t.srcDb.HeightOnTimestamp(util.ToEpoch(end))
 	if err != nil {
 		return err
 	}
 
-	if len(accounts) > 0 {
-		if err := t.destDb.CreateAccounts(accounts); err != nil {
-			return err
-		}
-	}
+	t.logger.Infof("Complete account stats update for the timeframe '%s - %s'.", start.String(), end.String())
 
 	return nil
 }

@@ -1,3 +1,3 @@
 package router
 
-const MAX_ROUTE_PATH_LEN uint = 5
+const MAX_ROUTE_HOP_COUNT uint = 4

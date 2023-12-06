@@ -54,13 +54,6 @@ log:
   # prod, dev
   env:
 
-
-grpc:
-  host: # Domain or ip
-  port: # Port of the host
-  backoffdelay: # retry delay e.g.) 3s, 1m
-  noTls: # true - direct IP connection / false - tls is enabled that its cert should be set first
-
 rdb:
   host:
   port:

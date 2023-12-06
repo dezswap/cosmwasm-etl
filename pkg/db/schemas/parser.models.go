@@ -18,6 +18,7 @@ type PoolInfo struct {
 }
 
 type ParsedTx struct {
+	Id                uint64        `json:"id"`
 	ChainId           string        `json:"chainId"`
 	Height            uint64        `json:"height"`
 	Timestamp         float64       `json:"timestamp"` // timestamp of a block in second

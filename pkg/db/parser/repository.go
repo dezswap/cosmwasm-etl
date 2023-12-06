@@ -2,12 +2,13 @@ package parser
 
 import (
 	"database/sql"
-	"github.com/cosmos/cosmos-sdk/types"
-	"github.com/dezswap/cosmwasm-etl/pkg/util"
 	"log"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/cosmos/cosmos-sdk/types"
+	"github.com/dezswap/cosmwasm-etl/pkg/util"
 
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/pkg/db"
@@ -34,6 +35,7 @@ type ReadRepository interface {
 	RecentPrices(startHeight uint64, endHeight uint64, targetTokens []string, priceToken string) (map[uint64][]schemas.Price, error)
 	GetParsedTxsWithPriceOfPair(pairId uint64, priceToken string, startTs float64, endTs float64) ([]schemas.ParsedTxWithPrice, error)
 	PairStats(startTs float64, endTs float64, priceToken string) ([]schemas.PairStats30m, error)
+	AccountStats(startTs float64, endTs float64) ([]schemas.AccountStats30m, error)
 	LiquiditiesOfPairStats(startTs float64, endTs float64, priceToken string) (map[uint64]schemas.PairStats30m, error)
 	OldestTxTimestamp() (float64, error)
 	LatestTxTimestamp() (float64, error)
@@ -190,8 +192,8 @@ order by pt.height asc, p.id asc
 func (r *readRepoImpl) GetRecentParsedTxs(startHeight uint64, endHeight uint64) ([]schemas.ParsedTxWithPrice, error) {
 	query := `
 select p.id pair_id,
-       pt.asset0_amount,
-       pt.asset1_amount,
+       case when pt.type = 'swap' then pt.asset0_amount else 0 end as asset0_amount,
+       case when pt.type = 'swap' then pt.asset1_amount else 0 end as asset1_amount,
        lh.liquidity0 asset0_liquidity,
        lh.liquidity1 asset1_liquidity,
        pt.commission0_amount,
@@ -279,8 +281,8 @@ func (r *readRepoImpl) GetParsedTxsWithPriceOfPair(pairId uint64, priceToken str
 func (r *readRepoImpl) PairStats(startTs float64, endTs float64, priceToken string) ([]schemas.PairStats30m, error) {
 	query := `
 select pair_id,
-       sum(volume) as volume0,
-       sum(volume_in_price) as volume0_in_price,
+       coalesce(sum(volume) filter (where type = 'swap'),0) as volume0,
+       coalesce(sum(volume_in_price) filter (where type = 'swap'),0) as volume0_in_price,
        avg(last_volume) as last_swap_price,
        sum(commission) as commission0,
        sum(commission_in_price) as commission0_in_price,
@@ -324,8 +326,8 @@ group by pair_id
 
 	query = `
 select pair_id,
-       sum(volume) volume1,
-       sum(volume_in_price) volume1_in_price,
+       coalesce(sum(volume) filter (where type = 'swap'),0) as volume1,
+       coalesce(sum(volume_in_price) filter (where type = 'swap'),0) as volume1_in_price,
        avg(last_volume) as last_swap_price,
        sum(commission) commission1,
        sum(commission_in_price) commission1_in_price
@@ -333,6 +335,7 @@ from (
 select distinct height,
                 pair_id,
                 hash,
+                type,
                 first_value(volume) over (partition by pair_id order by height desc) last_volume,
                 abs(volume) as volume,
                 abs(volume) * price / pow(10, decimals) as volume_in_price,
@@ -341,6 +344,7 @@ select distinct height,
 from (select pt.height,
              p.id pair_id,
        pt.hash,
+       type,
        pt.asset1_amount as volume,
        pt.commission1_amount as commission,
        first_value(pr.price) over (partition by pt.height order by pr.height desc) as price,
@@ -397,6 +401,25 @@ group by pair_id
 	}
 
 	return res0, nil
+}
+
+func (r *readRepoImpl) AccountStats(startTs float64, endTs float64) ([]schemas.AccountStats30m, error) {
+	query := `
+select pt.sender address, p.id pair_id, count(*) tx_cnt
+from parsed_tx pt
+    join pair p on p.chain_id = pt.chain_id and p.contract = pt.contract
+where pt.chain_id = ?
+  and pt.timestamp >= ?
+  and pt.timestamp < ?
+  AND pt.type IN ('swap', 'provide', 'withdraw')
+group by pt.sender, p.id;
+`
+	res := []schemas.AccountStats30m{}
+	if tx := r.db.Raw(query, r.chainId, startTs, endTs).Scan(&res); tx.Error != nil {
+		return nil, errors.Wrap(tx.Error, "repo.AccountStats")
+	}
+
+	return res, nil
 }
 
 func (r *readRepoImpl) LiquiditiesOfPairStats(startTs float64, endTs float64, priceToken string) (map[uint64]schemas.PairStats30m, error) {

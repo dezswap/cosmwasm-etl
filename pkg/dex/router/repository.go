@@ -1,6 +1,10 @@
 package router
 
 import (
+	"log"
+	"os"
+	"time"
+
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/pkg/db"
 	"github.com/dezswap/cosmwasm-etl/pkg/db/schemas"
@@ -10,9 +14,6 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"gorm.io/gorm/logger"
-	"log"
-	"os"
-	"time"
 )
 
 type SrcRepo interface {
@@ -89,7 +90,7 @@ func (r *srcRepoImpl) UpdateRoutes(indexToAsset map[int]string, routesMap map[in
 					ChainId:  r.chainId,
 					Asset0:   indexToAsset[a0],
 					Asset1:   indexToAsset[a1],
-					HopCount: len(route),
+					HopCount: len(route) - 1,
 					Route:    assetRoute,
 				})
 			}

@@ -175,7 +175,7 @@ func Test09GetCurrentPoolStatusOfUnitPair(t *testing.T) {
 
 	m.On("SmartContractState", mock.Anything,
 		&wasm.QuerySmartContractStateRequest{
-			Address:   "terra1466nf3zuxpya8q9emxukd7vftaf6h4psr0a07srl5zw74zh84yjqxl5qul",
+			Address:   "",
 			QueryData: wasm.RawContractMessage([]byte(`{"pairs": {}}`)),
 		}).Return(&wasm.QuerySmartContractStateResponse{
 		Data: wasm.RawContractMessage([]byte(factoryResponse)),
@@ -212,7 +212,7 @@ func Test10GetCurrentPoolStatusOfAllPairs(t *testing.T) {
 
 	m.On("SmartContractState", mock.Anything,
 		&wasm.QuerySmartContractStateRequest{
-			Address:   "terra1466nf3zuxpya8q9emxukd7vftaf6h4psr0a07srl5zw74zh84yjqxl5qul",
+			Address:   "",
 			QueryData: wasm.RawContractMessage([]byte(`{"pairs": {}}`)),
 		}).Return(&wasm.QuerySmartContractStateResponse{
 		Data: wasm.RawContractMessage([]byte(lightFactoryResp)),
