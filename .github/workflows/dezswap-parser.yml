@@ -79,8 +79,8 @@ jobs:
         working-directory: .
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          CUBE_CONFIG: ${{ secrets.CUBE_CONFIG }}
-          DIMENSION_CONFIG: ${{ secrets.DIMENSION_CONFIG }}
+          CUBE_PARSER_CONFIG: ${{ secrets.CUBE_PARSER_CONFIG }}
+          DIMENSION_PARSER_CONFIG: ${{ secrets.DIMENSION_PARSER_CONFIG }}
           APP_TYPE: ${{ env.APP_TYPE }}
         run: |
           IMAGE_TAG=`git rev-parse --short HEAD`
@@ -89,7 +89,7 @@ jobs:
           echo "FROM $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           COPY config.yaml /app/config.yaml" > Dockerfile.final
 
-          configs=("$CUBE_CONFIG" "$DIMENSION_CONFIG")
+          configs=("$CUBE_PARSER_CONFIG" "$DIMENSION_PARSER_CONFIG")
           networks=("cube" "dimension")
           for i in "${!configs[@]}"; do
             echo "${configs[i]}" > config.yaml

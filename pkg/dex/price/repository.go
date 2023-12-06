@@ -1,6 +1,10 @@
 package price
 
 import (
+	"log"
+	"os"
+	"time"
+
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/pkg/db"
 	"github.com/dezswap/cosmwasm-etl/pkg/db/schemas"
@@ -9,9 +13,6 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
-	"log"
-	"os"
-	"time"
 )
 
 type SrcRepo interface {
@@ -23,8 +24,8 @@ type SrcRepo interface {
 	LatestRouteUpdateTimestamp() (float64, error)
 	Route(endToken string) (map[string][][]string, error)
 	Liquidity(height uint64, token string, priceToken string) (string, string, error)
-	UpdateDirectPrice(height uint64, token string, price string, priceToken string, isReverse bool) error
-	UpdateRoutePrice(height uint64, token string, price string, priceToken string, route []string) error
+	UpdateDirectPrice(height uint64, txId uint64, token string, price string, priceToken string, isReverse bool) error
+	UpdateRoutePrice(height uint64, txId uint64, token string, price string, priceToken string, route []string) error
 }
 
 var _ SrcRepo = &srcRepoImpl{}
@@ -119,10 +120,9 @@ func (r *srcRepoImpl) Txs(height uint64) ([]schemas.ParsedTx, error) {
 	tx := r.db.Model(
 		schemas.ParsedTx{}).Joins(
 		"left join (select contract, min(height) height from parsed_tx where type = 'provide' group by contract) t "+ // include first provision
-			"on parsed_tx.contract = t.contract and parsed_tx.height = t.height and parsed_tx.type = 'provide'").Select(
-		"parsed_tx.height, parsed_tx.asset0, parsed_tx.asset0_amount, parsed_tx.asset1, parsed_tx.asset1_amount").Where(
+			"on parsed_tx.contract = t.contract and parsed_tx.height = t.height and parsed_tx.type = 'provide'").Where(
 		"parsed_tx.chain_id = ? and parsed_tx.height = ? and (type = 'swap' or t.height is not null)",
-		r.chainId, height).Find(&res)
+		r.chainId, height).Order("parsed_tx.id asc").Find(&res)
 	if tx.Error != nil {
 		return nil, errors.Wrap(tx.Error, "repo.Txs")
 	}
@@ -206,7 +206,7 @@ func (r *srcRepoImpl) Liquidity(height uint64, token string, priceToken string) 
 	return "0", "0", nil
 }
 
-func (r *srcRepoImpl) UpdateDirectPrice(height uint64, token string, price string, priceToken string, isReverse bool) error {
+func (r *srcRepoImpl) UpdateDirectPrice(height uint64, txId uint64, token string, price string, priceToken string, isReverse bool) error {
 	type result struct {
 		TokenId      uint64
 		PriceTokenId uint64
@@ -245,7 +245,8 @@ func (r *srcRepoImpl) UpdateDirectPrice(height uint64, token string, price strin
 			TokenId:      res.TokenId,
 			Price:        price,
 			PriceTokenId: res.PriceTokenId,
-			RouteId:      res.RouteId})
+			RouteId:      res.RouteId,
+			TxId:         txId})
 	if tx.Error != nil {
 		return errors.Wrap(tx.Error, "repo.UpdateDirectPrice")
 	}
@@ -253,7 +254,7 @@ func (r *srcRepoImpl) UpdateDirectPrice(height uint64, token string, price strin
 	return nil
 }
 
-func (r *srcRepoImpl) UpdateRoutePrice(height uint64, token string, price string, priceToken string, route []string) error {
+func (r *srcRepoImpl) UpdateRoutePrice(height uint64, txId uint64, token string, price string, priceToken string, route []string) error {
 	type result struct {
 		TokenId      uint64
 		PriceTokenId uint64
@@ -282,7 +283,8 @@ func (r *srcRepoImpl) UpdateRoutePrice(height uint64, token string, price string
 			TokenId:      res.TokenId,
 			Price:        price,
 			PriceTokenId: res.PriceTokenId,
-			RouteId:      res.RouteId})
+			RouteId:      res.RouteId,
+			TxId:         txId})
 	if tx.Error != nil {
 		return errors.Wrap(tx.Error, "repo.UpdateRoutePrice")
 	}

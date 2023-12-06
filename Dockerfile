@@ -2,9 +2,9 @@
 # cosmwasm-etl-service
 #
 # build:
-#   docker build --force-rm -t delight-labs/cosmwasm-etl-service .
+#   docker build --force-rm -t dezswap/cosmwasm-etl-service .
 # run:
-#   docker run --rm -it --env-file=path/to/.env --name cosmwasm-etl-app delight-labs/cosmwasm-etl-service
+#   docker run --rm -it --env-file=path/to/.env --name cosmwasm-etl-app dezswap/cosmwasm-etl-service
 
 ### BUILD
 FROM golang:1.20-alpine AS build

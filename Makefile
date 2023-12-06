@@ -93,7 +93,7 @@ prune-deps:
 # Create the service docker image
 .PHONY: image
 image:
-	docker build --force-rm -t delight-labs/cosmwasm-etl .
+	docker build --force-rm -t dezswap/cosmwasm-etl .
 
 # Migrate database.
 .PHONY: parser-migrate-test parser-migrate-up parser-migrate-down parser-generate-migration \

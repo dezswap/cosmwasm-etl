@@ -1,9 +1,10 @@
 package router
 
 import (
-	"github.com/dezswap/cosmwasm-etl/configs"
 	"sort"
 	"sync"
+
+	"github.com/dezswap/cosmwasm-etl/configs"
 
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 	"github.com/pkg/errors"
@@ -23,7 +24,7 @@ type routerImpl struct {
 	repo          SrcRepo
 	logger        logging.Logger
 	routerAddress string
-	maxPathLen    uint
+	maxHopCount   uint
 	writeDb       bool
 
 	// state
@@ -32,16 +33,16 @@ type routerImpl struct {
 	mutex *sync.Mutex
 }
 
-func New(repo SrcRepo, c configs.RouterConfig, logger logging.Logger) (Router, error) {
+func New(repo SrcRepo, c configs.RouterConfig, logger logging.Logger) Router {
 	return &routerImpl{
 		name:          c.Name,
 		logger:        logger,
 		repo:          repo,
 		routerAddress: c.RouterAddr,
 		mutex:         &sync.Mutex{},
-		maxPathLen:    c.MaxPathLen,
+		maxHopCount:   c.MaxHopCount,
 		writeDb:       c.WriteDb,
-	}, nil
+	}
 }
 
 func (r *routerImpl) RouterAddress() string {
@@ -55,7 +56,6 @@ func (r *routerImpl) TokensFrom(from string, hopCount int) []string {
 	}
 
 	fromIdx, fromOk := routeInfo.indexFromAddress(from)
-	pathLen := hopCount + 1
 
 	destMap, ok := routeInfo.routesMapOf(fromIdx)
 	if !fromOk || !ok {
@@ -63,9 +63,9 @@ func (r *routerImpl) TokensFrom(from string, hopCount int) []string {
 	}
 	tokenMap := make(map[string]bool)
 
-	for k, paths := range destMap {
-		for _, path := range paths {
-			if len(path) > pathLen {
+	for k, routes := range destMap {
+		for _, route := range routes {
+			if len(route) > hopCount+1 {
 				continue
 			}
 			tokenMap[routeInfo.addressFromIndex(k)] = true
@@ -116,7 +116,7 @@ func (r *routerImpl) Update() error {
 		if r.writeDb {
 			repo = r.repo
 		}
-		ri, err := newRouteInfo(pairs, r.maxPathLen, repo)
+		ri, err := newRouteInfo(pairs, r.maxHopCount, repo)
 		if err != nil {
 			return err
 		}

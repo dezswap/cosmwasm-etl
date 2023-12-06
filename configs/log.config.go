@@ -17,7 +17,11 @@ type LogConfig struct {
 }
 
 func logConfig(v *viper.Viper) LogConfig {
-	level, err := logrus.ParseLevel(v.GetString("log.level"))
+	logLevel := v.GetString("log.level")
+	if logLevel == "" {
+		logLevel = "info"
+	}
+	level, err := logrus.ParseLevel(logLevel)
 	if err != nil {
 		panic(errors.Wrap(err, "could not parse log level"))
 	}

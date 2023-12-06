@@ -1,11 +1,12 @@
 package repo
 
 import (
-	"github.com/pkg/errors"
-	"gorm.io/gorm/logger"
 	"log"
 	"os"
 	"time"
+
+	"github.com/pkg/errors"
+	"gorm.io/gorm/logger"
 
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/pkg/db"
@@ -27,7 +28,7 @@ const (
 var Logger logging.Logger
 
 type Repo interface {
-	LatestTimestampOfPairStats() (float64, error)
+	LatestTimestamp(tableName string) (float64, error)
 	LastHeightOfPairStatsRecent() (uint64, error)
 	LastLpHistory(height uint64) ([]schemas.LpHistory, error)
 	LastLiquidity(pairId uint64, timestamp float64) ([TupleLength]string, error)
@@ -38,7 +39,7 @@ type Repo interface {
 
 	DeleteDuplicates(end time.Time) error
 	UpdatePairStats(stats []schemas.PairStats30m) error
-	UpdateAccountStats(stats schemas.HAccountStats30m) error
+	UpdateAccountStats(stats []schemas.AccountStats30m) error
 	CreateAccounts(addresses []string) error
 	HoldingPairIds(accountId uint64) ([]uint64, error)
 	Accounts(endTs float64) (map[uint64]string, error)
@@ -93,8 +94,8 @@ func (r *repoImpl) Close() error {
 	return db.Close()
 }
 
-func (r *repoImpl) LatestTimestampOfPairStats() (float64, error) {
-	row := r.db.Table("pair_stats_30m").Where("chain_id = ?", r.chainId).Select("coalesce(max(timestamp), 0)").Row()
+func (r *repoImpl) LatestTimestamp(tableName string) (float64, error) {
+	row := r.db.Table(tableName).Where("chain_id = ?", r.chainId).Select("coalesce(max(timestamp), 0)").Row()
 	if err := row.Err(); err != nil {
 		return 0, err
 	}
@@ -218,12 +219,9 @@ func (r *repoImpl) DeleteDuplicates(ts time.Time) error {
 	if tx := r.db.Where("timestamp >= ? and chain_id = ?", util.ToEpoch(end), r.chainId).Delete(&schemas.PairStats30m{}); tx.Error != nil {
 		return tx.Error
 	}
-	/*
-		 * TODO: implement account stats
-		if tx := r.db.Where("Ts >= ?", util.ToEpoch(end)).Delete(&schemas.HAccountStats30m{}); tx.Error != nil {
-			return tx.Error
-		}
-	*/
+	if tx := r.db.Where("timestamp >= ? and chain_id = ?", util.ToEpoch(end), r.chainId).Delete(&schemas.AccountStats30m{}); tx.Error != nil {
+		return tx.Error
+	}
 
 	return nil
 }
@@ -236,7 +234,7 @@ func (r *repoImpl) UpdatePairStats(stats []schemas.PairStats30m) error {
 	return nil
 }
 
-func (r *repoImpl) UpdateAccountStats(stats schemas.HAccountStats30m) error {
+func (r *repoImpl) UpdateAccountStats(stats []schemas.AccountStats30m) error {
 	if tx := r.db.Omit("Id", "CreatedAt").Create(&stats); tx.Error != nil {
 		return tx.Error
 	}

@@ -82,7 +82,7 @@ func (r *repoImpl) Insert(height uint64, txs []parser.ParsedTx, pools []parser.P
 		if err := tx.Model(schemas.Pair{}).CreateInBatches(pairTxs, len(pairTxs)).Error; err != nil {
 			return errors.Wrap(err, "repo.Insert.Pair")
 		}
-		if err := tx.Model(schemas.ParsedTx{}).CreateInBatches(parsedTxs, len(parsedTxs)).Error; err != nil {
+		if err := tx.Model(schemas.ParsedTx{}).Omit("Id").CreateInBatches(parsedTxs, len(parsedTxs)).Error; err != nil {
 			return errors.Wrap(err, "repo.Insert.ParsedTx")
 		}
 		if err := tx.Model(schemas.PoolInfo{}).CreateInBatches(poolInfoTxs, len(poolInfoTxs)).Error; err != nil {

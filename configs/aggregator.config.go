@@ -37,10 +37,10 @@ func aggregatorConfig(v *viper.Viper) AggregatorConfig {
 			Password: v.GetString("aggregator.destDb.password"),
 		},
 		Router: RouterConfig{
-			Name:       v.GetString("aggregator.router.name"),
-			RouterAddr: v.GetString("aggregator.router.router_addr"),
-			MaxPathLen: v.GetUint("aggregator.router.max_path_len"),
-			WriteDb:    v.GetBool("aggregator.router.write_db"),
+			Name:        v.GetString("aggregator.router.name"),
+			RouterAddr:  v.GetString("aggregator.router.router_addr"),
+			MaxHopCount: v.GetUint("aggregator.router.max_hop_count"),
+			WriteDb:     v.GetBool("aggregator.router.write_db"),
 		},
 	}
 }

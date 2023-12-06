@@ -33,6 +33,7 @@ var (
 	testRawTxByte2  []byte
 	testRawTxString string
 	store           datastore.DataStore
+	testFactoryAddr string
 )
 
 func Test01DoCollect(t *testing.T) {
@@ -96,7 +97,7 @@ func Test01DoCollect(t *testing.T) {
 	// querying pairs
 	m.On("SmartContractState", mock.Anything,
 		&wasm.QuerySmartContractStateRequest{
-			Address:   "terra1466nf3zuxpya8q9emxukd7vftaf6h4psr0a07srl5zw74zh84yjqxl5qul",
+			Address:   testFactoryAddr,
 			QueryData: wasm.RawContractMessage([]byte(`{"pairs": {}}`)),
 		}).Return(&wasm.QuerySmartContractStateResponse{
 		Data: wasm.RawContractMessage([]byte(lightFactoryResp)),
@@ -157,6 +158,7 @@ func TestMain(m *testing.M) {
 func setUp() {
 	var err error
 	testconf := configs.New()
+	testFactoryAddr = testconf.Collector.PairFactoryContractAddress
 	testServiceDesc := grpcConn.ServiceDescMock{}
 	testServiceDesc.On("GetConnection", mock.Anything).Return(&grpc.ClientConn{})
 	lcdMock := lcdClientMock{}

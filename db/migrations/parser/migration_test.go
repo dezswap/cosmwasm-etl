@@ -103,7 +103,7 @@ type Batchable interface {
 }
 
 func batchInsertAndRead[T Batchable](con *gorm.DB, v T, models []T, targets *[]T, limit int) {
-	if err := con.Create(models).Error; err != nil {
+	if err := con.Omit("Id").Create(models).Error; err != nil {
 		panic(err)
 	}
 

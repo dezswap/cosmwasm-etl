@@ -34,7 +34,7 @@ func main() {
 			"x-env":      c.Log.Environment,
 		})
 	}
-	if nodeConf.GrpcConfig.BackoffMaxDelay.Duration == time.Duration(0) {
+	if nodeConf.GrpcConfig.BackoffDelay.Duration == time.Duration(0) {
 		panic("invalid back off delay")
 	}
 

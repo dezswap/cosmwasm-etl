@@ -24,6 +24,6 @@ func (PairStats30m) TableName() string {
 	return "pair_stats_30m"
 }
 
-func (HAccountStats30m) TableName() string {
-	return "h_account_stats_30m"
+func (AccountStats30m) TableName() string {
+	return "account_stats_30m"
 }

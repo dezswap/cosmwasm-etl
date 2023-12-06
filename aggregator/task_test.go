@@ -3,10 +3,11 @@ package aggregator
 import (
 	"context"
 	"database/sql"
-	"github.com/dezswap/cosmwasm-etl/pkg/logging"
-	"gorm.io/gorm"
 	"testing"
 	"time"
+
+	"github.com/dezswap/cosmwasm-etl/pkg/logging"
+	"gorm.io/gorm"
 
 	"github.com/dezswap/cosmwasm-etl/pkg/db/schemas"
 	"github.com/dezswap/cosmwasm-etl/pkg/util"
@@ -283,130 +284,31 @@ func TestPairStatsUpdateTaskExecute(t *testing.T) {
 	assert.Equal(expected, rp.updatedPairStats[0])
 }
 
-func TestTimeframe_0_30(t *testing.T) {
-	assert := assert.New(t)
-
-	rp := repoMock{}
-	task := pairStatsUpdateTask{
-		taskImpl: taskImpl{
-			chainId: "",
-			destDb:  &rp,
-		},
-		srcDb: &rp,
-	}
-
-	expectedStart := time.Date(2022, 10, 25, 7, 0, 0, 0, time.UTC)
-	expectedEnd := time.Date(2022, 10, 25, 7, 30, 0, 0, time.UTC)
-
-	ts := time.Unix(1666681350, 0).UTC() // 2022-10-25 07:02:30 UTC
-	actualStart, actualEnd := task.timeframe(ts)
-
-	assert.Equal(expectedStart, actualStart)
-	assert.Equal(expectedEnd, actualEnd)
-}
-
-func TestTimeframe_30_0(t *testing.T) {
-	assert := assert.New(t)
-
-	rp := repoMock{}
-	task := pairStatsUpdateTask{
-		taskImpl: taskImpl{
-			chainId: "",
-			destDb:  &rp,
-			logger:  logging.Discard,
-		},
-		srcDb: &rp,
-	}
-
-	expectedStart := time.Date(2022, 10, 25, 7, 30, 0, 0, time.UTC)
-	expectedEnd := time.Date(2022, 10, 25, 8, 0, 0, 0, time.UTC)
-
-	ts := time.Unix(1666684022, 0).UTC() // 2022-10-25 07:47:02 UTC
-	actualStart, actualEnd := task.timeframe(ts)
-
-	assert.Equal(expectedStart, actualStart)
-	assert.Equal(expectedEnd, actualEnd)
-}
-
-func TestTimeframe_InclusiveStart(t *testing.T) {
-	assert := assert.New(t)
-
-	rp := repoMock{}
-	task := pairStatsUpdateTask{
-		taskImpl: taskImpl{
-			chainId: "",
-			destDb:  &rp,
-			logger:  logging.Discard,
-		},
-		srcDb: &rp,
-	}
-
-	expectedStart := time.Date(2022, 10, 25, 7, 0, 0, 0, time.UTC)
-	expectedEnd := time.Date(2022, 10, 25, 7, 30, 0, 0, time.UTC)
-
-	ts := time.Unix(1666681200, 0).UTC() // 2022-10-25 07:00:00 UTC
-	actualStart, actualEnd := task.timeframe(ts)
-
-	assert.Equal(expectedStart, actualStart)
-	assert.Equal(expectedEnd, actualEnd)
-}
-
-func TestTimeframe_ExclusiveEnd(t *testing.T) {
-	assert := assert.New(t)
-
-	rp := repoMock{}
-	task := pairStatsUpdateTask{
-		taskImpl: taskImpl{
-			chainId: "",
-			destDb:  &rp,
-			logger:  logging.Discard,
-		},
-		srcDb: &rp,
-	}
-
-	expectedStart := time.Date(2022, 10, 25, 7, 30, 0, 0, time.UTC)
-	expectedEnd := time.Date(2022, 10, 25, 8, 0, 0, 0, time.UTC)
-
-	ts := time.Unix(1666683000, 0).UTC() // 2022-10-25 07:30:00 UTC
-	actualStart, actualEnd := task.timeframe(ts)
-
-	assert.Equal(expectedStart, actualStart)
-	assert.Equal(expectedEnd, actualEnd)
-}
-
 func TestExecuteAccountStatsUpdateTask(t *testing.T) {
 	assert := assert.New(t)
 
 	end := time.Unix(1666765800, 0).UTC() // 2022-10-26 06:30:00 UTC
-	accountId, pairId := uint64(1), uint64(1)
+	accountAddress := "terra0wal1let2"
+	pairId := uint64(1)
 	txCnt := uint64(5)
-	asset0, asset1, lp := "1000000", "2000000", "1000000"
 
-	expected := schemas.HAccountStats30m{
-		YearUtc:       end.Year(),
-		MonthUtc:      int(end.Month()),
-		DayUtc:        end.Day(),
-		HourUtc:       end.Hour(),
-		MinuteUtc:     end.Minute(),
-		Ts:            util.ToEpoch(end),
-		AccountId:     accountId,
-		PairId:        pairId,
-		TxCnt:         txCnt,
-		Asset0Amount:  asset0,
-		Asset1Amount:  asset1,
-		TotalLpAmount: lp,
+	expected := []schemas.AccountStats30m{
+		{
+			YearUtc:   end.Year(),
+			MonthUtc:  int(end.Month()),
+			DayUtc:    end.Day(),
+			HourUtc:   end.Hour(),
+			MinuteUtc: end.Minute(),
+			Timestamp: util.ToEpoch(end),
+			Address:   accountAddress,
+			PairId:    pairId,
+			TxCnt:     txCnt,
+		},
 	}
 
-	accounts := make(map[uint64]string)
-	accounts[accountId] = "terra0wal1let2"
-
 	rp := repoMock{}
-	rp.On("NewAccounts", mock.Anything, mock.Anything).Return([]string{}, nil)
-	rp.On("Accounts", mock.Anything).Return(accounts, nil)
-	rp.On("HoldingPairIds", mock.Anything).Return([]uint64{}, nil)
-	rp.On("NewPairIds", mock.Anything, mock.Anything, mock.Anything).Return([]uint64{pairId}, nil)
-	rp.On("TxCountOfAccount", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(txCnt, nil)
-	rp.On("AssetAmountInPairOfAccount", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(asset0, asset1, lp, nil)
+	rp.On("AccountStats", mock.Anything, mock.Anything).Return([]schemas.AccountStats30m{{Address: accountAddress, PairId: pairId, TxCnt: txCnt}}, nil)
+	rp.On("HeightOnTimestamp").Return(uint64(0), nil)
 
 	task := accountStatsUpdateTask{
 		taskImpl: taskImpl{
@@ -420,26 +322,4 @@ func TestExecuteAccountStatsUpdateTask(t *testing.T) {
 
 	assert.NoError(err)
 	assert.Equal(expected, rp.updatedAccountStats)
-}
-
-func TestUpdateAccounts(t *testing.T) {
-	assert := assert.New(t)
-
-	expected := []string{"terra1234", "terra5678", "terra9012"}
-
-	rp := repoMock{}
-	rp.On("NewAccounts", mock.Anything, mock.Anything).Return(expected, nil)
-
-	task := accountStatsUpdateTask{
-		taskImpl: taskImpl{
-			chainId: "",
-			destDb:  &rp,
-			logger:  logging.Discard,
-		},
-		srcDb: &rp,
-	}
-	err := task.updateAccounts(1666731600, 1666765800)
-
-	assert.NoError(err)
-	assert.Equal(expected, rp.updatedAccounts)
 }

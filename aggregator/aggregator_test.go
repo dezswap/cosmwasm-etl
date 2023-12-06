@@ -1,11 +1,12 @@
 package aggregator
 
 import (
-	"github.com/dezswap/cosmwasm-etl/aggregator/repo"
-	"gorm.io/gorm"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/dezswap/cosmwasm-etl/aggregator/repo"
+	"gorm.io/gorm"
 
 	"github.com/dezswap/cosmwasm-etl/pkg/db/schemas"
 	"github.com/stretchr/testify/mock"
@@ -19,7 +20,7 @@ type repoMock struct {
 	updatedLpHistory       []schemas.LpHistory
 	updatedPairStatsRecent []schemas.PairStatsRecent
 	updatedPairStats       []schemas.PairStats30m
-	updatedAccountStats    schemas.HAccountStats30m
+	updatedAccountStats    []schemas.AccountStats30m
 	updatedAccounts        []string
 }
 
@@ -28,7 +29,7 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func (r *repoMock) LatestTimestampOfPairStats() (float64, error) {
+func (r *repoMock) LatestTimestamp(_ string) (float64, error) {
 	return 0, nil
 }
 
@@ -170,6 +171,11 @@ func (r *repoMock) PairStats(_ float64, _ float64, _ string) ([]schemas.PairStat
 	return args.Get(0).([]schemas.PairStats30m), args.Error(1)
 }
 
+func (r *repoMock) AccountStats(_ float64, _ float64) ([]schemas.AccountStats30m, error) {
+	args := r.Mock.MethodCalled("AccountStats")
+	return args.Get(0).([]schemas.AccountStats30m), args.Error(1)
+}
+
 func (r *repoMock) LiquiditiesOfPairStats(_ float64, _ float64, _ string) (map[uint64]schemas.PairStats30m, error) {
 	args := r.Mock.MethodCalled("LiquiditiesOfPairStats")
 	return args.Get(0).(map[uint64]schemas.PairStats30m), args.Error(1)
@@ -193,7 +199,7 @@ func (r *repoMock) UpdatePairStats(stats []schemas.PairStats30m) error {
 	return nil
 }
 
-func (r *repoMock) UpdateAccountStats(stats schemas.HAccountStats30m) error {
+func (r *repoMock) UpdateAccountStats(stats []schemas.AccountStats30m) error {
 	r.updatedAccountStats = stats
 	return nil
 }
