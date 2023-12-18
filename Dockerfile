@@ -7,7 +7,7 @@
 #   docker run --rm -it --env-file=path/to/.env --name cosmwasm-etl-app dezswap/cosmwasm-etl-service
 
 ### BUILD
-FROM golang:1.20-alpine AS build
+FROM golang:1.20.10-alpine AS build
 ARG APP_TYPE=collector
 ARG LIBWASMVM_VERSION=v1.0.0
 
