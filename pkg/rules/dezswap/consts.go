@@ -36,8 +36,8 @@ const (
 	PairWithdrawMatchedLen       = PairWithdrawWithdrawShareIdx + 1
 	PairInitialProvideMatchedLen = PairInitialProvideToIdx + 1
 	WasmCommonTransferMatchedLen = WasmCommonTransferActionIdx + 1
-	WasmV1TransferMatchedLen     = WasmTransferToIdx + 1
-	WasmV2TransferMatchedLen     = WasmTransferFromToIdx + 1
+	WasmTransferMatchedLen       = WasmTransferToIdx + 1
+	WasmTransferFromMatchedLen   = WasmTransferFromToIdx + 1
 	TransferMatchedLen           = TransferAmountIdx + 1
 )
 

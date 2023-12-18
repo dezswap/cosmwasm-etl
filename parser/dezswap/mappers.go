@@ -65,19 +65,16 @@ func (m *wasmTransferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optio
 
 	switch action.Value {
 	case ds.WasmTransferAction:
-		return m.v1MatchedToParsedTx(res, optionals...)
+		return m.transferMatchedToParsedTx(res, optionals...)
 	case ds.WasmTransferFromAction:
-		return m.v2MatchedToParsedTx(res, optionals...)
+		return m.transferFromMatchedToParsedTx(res, optionals...)
 	}
 
 	msg := fmt.Sprintf("expected action(%s) or (%s)", ds.WasmTransferAction, ds.WasmTransferFromAction)
 	return nil, errors.New(msg)
 }
 
-func (m *wasmTransferMapper) v1MatchedToParsedTx(res eventlog.MatchedResult, _ ...interface{}) (*parser.ParsedTx, error) {
-	if err := m.mixin.checkResult(res, ds.WasmV1TransferMatchedLen); err != nil {
-		return nil, errors.Wrap(err, "wasmTransferMapper.v1MatchedToParsedTx")
-	}
+func (m *wasmTransferMapper) transferMatchedToParsedTx(res eventlog.MatchedResult, _ ...interface{}) (*parser.ParsedTx, error) {
 	from := res[ds.WasmTransferFromIdx].Value
 	to := res[ds.WasmTransferToIdx].Value
 
@@ -87,7 +84,7 @@ func (m *wasmTransferMapper) v1MatchedToParsedTx(res eventlog.MatchedResult, _ .
 			return nil, nil
 		}
 
-		return nil, errors.Wrap(err, "wasmTransferMapper.v1MatchedToParsedTx")
+		return nil, errors.Wrap(err, "wasmTransferMapper.transferMatchedToParsedTx")
 	}
 
 	return m.matchedToParsedTx(
@@ -95,9 +92,9 @@ func (m *wasmTransferMapper) v1MatchedToParsedTx(res eventlog.MatchedResult, _ .
 	)
 }
 
-func (m *wasmTransferMapper) v2MatchedToParsedTx(res eventlog.MatchedResult, _ ...interface{}) (*parser.ParsedTx, error) {
-	if err := m.mixin.checkResult(res, ds.WasmV2TransferMatchedLen); err != nil {
-		return nil, errors.Wrap(err, "wasmTransferMapper.v2MatchedToParsedTx")
+func (m *wasmTransferMapper) transferFromMatchedToParsedTx(res eventlog.MatchedResult, _ ...interface{}) (*parser.ParsedTx, error) {
+	if err := m.mixin.checkResult(res, ds.WasmTransferFromMatchedLen); err != nil {
+		return nil, errors.Wrap(err, "wasmTransferMapper.transferFromMatchedToParsedTx")
 	}
 	from := res[ds.WasmTransferFromFromIdx].Value
 	to := res[ds.WasmTransferFromToIdx].Value
@@ -108,7 +105,7 @@ func (m *wasmTransferMapper) v2MatchedToParsedTx(res eventlog.MatchedResult, _ .
 			return nil, nil
 		}
 
-		return nil, errors.Wrap(err, "wasmTransferMapper.v2MatchedToParsedTx")
+		return nil, errors.Wrap(err, "wasmTransferMapper.transferFromMatchedToParsedTx")
 	}
 
 	return m.matchedToParsedTx(
