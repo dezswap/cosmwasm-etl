@@ -30,19 +30,22 @@ const (
 )
 
 func getCollectorReadStore(c *configs.Config) collector_store.ReadStore {
-	if c.Parser.NodeConfig.GrpcConfig.Host != "" {
+	nodeConf := c.Parser.NodeConfig
+	if nodeConf.GrpcConfig.Host != "" {
 		nodeConf := c.Parser.NodeConfig
 		serviceDesc := grpc.GetServiceDesc("collector", nodeConf.GrpcConfig)
-		httpClient := &http.Client{
-			Transport: &http.Transport{
-				MaxIdleConns:      10,               // Maximum idle connections to keep open
-				IdleConnTimeout:   30 * time.Second, // Time to keep idle connections open
-				DisableKeepAlives: false,            // Use HTTP Keep-Alive
-			},
+
+		var failoverClient datastore.LcdClient
+		if nodeConf.FailoverLcdHost != "" {
+			httpClient := &http.Client{
+				Transport: &http.Transport{
+					MaxIdleConns:      10,               // Maximum idle connections to keep open
+					IdleConnTimeout:   30 * time.Second, // Time to keep idle connections open
+					DisableKeepAlives: false,            // Use HTTP Keep-Alive
+				},
+			}
+			failoverClient = datastore.NewLcdClient(nodeConf.FailoverLcdHost, httpClient)
 		}
-
-		failoverClient := datastore.NewLcdClient(nodeConf.FailoverLcdHost, httpClient)
-
 		store, err := collector_store.New(*c, serviceDesc, failoverClient)
 		if err != nil {
 			panic(err)
