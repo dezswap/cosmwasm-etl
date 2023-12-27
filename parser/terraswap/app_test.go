@@ -26,8 +26,8 @@ func Test_parseTxs(t *testing.T) {
 	}
 
 	const (
-		chainId = terraswap.TestnetPrefix
-		height  = uint(100)
+		factoryAddrKey = terraswap.TestnetKey
+		height         = uint(100)
 	)
 	parser.FakerCustomGenerator()
 	faker.CustomGenerator()
@@ -44,7 +44,7 @@ func Test_parseTxs(t *testing.T) {
 		rawStore := parser.RawStoreMock{}
 		app := terraswapApp{&repo, &parser.PairParsers{CreatePairParser: &createPairParser}, parser.DexMixin{}}
 
-		dexApp := parser.NewDexApp(&app, &rawStore, &repo, logging.New("test", configs.LogConfig{}), configs.ParserConfig{ChainId: chainId})
+		dexApp := parser.NewDexApp(&app, &rawStore, &repo, logging.New("test", configs.LogConfig{}), configs.ParserConfig{FactoryAddress: terraswap.FactoryAddress[factoryAddrKey]})
 		pairMap := map[string]parser.Pair{pair.ContractAddr: pair}
 
 		pairs := []parser.Pair{}

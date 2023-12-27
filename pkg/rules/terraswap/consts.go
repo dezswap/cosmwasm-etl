@@ -1,15 +1,17 @@
 package terraswap
 
 const (
-	MainnetPrefix = "phoenix"
-	ClassicPrefix = "columbus"
-	TestnetPrefix = "pisco"
+	MainnetKey   = "phoenix"
+	ClassicV1Key = "columbus_v1"
+	ClassicV2Key = "columbus_v2"
+	TestnetKey   = "pisco"
 )
 
 var FactoryAddress = map[string]string{
-	"phoenix":  "terra1466nf3zuxpya8q9emxukd7vftaf6h4psr0a07srl5zw74zh84yjqxl5qul",
-	"pisco":    "terra1jha5avc92uerwp9qzx3flvwnyxs3zax2rrm6jkcedy2qvzwd2k7qk7yxcl",
-	"columbus": "terra1ulgw0td86nvs4wtpsc80thv6xelk76ut7a7apj",
+	MainnetKey:   "terra1466nf3zuxpya8q9emxukd7vftaf6h4psr0a07srl5zw74zh84yjqxl5qul",
+	TestnetKey:   "terra1jha5avc92uerwp9qzx3flvwnyxs3zax2rrm6jkcedy2qvzwd2k7qk7yxcl",
+	ClassicV1Key: "terra1ulgw0td86nvs4wtpsc80thv6xelk76ut7a7apj",
+	ClassicV2Key: "terra1jkndu9w5attpz09ut02sgey5dd3e8sq5watzm0",
 }
 
 type PairAction string

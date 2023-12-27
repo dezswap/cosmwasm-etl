@@ -7,10 +7,9 @@ import (
 	"github.com/pkg/errors"
 )
 
-func CreateCreatePairRuleFinder(chainId string) (eventlog.LogFinder, error) {
-	factoryAddr := getFactoryAddress(chainId)
+func CreateCreatePairRuleFinder(factoryAddr string) (eventlog.LogFinder, error) {
 	if factoryAddr == "" {
-		errMsg := fmt.Sprintf("no factory address: chainId(%s)", chainId)
+		errMsg := fmt.Sprint("no factory address")
 		return nil, errors.New(errMsg)
 	}
 

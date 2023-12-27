@@ -19,7 +19,10 @@ type terraswapApp struct {
 var _ parser.TargetApp = &terraswapApp{}
 
 func New(repo parser.PairRepo, logger logging.Logger, c configs.ParserConfig) (parser.TargetApp, error) {
-	finder, err := ts.CreateCreatePairRuleFinder(c.ChainId)
+	if !ts.IsFactoryAddress(c.FactoryAddress) {
+		return nil, errors.Errorf("invalid factory address: %s", c.FactoryAddress)
+	}
+	finder, err := ts.CreateCreatePairRuleFinder(c.FactoryAddress)
 	if err != nil {
 		return nil, errors.Wrap(err, "NewApp")
 	}

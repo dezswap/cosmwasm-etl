@@ -6,22 +6,23 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_getFactoryAddress(t *testing.T) {
+func Test_isFactoryAddr(t *testing.T) {
 
 	tcs := []struct {
-		chainId         string
-		expectedAddress string
-		errMsg          string
+		factoryAddr string
+		expected    bool
+		errMsg      string
 	}{
-		{"empty", "", "there is no chain named empty"},
-		{"phoenix-1", FactoryAddress[MainnetPrefix], "must return phoenix factory address"},
-		{"columbus", FactoryAddress[ClassicPrefix], "must return columbus factory address"},
-		{"pisco", FactoryAddress[TestnetPrefix], "must return pisco factory address"},
+		{FactoryAddress["empty"], false, "there is no chain named empty"},
+		{FactoryAddress[MainnetKey], true, "must return true for phoenix factory address"},
+		{FactoryAddress[TestnetKey], true, "must return true for pisco factory address"},
+		{FactoryAddress[ClassicV1Key], true, "must return true for columbus factory address"},
+		{FactoryAddress[ClassicV2Key], true, "must return true for columbus factory address"},
 	}
 
 	assert := assert.New(t)
 	for _, tc := range tcs {
-		addr := getFactoryAddress(tc.chainId)
-		assert.Equal(tc.expectedAddress, addr, tc.errMsg)
+		actual := IsFactoryAddress(tc.factoryAddr)
+		assert.Equal(tc.expected, actual, tc.errMsg)
 	}
 }
