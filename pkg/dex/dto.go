@@ -6,8 +6,8 @@ type ContractQueryRequest interface {
 
 type FactoryPairsReq struct {
 	Pairs struct {
-		Limit      int          `json:"limit,omitempty"`
-		StartAfter [2]AssetInfo `json:"start_after,omitempty"`
+		Limit      int           `json:"limit,omitempty"`
+		StartAfter *[2]AssetInfo `json:"start_after,omitempty"`
 	} `json:"pairs"`
 }
 

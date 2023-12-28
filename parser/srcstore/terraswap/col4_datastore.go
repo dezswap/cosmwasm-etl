@@ -2,6 +2,7 @@ package terraswap
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/pkg/dex"
@@ -84,27 +85,42 @@ func (r *rawDataStoreImpl) GetSourceTxs(height uint64) (parser.RawTxs, error) {
 		return nil, errors.New("rawDataStoreImpl.GetSourceTxs: txs length mismatch")
 	}
 
-	rawTxs := make([]parser.RawTx, len(txHashes))
+	type logResults []struct {
+		MsgIndex int                 `json:"msg_index"`
+		Log      string              `json:"log"`
+		Events   eventlog.LogResults `json:"events"`
+	}
+
+	rawTxs := []parser.RawTx{}
 	for idx, txHash := range txHashes {
-		rawTxs[idx] = parser.RawTx{
+		if txHash == "683d1c9f1c286bbe7a74ac5d556789ca90da5b23b44910d5bbbdc9d891c2014b" {
+			fmt.Print("here")
+		}
+		tx := parser.RawTx{
 			Hash:      txHash,
 			Timestamp: blockTime,
 		}
 
-		if err := json.Unmarshal([]byte(txResults[idx].Log), &rawTxs[idx].LogResults); err != nil {
+		logs := logResults{}
+		if err := json.Unmarshal([]byte(txResults[idx].Log), &logs); err != nil {
 			return nil, errors.Wrap(err, "rawDataStoreImpl.GetSourceTxs")
 		}
 
-		for _, logResult := range rawTxs[idx].LogResults {
-			if logResult.Type == eventlog.Message {
-				for _, attr := range logResult.Attributes {
+		for _, log := range logs {
+			tx.LogResults = append(tx.LogResults, log.Events...)
+		}
+
+		for _, lr := range tx.LogResults {
+			if lr.Type == eventlog.Message {
+				for _, attr := range lr.Attributes {
 					if attr.Key == "sender" {
-						rawTxs[idx].Sender = attr.Value
+						tx.Sender = attr.Value
 						break
 					}
 				}
 			}
 		}
+		rawTxs = append(rawTxs, tx)
 	}
 	return rawTxs, nil
 }
@@ -126,7 +142,7 @@ func (r *rawDataStoreImpl) AllPairs(height uint64) ([]parser.Pair, error) {
 			p := r.dexPairToPair(&pair)
 			pairs = append(pairs, p)
 		}
-		req.Pairs.StartAfter = factoryRes.Result.Pairs[len(factoryRes.Result.Pairs)-1].AssetInfos
+		req.Pairs.StartAfter = &factoryRes.Result.Pairs[len(factoryRes.Result.Pairs)-1].AssetInfos
 	}
 	return pairs, nil
 }

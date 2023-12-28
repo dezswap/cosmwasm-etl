@@ -26,7 +26,7 @@ type rpcImpl struct {
 	client  *http.Client
 }
 
-func New(baseUrl string, client *http.Client) Rpc {
+func NewRpc(baseUrl string, client *http.Client) Rpc {
 	return &rpcImpl{baseUrl, client}
 }
 

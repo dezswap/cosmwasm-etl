@@ -2,6 +2,7 @@ package col4
 
 import (
 	"encoding/hex"
+	"time"
 
 	"github.com/tendermint/tendermint/types"
 )
@@ -14,8 +15,11 @@ type RpcRes[T any] struct {
 
 type RpcBlockRes struct {
 	Block struct {
-		Header types.Header `json:"header"`
-		Data   struct {
+		Header struct {
+			Height string    `json:"height"`
+			Time   time.Time `json:"time"`
+		} `json:"header"`
+		Data struct {
 			Txs types.Txs `json:"txs"`
 		} `json:"data"`
 	} `json:"block"`
