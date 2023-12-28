@@ -14,7 +14,8 @@ type RpcRes[T any] struct {
 
 type RpcBlockRes struct {
 	Block struct {
-		Data struct {
+		Header types.Header `json:"header"`
+		Data   struct {
 			Txs types.Txs `json:"txs"`
 		} `json:"data"`
 	} `json:"block"`

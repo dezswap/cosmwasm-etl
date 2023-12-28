@@ -11,7 +11,7 @@ import (
 )
 
 type Lcd interface {
-	ContractStateRes(address string, query string, height ...uint64) ([]byte, error)
+	ContractState(address string, query string, height ...uint64) ([]byte, error)
 }
 
 type lcdImpl struct {
@@ -23,7 +23,7 @@ func NewLcd(baseUrl string, client *http.Client) Lcd {
 	return &lcdImpl{baseUrl, client}
 }
 
-func (l *lcdImpl) ContractStateRes(address string, query string, height ...uint64) ([]byte, error) {
+func (l *lcdImpl) ContractState(address string, query string, height ...uint64) ([]byte, error) {
 	params := url.Values{}
 	params.Add("query_msg", query)
 	if len(height) > 0 {
@@ -46,7 +46,7 @@ func (l *lcdImpl) ContractStateRes(address string, query string, height ...uint6
 }
 
 func QueryContractState[T any](lcd Lcd, address string, query string, height ...uint64) (*LcdContractStateRes[T], error) {
-	resBytes, err := lcd.ContractStateRes(address, query, height...)
+	resBytes, err := lcd.ContractState(address, query, height...)
 	if err != nil {
 		return nil, err
 	}
