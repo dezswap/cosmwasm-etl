@@ -1,4 +1,4 @@
-package rpc
+package col4
 
 import (
 	"encoding/json"
@@ -16,9 +16,9 @@ const (
 )
 
 type Rpc interface {
-	RemoteBlockHeight() (uint, error)
-	Block(height uint) (*RpcRes[BlockRes], error)
-	BlockResults(height uint) (*RpcRes[BlockResultRes], error)
+	RemoteBlockHeight() (uint64, error)
+	Block(height ...uint64) (*RpcRes[RpcBlockRes], error)
+	BlockResults(height ...uint64) (*RpcRes[RpcBlockResultRes], error)
 }
 
 type rpcImpl struct {
@@ -31,10 +31,10 @@ func New(baseUrl string, client *http.Client) Rpc {
 }
 
 // Block implements Rpc.
-func (r *rpcImpl) Block(height uint) (*RpcRes[BlockRes], error) {
+func (r *rpcImpl) Block(height ...uint64) (*RpcRes[RpcBlockRes], error) {
 	url := fmt.Sprintf("%s/%s", r.baseUrl, rpcBlockPath)
-	if height != 0 {
-		url = fmt.Sprintf("%s?height=%d", url, height)
+	if len(height) > 0 {
+		url = fmt.Sprintf("%s?height=%d", url, height[0])
 	}
 	response, err := r.client.Get(url)
 	if err != nil {
@@ -44,7 +44,7 @@ func (r *rpcImpl) Block(height uint) (*RpcRes[BlockRes], error) {
 
 	data, _ := io.ReadAll(response.Body)
 
-	var res RpcRes[BlockRes]
+	var res RpcRes[RpcBlockRes]
 	if err := json.Unmarshal(data, &res); err != nil {
 		return nil, errors.Wrap(err, "rpcImpl.Block")
 	}
@@ -53,10 +53,10 @@ func (r *rpcImpl) Block(height uint) (*RpcRes[BlockRes], error) {
 }
 
 // BlockResults implements Rpc.
-func (r *rpcImpl) BlockResults(height uint) (*RpcRes[BlockResultRes], error) {
+func (r *rpcImpl) BlockResults(height ...uint64) (*RpcRes[RpcBlockResultRes], error) {
 	url := fmt.Sprintf("%s/%s", r.baseUrl, rpcBlockResultsPath)
-	if height != 0 {
-		url = fmt.Sprintf("%s?height=%d", url, height)
+	if len(height) > 0 {
+		url = fmt.Sprintf("%s?height=%d", url, height[0])
 	}
 	response, err := r.client.Get(url)
 	if err != nil {
@@ -66,7 +66,7 @@ func (r *rpcImpl) BlockResults(height uint) (*RpcRes[BlockResultRes], error) {
 
 	data, _ := io.ReadAll(response.Body)
 
-	var res RpcRes[BlockResultRes]
+	var res RpcRes[RpcBlockResultRes]
 	if err := json.Unmarshal(data, &res); err != nil {
 		return nil, errors.Wrap(err, "rpcImpl.RemoteBlockHeight")
 	}
@@ -75,7 +75,7 @@ func (r *rpcImpl) BlockResults(height uint) (*RpcRes[BlockResultRes], error) {
 }
 
 // RemoteBlockHeight implements Rpc.
-func (r *rpcImpl) RemoteBlockHeight() (uint, error) {
+func (r *rpcImpl) RemoteBlockHeight() (uint64, error) {
 	response, err := r.client.Get(fmt.Sprintf("%s/%s", r.baseUrl, rpcBlockResultsPath))
 	if err != nil {
 		return 0, errors.Wrap(err, "rpcImpl.RemoteBlockHeight")
@@ -84,7 +84,7 @@ func (r *rpcImpl) RemoteBlockHeight() (uint, error) {
 
 	data, _ := io.ReadAll(response.Body)
 
-	var res RpcRes[BlockResultRes]
+	var res RpcRes[RpcBlockResultRes]
 	if err := json.Unmarshal(data, &res); err != nil {
 		return 0, errors.Wrap(err, "rpcImpl.RemoteBlockHeight")
 	}
@@ -93,5 +93,5 @@ func (r *rpcImpl) RemoteBlockHeight() (uint, error) {
 	if err != nil {
 		return 0, errors.Wrap(err, "rpcImpl.RemoteBlockHeight")
 	}
-	return uint(height), nil
+	return uint64(height), nil
 }
