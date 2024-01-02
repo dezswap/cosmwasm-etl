@@ -55,7 +55,7 @@ type routerTask struct {
 	taskImpl
 
 	router  router.Router
-	srcDb   router.SrcRepo
+	db      router.SrcRepo
 	pairCnt int
 }
 
@@ -215,20 +215,20 @@ func (t lpHistoryTask) generateHistory(latestLpMap map[uint64][]string, txs []sc
 }
 
 func newRouterTask(config configs.AggregatorConfig, logger logging.Logger) task {
-	srcRepo := router.NewSrcRepo(config.ChainId, config.SrcDb)
+	repo := router.NewSrcRepo(config.ChainId, config.DestDb)
 
 	return &routerTask{
 		taskImpl: taskImpl{
 			chainId: config.ChainId,
 			logger:  logger,
 		},
-		router: router.New(srcRepo, config.Router, logger),
-		srcDb:  srcRepo,
+		router: router.New(repo, config.Router, logger),
+		db:     repo,
 	}
 }
 
 func (t *routerTask) Execute(_ time.Time, _ time.Time) error {
-	pairs, err := t.srcDb.Pairs()
+	pairs, err := t.db.Pairs()
 	if err != nil {
 		return err
 	}
