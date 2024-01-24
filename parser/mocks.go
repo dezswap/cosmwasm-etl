@@ -15,7 +15,6 @@ var _ Repo = &RepoMock{}
 
 var _ Parser = &ParserMock{}
 var _ SourceDataStore = &RawStoreMock{}
-var _ Repo = &RepoMock{}
 
 // matchedToParsedTx implements parser
 func (p *ParserMock) MatchedToParsedTx(result eventlog.MatchedResult, optional ...interface{}) (*ParsedTx, error) {
@@ -63,4 +62,10 @@ func (m *RepoMock) GetSyncedHeight() (uint64, error) {
 func (m *RepoMock) Insert(height uint64, txs []ParsedTx, pools []PoolInfo, pairDto []Pair) error {
 	args := m.Mock.MethodCalled("Insert", height, txs, pools, pairDto)
 	return args.Error(0)
+}
+
+// ParsedPoolInfo implements Repo.
+func (m *RepoMock) ParsedPoolsInfo(from, to uint64) ([]PoolInfo, error) {
+	args := m.Mock.MethodCalled("ParsedPoolInfo", from, to)
+	return args.Get(0).([]PoolInfo), args.Error(1)
 }

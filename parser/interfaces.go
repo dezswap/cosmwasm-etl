@@ -29,6 +29,7 @@ type Repo interface {
 	Insert(height uint64, txs []ParsedTx, pools []PoolInfo, pairDto []Pair) error
 	GetSyncedHeight() (uint64, error)
 	PairRepo
+	ParsedPoolsInfo(from, to uint64) ([]PoolInfo, error)
 }
 
 type SourceDataStore interface {
