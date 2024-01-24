@@ -21,7 +21,7 @@ func Test_NewLcdClient(t *testing.T) {
 		},
 	}
 	c := NewLcdClient("http://localhost:1317", client)
-	_, ok := c.(lcdClient)
+	_, ok := c.(LcdClient)
 	assert.True(t, ok)
 }
 
@@ -47,7 +47,7 @@ type lcdClientMock struct {
 	mock.Mock
 }
 
-var _ lcdClient = &lcdClientMock{}
+var _ LcdClient = &lcdClientMock{}
 
 // GetTx implements lcdClient
 func (c *lcdClientMock) GetTx(txHash string) (*txtypes.GetTxResponse, error) {

@@ -23,15 +23,30 @@ deps:
 build-all: aggregator collector parser
 
 aggregator:
-	go install -mod=readonly ./cmd/aggregator
+	go  build -mod=readonly -o ./build/aggregator ./cmd/aggregator 
 
 # Build the main executable
 collector:
-	go install -mod=readonly ./cmd/collector
+	go  build -mod=readonly -o ./build/collector ./cmd/collector 
 
 # Build the main executable
 parser:
+	go  build -mod=readonly -o ./build/parser ./cmd/parser 
+
+.PHONY: install-all install-aggregator install-collector install-parser
+install-all: install-aggregator install-collector install-parser
+
+install-aggregator:
+	go install -mod=readonly ./cmd/aggregator
+
+# Build the main executable
+install-collector:
+	go install -mod=readonly ./cmd/collector
+
+# Build the main executable
+install-parser:
 	go install -mod=readonly ./cmd/parser
+
 
 # This is a specialized build for running the executable inside a minimal scratch container
 .PHONY: build-app

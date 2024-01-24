@@ -17,7 +17,7 @@ type httpClient interface {
 	Get(url string) (*http.Response, error)
 }
 
-type lcdClient interface {
+type LcdClient interface {
 	GetTx(txHash string) (*txtypes.GetTxResponse, error)
 	GetBlockWithTxs(height int64) (*txtypes.GetBlockWithTxsResponse, error)
 }
@@ -32,9 +32,9 @@ type lcdClientImpl struct {
 	httpClient
 }
 
-var _ lcdClient = &lcdClientImpl{}
+var _ LcdClient = &lcdClientImpl{}
 
-func NewLcdClient(baseUrl string, c httpClient) lcdClient {
+func NewLcdClient(baseUrl string, c httpClient) LcdClient {
 	return &lcdClientImpl{baseUrl, c}
 }
 
