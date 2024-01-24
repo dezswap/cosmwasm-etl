@@ -38,7 +38,10 @@ func getCollectorReadStore(c *configs.Config) collector_store.ReadStore {
 		nodeConf := c.Parser.NodeConfig
 		serviceDesc := grpc.GetServiceDesc("collector", nodeConf.GrpcConfig)
 
-		var failoverClient datastore.LcdClient
+		store, err := collector_store.New(*c, serviceDesc, nil)
+		if err != nil {
+			panic(err)
+		}
 		if nodeConf.FailoverLcdHost != "" {
 			httpClient := &http.Client{
 				Transport: &http.Transport{
@@ -47,12 +50,9 @@ func getCollectorReadStore(c *configs.Config) collector_store.ReadStore {
 					DisableKeepAlives: false,            // Use HTTP Keep-Alive
 				},
 			}
-			failoverClient = datastore.NewLcdClient(nodeConf.FailoverLcdHost, httpClient)
+			store, _ = collector_store.New(*c, serviceDesc, datastore.NewLcdClient(nodeConf.FailoverLcdHost, httpClient))
 		}
-		store, err := collector_store.New(*c, serviceDesc, failoverClient)
-		if err != nil {
-			panic(err)
-		}
+
 		return collector_store.NewReadStoreWithGrpc(c.Parser.ChainId, store)
 	}
 

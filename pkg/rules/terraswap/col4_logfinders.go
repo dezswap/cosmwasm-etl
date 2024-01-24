@@ -73,7 +73,7 @@ var col4WasmTransferCommonRule = eventlog.Rule{Type: eventlog.FromContract, Unti
 }}
 
 var transferRule = eventlog.Rule{Type: eventlog.TransferType, Items: eventlog.RuleItems{
-	eventlog.RuleItem{Key: "amount", Filter: nil},
 	eventlog.RuleItem{Key: "recipient", Filter: nil},
 	eventlog.RuleItem{Key: "sender", Filter: nil},
+	eventlog.RuleItem{Key: "amount", Filter: nil},
 }}
