@@ -7,6 +7,9 @@ const (
 	Message      LogType = "message"
 	WasmType     LogType = "wasm"
 	TransferType LogType = "transfer"
+
+	//columbus 4
+	FromContract LogType = "from_contract"
 )
 
 type Attribute struct {
