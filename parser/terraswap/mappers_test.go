@@ -107,7 +107,7 @@ func Test_TransferMapper(t *testing.T) {
 		},
 		/// wasm transfer
 		{
-			&wasmTransferMapper{pairSet: pairSet},
+			&wasmCommonTransferMapper{pairSet: pairSet},
 			el.MatchedResult{
 				{Key: "_contract_address", Value: pair.Assets[0]}, {Key: "action", Value: "transfer"}, {Key: "from", Value: userAddr}, {Key: "to", Value: pair.ContractAddr}, {Key: "amount", Value: "1000"},
 			},
@@ -115,7 +115,7 @@ func Test_TransferMapper(t *testing.T) {
 			"",
 		},
 		{
-			&wasmTransferMapper{pairSet: pairSet},
+			&wasmCommonTransferMapper{pairSet: pairSet},
 			el.MatchedResult{
 				{Key: "_contract_address", Value: pair.Assets[1]}, {Key: "action", Value: "transfer"},
 				{Key: "from", Value: userAddr}, {Key: "to", Value: pair.ContractAddr},
@@ -125,7 +125,7 @@ func Test_TransferMapper(t *testing.T) {
 			"",
 		},
 		{
-			&wasmTransferMapper{pairSet: pairSet},
+			&wasmCommonTransferMapper{pairSet: pairSet},
 			el.MatchedResult{
 				{Key: "_contract_address", Value: pair.Assets[0]}, {Key: "action", Value: "transfer"}, {Key: "from", Value: userAddr},
 				{Key: "to", Value: "WRONG_PAIR"}, {Key: "amount", Value: "1000"},
@@ -134,7 +134,7 @@ func Test_TransferMapper(t *testing.T) {
 			"",
 		},
 		{
-			&wasmTransferMapper{pairSet: pairSet},
+			&wasmCommonTransferMapper{pairSet: pairSet},
 			el.MatchedResult{
 				{Key: "_contract_address", Value: "WRONG_CW_20"}, {Key: "action", Value: "transfer"},
 				{Key: "from", Value: userAddr}, {Key: "to", Value: pair.ContractAddr}, {Key: "amount", Value: "1000"},

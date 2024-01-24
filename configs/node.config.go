@@ -10,6 +10,8 @@ import (
 type NodeConfig struct {
 	GrpcConfig      GrpcConfig
 	FailoverLcdHost string
+
+	RestClientConfig RestClientConfig
 }
 
 type GrpcConfig struct {
@@ -17,6 +19,11 @@ type GrpcConfig struct {
 	Port         int
 	BackoffDelay Duration
 	NoTLS        bool
+}
+
+type RestClientConfig struct {
+	LcdHost string
+	RpcHost string
 }
 
 // Duration is wrapper type for custom unmarshalling

@@ -19,7 +19,10 @@ type terraswapApp struct {
 var _ parser.TargetApp = &terraswapApp{}
 
 func New(repo parser.PairRepo, logger logging.Logger, c configs.ParserConfig) (parser.TargetApp, error) {
-	finder, err := ts.CreateCreatePairRuleFinder(c.ChainId)
+	if !ts.IsFactoryAddress(c.FactoryAddress) {
+		return nil, errors.Errorf("invalid factory address: %s", c.FactoryAddress)
+	}
+	finder, err := ts.CreateCreatePairRuleFinder(c.FactoryAddress)
 	if err != nil {
 		return nil, errors.Wrap(err, "NewApp")
 	}
@@ -63,20 +66,12 @@ func (p *terraswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]parser.Parsed
 	pairTxs := []*parser.ParsedTx{}
 	wasmTxs := []*parser.ParsedTx{}
 	transferTxs := []*parser.ParsedTx{}
-	initialProvideTxs := []*parser.ParsedTx{}
 	for _, raw := range tx.LogResults {
 		ptxs, err := p.Parsers.PairActionParser.Parse(tx.Hash, tx.Timestamp, eventlog.LogResults{raw})
 		if err != nil {
 			return nil, errors.Wrap(err, "parseTxs")
 		}
 		pairTxs = append(pairTxs, ptxs...)
-
-		// find initial provide to a pair
-		ipTxs, err := p.Parsers.InitialProvide.Parse(tx.Hash, tx.Timestamp, eventlog.LogResults{raw})
-		if err != nil {
-			return nil, errors.Wrap(err, "parseTxs")
-		}
-		initialProvideTxs = append(initialProvideTxs, ipTxs...)
 
 		wtxs, err := p.Parsers.WasmTransfer.Parse(tx.Hash, tx.Timestamp, eventlog.LogResults{raw})
 		if err != nil {
@@ -95,11 +90,6 @@ func (p *terraswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]parser.Parsed
 		txDtos = append(txDtos, *ptx)
 	}
 
-	for _, ipTx := range initialProvideTxs {
-		ipTx.Sender = tx.Sender
-		txDtos = append(txDtos, *ipTx)
-	}
-
 	txDtos = append(txDtos, p.RemoveDuplicatedTxs(pairTxs, wasmTxs)...)
 	txDtos = append(txDtos, p.RemoveDuplicatedTxs(pairTxs, transferTxs)...)
 
@@ -112,23 +102,17 @@ func (p *terraswapApp) updateParsers(pairs map[string]parser.Pair) error {
 		pairFilter[k] = true
 	}
 
-	pairFinder, err := ts.CreatePairAllRulesFinder(pairFilter)
+	pairFinder, err := ts.CreatePairCommonRulesFinder(pairFilter)
 	if err != nil {
 		return errors.Wrap(err, "createParsers")
 	}
 	p.Parsers.PairActionParser = parser.NewParser(pairFinder, &pairMapper{pairSet: pairs})
 
-	initialProvideFinder, err := ts.CreatePairInitialProvideRuleFinder(pairFilter)
-	if err != nil {
-		return errors.Wrap(err, "updateParsers")
-	}
-	p.Parsers.InitialProvide = parser.NewParser(initialProvideFinder, &initialProvideMapper{})
-
-	wasmTransferFinder, err := ts.CreateWasmTransferRuleFinder(pairFilter)
+	wasmTransferFinder, err := ts.CreateWasmCommonTransferRuleFinder(pairFilter)
 	if err != nil {
 		return errors.Wrap(err, "createParsers")
 	}
-	p.Parsers.WasmTransfer = parser.NewParser(wasmTransferFinder, &wasmTransferMapper{pairSet: pairs})
+	p.Parsers.WasmTransfer = parser.NewParser(wasmTransferFinder, &wasmCommonTransferMapper{pairSet: pairs})
 
 	transferRule, err := ts.CreateTransferRuleFinder(pairFilter)
 	if err != nil {

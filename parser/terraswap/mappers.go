@@ -13,7 +13,7 @@ import (
 var _ parser.Mapper = &createPairMapper{}
 var _ parser.Mapper = &pairMapper{}
 var _ parser.Mapper = &transferMapper{}
-var _ parser.Mapper = &wasmTransferMapper{}
+var _ parser.Mapper = &wasmCommonTransferMapper{}
 
 type mapperMixin struct{}
 
@@ -29,7 +29,7 @@ type transferMapper struct {
 	mixin   mapperMixin
 	pairSet map[string]parser.Pair
 }
-type wasmTransferMapper struct {
+type wasmCommonTransferMapper struct {
 	mixin   mapperMixin
 	pairSet map[string]parser.Pair
 }
@@ -61,11 +61,6 @@ func (m *createPairMapper) MatchedToParsedTx(res eventlog.MatchedResult, optiona
 
 // match implements mapper
 func (m *pairMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) (*parser.ParsedTx, error) {
-	if len(res) < t.PairCommonMatchedLen {
-		msg := fmt.Sprintf("results length must bigger than %d", t.PairCommonMatchedLen)
-		return nil, errors.New(msg)
-	}
-
 	pair, ok := m.pairSet[res[t.PairAddrIdx].Value]
 	if !ok {
 		msg := fmt.Sprintf("pairMapper.MatchedToParsedTx no pair(%s)", res[t.PairAddrIdx].Value)
@@ -108,7 +103,6 @@ func (m *pairMapper) swapMatchedToParsedTx(res eventlog.MatchedResult, pair pars
 
 	return &parser.ParsedTx{
 		Type:             parser.Swap,
-		Sender:           res[t.PairSenderIdx].Value,
 		ContractAddr:     res[t.PairAddrIdx].Value,
 		Assets:           assets,
 		CommissionAmount: res[t.PairSwapCommissionAmountIdx].Value,
@@ -131,7 +125,6 @@ func (m *pairMapper) provideMatchedToParsedTx(res eventlog.MatchedResult, pair p
 
 	return &parser.ParsedTx{
 		Type:         parser.Provide,
-		Sender:       res[t.PairSenderIdx].Value,
 		ContractAddr: res[t.PairAddrIdx].Value,
 		Assets:       [2]parser.Asset{assets[0], assets[1]},
 		LpAddr:       pair.LpAddr,
@@ -158,7 +151,6 @@ func (m *pairMapper) withdrawMatchedToParsedTx(res eventlog.MatchedResult, pair 
 
 	return &parser.ParsedTx{
 		Type:         parser.Withdraw,
-		Sender:       res[t.PairSenderIdx].Value,
 		ContractAddr: res[t.PairAddrIdx].Value,
 		Assets:       [2]parser.Asset{assets[0], assets[1]},
 		LpAddr:       pair.LpAddr,
@@ -183,14 +175,14 @@ func (m *initialProvideMapper) MatchedToParsedTx(res eventlog.MatchedResult, opt
 }
 
 // match implements mapper
-func (m *wasmTransferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) (*parser.ParsedTx, error) {
-	if err := m.mixin.checkResult(res, t.WasmTransferMatchedLen); err != nil {
-		return nil, errors.Wrap(err, "wasmTransferMapper.MatchedToParsedTx")
+func (m *wasmCommonTransferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) (*parser.ParsedTx, error) {
+	if err := m.mixin.checkResult(res); err != nil {
+		return nil, errors.Wrap(err, "wasmCommonTransferMapper.MatchedToParsedTx")
 	}
 
 	pair, ok := m.pairSet[res[t.WasmTransferToIdx].Value]
 	if !ok {
-		msg := fmt.Sprintf("wasmTransferMapper.MatchedToParsedTx no pair(%s)", res[t.WasmTransferToIdx].Value)
+		msg := fmt.Sprintf("wasmCommonTransferMapper.MatchedToParsedTx no pair(%s)", res[t.WasmTransferToIdx].Value)
 		return nil, errors.New(msg)
 	}
 	assets := [2]parser.Asset{
@@ -259,8 +251,8 @@ func (m *transferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals
 	}, nil
 }
 
-func (*mapperMixin) checkResult(res eventlog.MatchedResult, expectedLen int) error {
-	if len(res) != expectedLen {
+func (*mapperMixin) checkResult(res eventlog.MatchedResult, expectedLen ...int) error {
+	if len(expectedLen) > 0 && len(res) != expectedLen[0] {
 		msg := fmt.Sprintf("expected results length(%d)", expectedLen)
 		return errors.New(msg)
 	}
