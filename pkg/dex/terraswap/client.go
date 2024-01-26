@@ -51,12 +51,12 @@ func (c *col4QueryClient) QueryPairs(factoryAddr string, startAfter []dex.AssetI
 
 	res, err := col4.QueryContractState[dex.FactoryPairsRes](c.lcd, factoryAddr, req, height...)
 	if err != nil {
-		return nil, errors.Wrap(err, "col4QueryClient.QueryPool")
+		return nil, errors.Wrap(err, "col4QueryClient.QueryPairs")
 	}
 
 	if len(height) > 0 {
 		if err := c.heightCheck(res.Height, height[0]); err != nil {
-			return nil, errors.Wrap(err, "col4QueryClient.QueryPool")
+			return nil, errors.Wrap(err, "col4QueryClient.QueryPairs")
 		}
 	}
 
@@ -71,7 +71,7 @@ func (c *col4QueryClient) heightCheck(actualStr string, expected uint64) error {
 
 	actual, err := strconv.ParseUint(resHeight, 10, 64)
 	if err != nil {
-		return errors.Wrap(err, "col4QueryClient.QueryPool")
+		return errors.Wrap(err, "col4QueryClient.heightCheck")
 	}
 
 	if actual != expected {
