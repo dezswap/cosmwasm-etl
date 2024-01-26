@@ -68,7 +68,7 @@ func (r *rpcImpl) BlockResults(height ...uint64) (*RpcRes[RpcBlockResultRes], er
 
 	var res RpcRes[RpcBlockResultRes]
 	if err := json.Unmarshal(data, &res); err != nil {
-		return nil, errors.Wrap(err, "rpcImpl.RemoteBlockHeight")
+		return nil, errors.Wrap(err, "rpcImpl.BlockResults")
 	}
 
 	return &res, nil

@@ -40,6 +40,9 @@ func (f *fcdImpl) TxsOf(addr string, option FcdTxsReqQuery) (*FcdTxsRes, error) 
 		if limit < FCD_TXS_MIN_LIMIT {
 			limit = FCD_TXS_MIN_LIMIT
 		}
+		if limit > FCD_TXS_MAX_LIMIT {
+			limit = FCD_TXS_MAX_LIMIT
+		}
 	}
 
 	params := url.Values{}
