@@ -13,12 +13,9 @@
 -- check for a Check constraint
 BEGIN;
 
--- Sequence and defined type
-CREATE SEQUENCE IF NOT EXISTS fcd_tx_log_id_seq;
-
 -- Table Definition
 CREATE TABLE "public"."fcd_tx_log" (
-    "id" int8 NOT NULL DEFAULT nextval('fcd_tx_log_id_seq'::regclass),
+    "id" BIGSERIAL NOT NULL PRIMARY KEY,
     "fcd_offset" int8 NOT NULL,
     "height" int8 NOT NULL,
     "timestamp" timestamp NOT NULL,
