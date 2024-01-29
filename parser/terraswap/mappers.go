@@ -220,10 +220,6 @@ func (m *wasmCommonTransferMapper) MatchedToParsedTx(res eventlog.MatchedResult,
 
 // match implements mapper
 func (m *transferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) (*parser.ParsedTx, error) {
-	if err := m.mixin.checkResult(res, t.TransferMatchedLen); err != nil {
-		return nil, errors.Wrap(err, "transferMapper.MatchedToParsedTx")
-	}
-
 	fp, fromPair := m.pairSet[res[t.TransferSenderIdx].Value]
 	tp, toPair := m.pairSet[res[t.TransferRecipientIdx].Value]
 
