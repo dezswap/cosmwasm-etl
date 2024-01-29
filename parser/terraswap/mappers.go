@@ -23,8 +23,6 @@ type pairMapper struct {
 	pairSet map[string]parser.Pair
 }
 
-type initialProvideMapper struct{ mapperMixin }
-
 type transferMapper struct {
 	mixin   mapperMixin
 	pairSet map[string]parser.Pair
@@ -170,21 +168,6 @@ func (m *pairMapper) withdrawMatchedToParsedTx(res eventlog.MatchedResult, pair 
 
 }
 
-func (m *initialProvideMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) (*parser.ParsedTx, error) {
-	if err := m.checkResult(res, t.PairInitialProvideMatchedLen); err != nil {
-		return nil, errors.Wrap(err, "transferMapper.MatchedToParsedTx")
-	}
-	return &parser.ParsedTx{
-		Type:         parser.InitialProvide,
-		Sender:       "",
-		ContractAddr: res[t.PairInitialProvideToIdx].Value,
-		Assets:       [2]parser.Asset{},
-		LpAddr:       res[t.PairInitialProvideAddrIdx].Value,
-		LpAmount:     res[t.PairInitialProvideAmountIdx].Value,
-		Meta:         nil,
-	}, nil
-}
-
 // match implements mapper
 func (m *wasmCommonTransferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) (*parser.ParsedTx, error) {
 	if err := m.mixin.checkResult(res); err != nil {
@@ -241,11 +224,23 @@ func (m *transferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals
 		return nil, errors.Wrap(err, "transferMapper.MatchedToParsedTx")
 	}
 
-	pair, ok := m.pairSet[res[t.TransferRecipientIdx].Value]
-	if !ok {
-		msg := fmt.Sprintf("transferMapper.MatchedToParsedTx no pair(%s)", res[t.TransferRecipientIdx].Value)
+	fp, fromPair := m.pairSet[res[t.TransferSenderIdx].Value]
+	tp, toPair := m.pairSet[res[t.TransferRecipientIdx].Value]
+
+	if fromPair && toPair {
+		msg := fmt.Sprintf("cannot be both from and to, see the tx, result(%v)", res)
 		return nil, errors.New(msg)
 	}
+
+	if !fromPair && !toPair {
+		return nil, nil
+	}
+
+	pair := fp
+	if toPair {
+		pair = tp
+	}
+
 	assets := [2]parser.Asset{
 		{Addr: pair.Assets[0]},
 		{Addr: pair.Assets[1]},
@@ -264,12 +259,15 @@ func (m *transferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals
 		} else {
 			assets[idx] = asset
 		}
+		if fromPair {
+			assets[idx].Amount = fmt.Sprintf("-%s", assets[idx].Amount)
+		}
 	}
 
 	return &parser.ParsedTx{
 		Type:         parser.Transfer,
 		Sender:       res[t.TransferSenderIdx].Value,
-		ContractAddr: res[t.TransferRecipientIdx].Value,
+		ContractAddr: pair.ContractAddr,
 		Assets:       assets,
 		LpAddr:       "",
 		LpAmount:     "",

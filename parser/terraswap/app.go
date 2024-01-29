@@ -67,6 +67,9 @@ func (p *terraswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]parser.Parsed
 	wasmTxs := []*parser.ParsedTx{}
 	transferTxs := []*parser.ParsedTx{}
 	for _, raw := range tx.LogResults {
+		if !ts.ParsableRules[string(raw.Type)] {
+			continue
+		}
 		ptxs, err := p.Parsers.PairActionParser.Parse(tx.Hash, tx.Timestamp, eventlog.LogResults{raw})
 		if err != nil {
 			return nil, errors.Wrap(err, "parseTxs")
@@ -114,7 +117,7 @@ func (p *terraswapApp) updateParsers(pairs map[string]parser.Pair) error {
 	}
 	p.Parsers.WasmTransfer = parser.NewParser(wasmTransferFinder, &wasmCommonTransferMapper{pairSet: pairs})
 
-	transferRule, err := ts.CreateTransferRuleFinder(pairFilter)
+	transferRule, err := ts.CreateTransferRuleFinder(nil)
 	if err != nil {
 		return errors.Wrap(err, "createParsers")
 	}
