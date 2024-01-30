@@ -22,8 +22,7 @@ CREATE TABLE "public"."fcd_tx_log" (
     "hash" varchar NOT NULL,
     "address" varchar NOT NULL,
     "event_log" varchar NOT NULL,
-    "tx_index" int4,
-    PRIMARY KEY ("id")
+    "tx_index" int4
 );
 
 CREATE INDEX fcd_tx_log_timestamp_idx ON fcd_tx_log(timestamp);
