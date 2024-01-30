@@ -24,7 +24,6 @@ type pairMapper struct {
 }
 
 type transferMapper struct {
-	mixin   mapperMixin
 	pairSet map[string]parser.Pair
 }
 type wasmCommonTransferMapper struct {
@@ -201,7 +200,11 @@ func (m *wasmCommonTransferMapper) MatchedToParsedTx(res eventlog.MatchedResult,
 	if idx == -1 {
 		meta[target] = res[t.WasmTransferAmountIdx].Value
 	} else {
-		assets[idx].Amount = res[t.WasmTransferAmountIdx].Value
+		for _, item := range res {
+			if item.Key == "amount" {
+				assets[idx].Amount = item.Value
+			}
+		}
 	}
 
 	if fromPair {
