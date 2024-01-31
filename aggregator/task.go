@@ -332,25 +332,27 @@ func (t *pairStatsRecentUpdateTask) Execute(_ time.Time, end time.Time) error {
 			return err
 		}
 
-		tokenIdMap := make(map[string]bool)
-		for _, tx := range txs {
-			tokenIdMap[tx.Price0] = true
-			tokenIdMap[tx.Price1] = true
-		}
+		if len(txs) > 0 {
+			tokenIdMap := make(map[string]bool)
+			for _, tx := range txs {
+				tokenIdMap[tx.Price0] = true
+				tokenIdMap[tx.Price1] = true
+			}
 
-		var tokenIds []string
-		for key := range tokenIdMap {
-			tokenIds = append(tokenIds, key)
-		}
+			var tokenIds []string
+			for key := range tokenIdMap {
+				tokenIds = append(tokenIds, key)
+			}
 
-		priceMap, err := t.srcDb.RecentPrices(startHeight, endHeight, tokenIds, t.priceToken)
-		if err != nil {
-			return err
-		}
+			priceMap, err := t.srcDb.RecentPrices(startHeight, endHeight, tokenIds, t.priceToken)
+			if err != nil {
+				return err
+			}
 
-		stats, err = t.generateStats(txs, priceMap)
-		if err != nil {
-			return err
+			stats, err = t.generateStats(txs, priceMap)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
