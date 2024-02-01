@@ -17,12 +17,15 @@ import (
 	"github.com/dezswap/cosmwasm-etl/parser/dezswap"
 	"github.com/dezswap/cosmwasm-etl/parser/repo"
 	"github.com/dezswap/cosmwasm-etl/parser/srcstore"
+	ts_srcstore "github.com/dezswap/cosmwasm-etl/parser/srcstore/terraswap"
 	"github.com/dezswap/cosmwasm-etl/parser/starfleit"
 	"github.com/dezswap/cosmwasm-etl/parser/terraswap"
+	ts_client "github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap"
 	"github.com/dezswap/cosmwasm-etl/pkg/grpc"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 	parsable_rules "github.com/dezswap/cosmwasm-etl/pkg/rules"
 	"github.com/dezswap/cosmwasm-etl/pkg/s3client"
+	"github.com/dezswap/cosmwasm-etl/pkg/terra/col4"
 )
 
 const (
@@ -30,23 +33,26 @@ const (
 )
 
 func getCollectorReadStore(c *configs.Config) collector_store.ReadStore {
-	if c.Parser.NodeConfig.GrpcConfig.Host != "" {
+	nodeConf := c.Parser.NodeConfig
+	if nodeConf.GrpcConfig.Host != "" {
 		nodeConf := c.Parser.NodeConfig
 		serviceDesc := grpc.GetServiceDesc("collector", nodeConf.GrpcConfig)
-		httpClient := &http.Client{
-			Transport: &http.Transport{
-				MaxIdleConns:      10,               // Maximum idle connections to keep open
-				IdleConnTimeout:   30 * time.Second, // Time to keep idle connections open
-				DisableKeepAlives: false,            // Use HTTP Keep-Alive
-			},
-		}
 
-		failoverClient := datastore.NewLcdClient(nodeConf.FailoverLcdHost, httpClient)
-
-		store, err := collector_store.New(*c, serviceDesc, failoverClient)
+		store, err := collector_store.New(*c, serviceDesc, nil)
 		if err != nil {
 			panic(err)
 		}
+		if nodeConf.FailoverLcdHost != "" {
+			httpClient := &http.Client{
+				Transport: &http.Transport{
+					MaxIdleConns:      10,               // Maximum idle connections to keep open
+					IdleConnTimeout:   30 * time.Second, // Time to keep idle connections open
+					DisableKeepAlives: false,            // Use HTTP Keep-Alive
+				},
+			}
+			store, _ = collector_store.New(*c, serviceDesc, datastore.NewLcdClient(nodeConf.FailoverLcdHost, httpClient))
+		}
+
 		return collector_store.NewReadStoreWithGrpc(c.Parser.ChainId, store)
 	}
 
@@ -71,10 +77,6 @@ func main() {
 	defer catch(logger)
 
 	repo := repo.New(c.Parser.ChainId, c.Rdb)
-
-	readStore := getCollectorReadStore(&c)
-	rawDataStore := srcstore.New(readStore)
-
 	var app parser.TargetApp
 	var err error
 	if c.Parser.TargetApp == parsable_rules.Terraswap {
@@ -89,6 +91,29 @@ func main() {
 
 	if err != nil {
 		panic(err)
+	}
+
+	var rawDataStore parser.SourceDataStore
+	if c.Parser.TargetApp == parsable_rules.Terraswap {
+		rpc := col4.NewRpc(c.Parser.NodeConfig.RestClientConfig.RpcHost, &http.Client{
+			Transport: &http.Transport{
+				MaxIdleConns:      10,               // Maximum idle connections to keep open
+				IdleConnTimeout:   30 * time.Second, // Time to keep idle connections open
+				DisableKeepAlives: false,            // Use HTTP Keep-Alive
+			},
+		})
+		lcd := col4.NewLcd(c.Parser.NodeConfig.RestClientConfig.LcdHost, &http.Client{
+			Transport: &http.Transport{
+				MaxIdleConns:      10,               // Maximum idle connections to keep open
+				IdleConnTimeout:   30 * time.Second, // Time to keep idle connections open
+				DisableKeepAlives: false,            // Use HTTP Keep-Alive
+			},
+		})
+		terraswapQueryClient := ts_client.NewCol4Client(lcd)
+		rawDataStore = ts_srcstore.NewCol4Store(c.Parser.FactoryAddress, rpc, lcd, terraswapQueryClient)
+	} else {
+		readStore := getCollectorReadStore(&c)
+		rawDataStore = srcstore.New(readStore)
 	}
 
 	runner := parser.NewDexApp(app, rawDataStore, repo, logger, c.Parser)

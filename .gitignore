@@ -31,3 +31,6 @@ main
 config*.yaml
 !config.test.yaml
 unittest.config.yaml
+
+# build
+build

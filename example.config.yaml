@@ -13,9 +13,13 @@ collector:
 
 parser:
   chainId: # string
+  factoryAddress: #(optional) it is driven by chainId except terraswap. Terra classic(columbus) network has two factories of Terraswap.
   errTolerance: # uint
   targetApp: # dezswap, terraswap
   node:
+    rest:
+      lcd:
+      rpc:
     grpc:
       host: # Domain or ip
       port: # Port of the host

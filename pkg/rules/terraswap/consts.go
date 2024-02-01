@@ -2,6 +2,7 @@ package terraswap
 
 import (
 	ts "github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap"
+	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 )
 
 const (
@@ -11,6 +12,11 @@ const (
 	TestnetKey   = "pisco"
 )
 
+var ParsableRules = map[string]bool{
+	string(eventlog.TransferType): true,
+	string(eventlog.FromContract): true,
+	string(eventlog.WasmType):     true,
+}
 var FactoryAddress = map[string]string{
 	MainnetKey:   ts.PHOENIX_FACTORY,
 	TestnetKey:   ts.PISCO_FACTORY,

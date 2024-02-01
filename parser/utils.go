@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"math/big"
 	"regexp"
 	"strings"
 
@@ -53,4 +54,25 @@ func GetAssetFromAmountAssetString(amountAsset string) (Asset, error) {
 		Addr:   addr,
 		Amount: amount,
 	}, nil
+}
+
+func AmountAdd(amount1, amount2 string) (string, error) {
+	toBigInt := func(amount string) (*big.Int, error) {
+		amountBigInt, ok := big.NewInt(0).SetString(amount, 10)
+		if !ok {
+			return nil, errors.New("invalid amount")
+		}
+		return amountBigInt, nil
+	}
+
+	a1, err := toBigInt(amount1)
+	if err != nil {
+		return "", errors.Wrap(err, "parser.AmountAdd")
+	}
+	a2, err := toBigInt(amount2)
+	if err != nil {
+		return "", errors.Wrap(err, "parser.AmountAdd")
+	}
+
+	return a1.Add(a1, a2).String(), nil
 }
