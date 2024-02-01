@@ -29,18 +29,18 @@ func (l *lcdImpl) Tx(hash string) (*LcdTxRes, error) {
 	reqUrl := fmt.Sprintf("%s/txs/%s", l.baseUrl, hash)
 	response, err := l.client.Get(reqUrl)
 	if err != nil {
-		return nil, errors.Wrap(err, "lcdImpl.ContractStateRes")
+		return nil, errors.Wrap(err, "lcdImpl.Tx")
 	}
 	defer response.Body.Close()
 
 	data, err := io.ReadAll(response.Body)
 	if err != nil {
-		return nil, errors.Wrap(err, "lcdImpl.ContractStateRes")
+		return nil, errors.Wrap(err, "lcdImpl.Tx")
 	}
 	LcdTxRes := LcdTxRes{}
 
 	if err := json.Unmarshal(data, &LcdTxRes); err != nil {
-		return nil, errors.Wrap(err, "lcdImpl.ContractStateRes")
+		return nil, errors.Wrap(err, "lcdImpl.Tx")
 	}
 
 	return &LcdTxRes, nil
@@ -56,13 +56,13 @@ func (l *lcdImpl) ContractState(address string, query string, height ...uint64) 
 	reqUrl := fmt.Sprintf("%s/wasm/contracts/%s/store?%s", l.baseUrl, address, params.Encode())
 	response, err := l.client.Get(reqUrl)
 	if err != nil {
-		return nil, errors.Wrap(err, "lcdImpl.ContractStateRes")
+		return nil, errors.Wrap(err, "lcdImpl.ContractState")
 	}
 	defer response.Body.Close()
 
 	data, err := io.ReadAll(response.Body)
 	if err != nil {
-		return nil, errors.Wrap(err, "lcdImpl.ContractStateRes")
+		return nil, errors.Wrap(err, "lcdImpl.ContractState")
 	}
 
 	return data, nil
