@@ -1,7 +1,6 @@
 package fcd
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -57,7 +56,6 @@ func (rp *columbus4FcdRepo) TxsOf(addr string, collectedOffset, untilHeight, max
 			if strings.Contains(err.Error(), fcd.STATUS_SERVER_ERROR.Error()) && 0 < errLimit {
 				errLimit--
 				time.Sleep(10 * time.Second)
-				fmt.Print(err.Error())
 				continue
 			}
 			return nil, errors.Wrap(err, "columbus4SrcRepo.TxsOf")

@@ -20,7 +20,7 @@ func NewPermanentStore(db *gorm.DB) permanentStore {
 func (p *permanentStoreImpl) FirstTxOf(addr string) (schemas.FcdTxLog, error) {
 	tx := schemas.FcdTxLog{}
 	if err := p.db.Where("address = ?", addr).Order("fcd_offset").Limit(1).Find(&tx).Error; err != nil {
-		return schemas.FcdTxLog{}, errors.Wrap(err, "col4RepoImpl.LatestTxOf")
+		return schemas.FcdTxLog{}, errors.Wrap(err, "col4RepoImpl.FirstTxOf")
 	}
 	return tx, nil
 }

@@ -2,7 +2,6 @@ package fcd
 
 import (
 	"github.com/dezswap/cosmwasm-etl/pkg/db/schemas"
-	"github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap"
 	"github.com/pkg/errors"
 )
 
@@ -21,7 +20,7 @@ type ColumbusCollector interface {
 	Collect(addr string, height uint32) error
 
 	storeTxs(txs Txs) error
-	hasCollected(addr string, height uint32) (bool, error)
+	hasCollected(addr string) (bool, error)
 
 	fcdRepo
 	permanentStore
@@ -39,7 +38,7 @@ func New(repo fcdRepo, store permanentStore) ColumbusCollector {
 // hasCollected checks the absence of the previous transaction by examining the transactions collected from the FCD server
 //
 // NOTE: fcd returns transactions in reverse order of height
-func (c *columbusFcdCollector) hasCollected(addr string, minHeight uint32) (bool, error) {
+func (c *columbusFcdCollector) hasCollected(addr string) (bool, error) {
 	tx, err := c.permanentStore.FirstTxOf(addr)
 	if err != nil {
 		return false, errors.Wrap(err, "col4permanentStore.HasCollected")
@@ -68,7 +67,7 @@ func (c *columbusFcdCollector) storeTxs(txs []schemas.FcdTxLog) error {
 // Collect implements ColumbusCollector.
 func (c *columbusFcdCollector) Collect(address string, height uint32) error {
 	for {
-		collected, err := c.hasCollected(address, terraswap.COLUMBUS_V1_FACTORY_INSTANTIATE_HEIGHT)
+		collected, err := c.hasCollected(address)
 		if err != nil {
 			return errors.Wrap(err, "columbusFcdCollector.Collect")
 		}
