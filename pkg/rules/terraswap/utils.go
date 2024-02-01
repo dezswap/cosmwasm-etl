@@ -1,8 +1,10 @@
 package terraswap
 
-import "strings"
-
-func getFactoryAddress(chainId string) string {
-	prefix := strings.Split(chainId, "-")[0]
-	return FactoryAddress[prefix]
+func IsFactoryAddress(address string) bool {
+	for _, v := range FactoryAddress {
+		if v == address {
+			return true
+		}
+	}
+	return false
 }

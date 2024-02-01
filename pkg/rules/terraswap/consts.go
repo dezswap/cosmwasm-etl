@@ -1,15 +1,21 @@
 package terraswap
 
+import (
+	ts "github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap"
+)
+
 const (
-	MainnetPrefix = "phoenix"
-	ClassicPrefix = "columbus"
-	TestnetPrefix = "pisco"
+	MainnetKey   = "phoenix"
+	ClassicV1Key = "columbus_v1"
+	ClassicV2Key = "columbus_v2"
+	TestnetKey   = "pisco"
 )
 
 var FactoryAddress = map[string]string{
-	"phoenix":  "terra1466nf3zuxpya8q9emxukd7vftaf6h4psr0a07srl5zw74zh84yjqxl5qul",
-	"pisco":    "terra1jha5avc92uerwp9qzx3flvwnyxs3zax2rrm6jkcedy2qvzwd2k7qk7yxcl",
-	"columbus": "terra1ulgw0td86nvs4wtpsc80thv6xelk76ut7a7apj",
+	MainnetKey:   ts.PHOENIX_FACTORY,
+	TestnetKey:   ts.PISCO_FACTORY,
+	ClassicV1Key: ts.COLUMBUS_V1_FACTORY,
+	ClassicV2Key: ts.COLUMBUS_V2_FACTORY,
 }
 
 type PairAction string
@@ -19,11 +25,13 @@ const (
 	ProvideAction  = PairAction("provide_liquidity")
 	WithdrawAction = PairAction("withdraw_liquidity")
 )
-const WasmTransferAction = "transfer"
+const (
+	WasmTransferAction     = "transfer"
+	WasmTransferFromAction = "transfer_from"
+)
 
 const (
 	CreatePairMatchedLen         = FactoryLpAddrIdx + 1
-	PairCommonMatchedLen         = PairSenderIdx + 1
 	PairSwapMatchedLen           = PairSwapCommissionAmountIdx + 1
 	PairProvideMatchedLen        = PairProvideShareIdx + 1
 	PairWithdrawMatchedLen       = PairWithdrawRefundAssetsIdx + 1
@@ -43,27 +51,25 @@ const (
 const (
 	PairAddrIdx = iota
 	PairActionIdx
-	PairSenderIdx
 )
 
 const (
-	PairSwapReceiverIdx = iota + 3
-	PairSwapOfferAssetIdx
+	PairSwapOfferAssetIdx = iota + 2
 	PairSwapAskAssetIdx
 	PairSwapOfferAmountIdx
 	PairSwapReturnAmountIdx
+	PairSwapTaxAmountIdx
 	PairSwapSpreadAmountIdx
 	PairSwapCommissionAmountIdx
 )
 
 const (
-	PairProvideReceiverIdx = iota + 3
-	PairProvideAssetsIdx
+	PairProvideAssetsIdx = iota + 2
 	PairProvideShareIdx
 )
 
 const (
-	PairWithdrawWithdrawShareIdx = iota + 3
+	PairWithdrawWithdrawShareIdx = iota + 2
 	PairWithdrawRefundAssetsIdx
 )
 
