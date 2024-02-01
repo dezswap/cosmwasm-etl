@@ -21,10 +21,6 @@ import (
 	glogger "gorm.io/gorm/logger"
 )
 
-const (
-	app = "collector"
-)
-
 var columbus4_pairs = []string{
 	"terra1a5cc08jt5knh0yx64pg6dtym4c4l8t63rhlag3", "terra1u2g4fc0k4tq6z6lrdwhm4gry3q55dg8k9anjtw", "terra1g7an9lfz22gkv74238dhc2j6ymfp4jy0k55yxk", "terra1xlgl3xvkha2y6mssy9s4qe70sq295825sdmt2q", "terra1uenpalqlmfaf4efgtqsvzpa3gh898d9h2a232g",
 	"terra170lzdyflaamashcqkst23k9ew773dtg67tfu5m", "terra1yngadscckdtd68nzw5r5va36jccjmmasm7klpp", "terra1dq27eeasl3rtlc8j3ls5yz8wurnksahj240tsr", "terra13yc7dcphaxpgd538msys7r75d3lwa5mu9u6d88", "terra1prfcyujt9nsn5kfj5n925sfd737r2n8tk5lmpv",
@@ -91,6 +87,7 @@ func main() {
 
 	app := fcd_collector.New(repo, store)
 	logger := logging.New("col4_collector", configs.Get().Log)
+	defer catch(logger)
 
 	errTolerance := 3
 	wait := 3 * time.Second
