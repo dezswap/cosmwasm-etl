@@ -16,6 +16,8 @@ parser:
   factoryAddress: #(optional) it is driven by chainId except terraswap. Terra classic(columbus) network has two factories of Terraswap.
   errTolerance: # uint
   targetApp: # dezswap, terraswap
+  poolSnapshotInterval: # uint save pools' status every interval default 100
+  validationInterval: # uint validate every interval default 100
   node:
     rest:
       lcd:

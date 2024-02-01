@@ -27,6 +27,7 @@ func New(chainId string, dbConfig configs.RdbConfig) parser.Repo {
 	gormDB, err := gorm.Open(postgres.New(postgres.Config{
 		Conn: pq.Db,
 	}), &gorm.Config{})
+
 	if err != nil {
 		panic(err)
 	}
@@ -93,4 +94,39 @@ func (r *repoImpl) Insert(height uint64, txs []parser.ParsedTx, pools []parser.P
 		}
 		return nil
 	})
+}
+
+// ParsedPoolInfo implements parser.Repo.
+func (r *repoImpl) ParsedPoolsInfo(from, to uint64) ([]parser.PoolInfo, error) {
+	type poolInfo struct {
+		Contract      string
+		Asset0        string
+		Asset0_amount string
+		Asset1        string
+		Asset1_amount string
+		LpAmount      string
+	}
+
+	pools := []poolInfo{}
+	if err := r.db.Model(&schemas.ParsedTx{}).Where(
+		"chain_id = ? AND height >= ? AND height <= ?", r.chainId, from, to,
+	).Select(
+		"contract, MAX(asset0) as asset0, MAX(asset1) asset1, SUM(asset0_amount) as asset0_amount, SUM(asset1_amount) as asset1_amount, SUM(lp_amount) as lp_amount",
+	).Group("contract").Scan(&pools).Error; err != nil {
+		return nil, errors.Wrap(err, "repoImpl.ParsedPoolInfo")
+	}
+
+	results := []parser.PoolInfo{}
+	for _, pool := range pools {
+		results = append(results, parser.PoolInfo{
+			ContractAddr: pool.Contract,
+			Assets: []parser.Asset{
+				{Addr: pool.Asset0, Amount: pool.Asset0_amount},
+				{Addr: pool.Asset1, Amount: pool.Asset1_amount},
+			},
+			TotalShare: pool.LpAmount,
+		})
+	}
+
+	return results, nil
 }
