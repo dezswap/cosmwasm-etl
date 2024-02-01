@@ -1,0 +1,5 @@
+BEGIN;
+
+DROP TABLE IF EXISTS "fcd_tx_log";
+
+COMMIT;

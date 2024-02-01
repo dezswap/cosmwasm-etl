@@ -97,7 +97,8 @@ image:
 
 # Migrate database.
 .PHONY: parser-migrate-test parser-migrate-up parser-migrate-down parser-generate-migration \
-		aggregator-migrate-up aggregator-migrate-down aggregator-generate-migration
+		aggregator-migrate-up aggregator-migrate-down aggregator-generate-migration \
+		collector-migrate-up collector-migrate-down collector-generate-migration
 
 parser-migrate-test:
 	go test -count=1 -tags=mig,faker ./db/migrations/parser
@@ -126,6 +127,21 @@ aggregator-migrate-down:
 aggregator-generate-migration:
 	$(eval VERSION := $(shell date +"%Y%m%d%H%M%S"))
 	$(eval PATH := db/migrations/aggregator)
+	mkdir -p $(PATH)
+	cp $(PATH)/template.txt $(PATH)/$(VERSION)_SUMMARY_OF_MIGRATION.up.sql
+	cp $(PATH)/template.txt $(PATH)/$(VERSION)_SUMMARY_OF_MIGRATION.down.sql
+
+
+collector-migrate-up:
+	go run db/migrations/collector/main.go
+
+collector-migrate-down:
+	go run db/migrations/collector/main.go down
+
+# Create a new empty migration file.
+collector-generate-migration:
+	$(eval VERSION := $(shell date +"%Y%m%d%H%M%S"))
+	$(eval PATH := db/migrations/collector)
 	mkdir -p $(PATH)
 	cp $(PATH)/template.txt $(PATH)/$(VERSION)_SUMMARY_OF_MIGRATION.up.sql
 	cp $(PATH)/template.txt $(PATH)/$(VERSION)_SUMMARY_OF_MIGRATION.down.sql
