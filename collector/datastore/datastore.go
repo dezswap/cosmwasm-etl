@@ -95,7 +95,7 @@ type dataStoreImpl struct {
 	serviceDesc grpcConn.ServiceDesc
 	s3Client    s3client.S3ClientInterface
 
-	lcdClient lcdClient
+	lcdClient LcdClient
 
 	newServiceClientFunc func(cc grpc1.ClientConn) txtypes.ServiceClient
 	newQueryClientFunc   func(cc grpc1.ClientConn) wasm.QueryClient
@@ -104,7 +104,7 @@ type dataStoreImpl struct {
 
 var _ DataStore = &dataStoreImpl{}
 
-func New(c configs.Config, serviceDesc grpcConn.ServiceDesc, lcd lcdClient) (DataStore, error) {
+func New(c configs.Config, serviceDesc grpcConn.ServiceDesc, lcd LcdClient) (DataStore, error) {
 	dataStoreService := &dataStoreImpl{
 		serviceDesc: serviceDesc,
 		lcdClient:   lcd,
@@ -405,7 +405,9 @@ func (store *dataStoreImpl) getTxResultFromTxHash(txHash string) (*txtypes.GetTx
 	resp, err := client.GetTx(context.Background(), req)
 	if err != nil {
 		// failover with lcd
-		resp, err = store.lcdClient.GetTx(txHash)
+		if store.lcdClient != nil {
+			resp, err = store.lcdClient.GetTx(txHash)
+		}
 		if err != nil {
 			return nil, errors.Wrap(err, "getTxResultFromTxHash, GetTx")
 		}
