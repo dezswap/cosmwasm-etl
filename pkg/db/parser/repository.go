@@ -2,6 +2,7 @@ package parser
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -233,13 +234,18 @@ select p.height,
        p.token_id,
        p.price
 from price p
-     join tokens t on t.id = p.token_id
-where p.chain_id = ?
-  and p.height >= ?
-  and p.height <= ?
+    join (
+    	select token_id, max(height) height
+    	from price p join tokens t on t.id = p.token_id
+    	where p.chain_id = ?
+    	  and p.height <= ?
+    	  %s
+    	group by p.token_id) t on p.token_id = t.token_id and p.height >= t.height
+where p.height <= ?
+order by height
 `
-	query += "and t.id in (" + strings.Join(targetTokens, ",") + ") order by height"
-	res := []schemas.Price{}
+	query = fmt.Sprintf(query, "and t.id in ("+strings.Join(targetTokens, ",")+")")
+	var res []schemas.Price
 	if tx := r.db.Raw(query, priceToken, r.chainId, startHeight, endHeight).Scan(&res); tx.Error != nil {
 		return nil, errors.Wrap(tx.Error, "repo.RecentPrices")
 	}
