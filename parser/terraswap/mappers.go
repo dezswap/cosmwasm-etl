@@ -150,6 +150,10 @@ func (m *pairMapper) withdrawMatchedToParsedTx(res eventlog.MatchedResult, pair 
 		return nil, errors.Wrap(err, "pairMapper.withdrawMatchedToParsedTx")
 	}
 	for idx := range assets {
+		assets[idx].Amount, err = parser.AmountMul(assets[idx].Amount, "0.9939285487078243")
+		if err != nil {
+			return nil, errors.Wrap(err, "pairMapper.withdrawMatchedToParsedTx")
+		}
 		assets[idx].Amount = fmt.Sprintf("-%s", assets[idx].Amount)
 	}
 

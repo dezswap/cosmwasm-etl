@@ -87,11 +87,11 @@ func Test_parseTxs(t *testing.T) {
 	}
 
 	tcs := []testcase{
-		// {[]string{swapLogStr, provideLogStr, withdrawLogStr, wasmTransferLogStr, transferLogStr}, 1, 0, []parser.ParsedTx{swapTx, provideTx, withdrawTx}, ""},
+		{[]string{swapLogStr, provideLogStr, withdrawLogStr, wasmTransferLogStr, transferLogStr}, 1, 0, []parser.ParsedTx{swapTx, provideTx, withdrawTx}, ""},
 		{[]string{withdrawLogStr, transferLogStr, wasmTransferLogStr}, 1, 0, []parser.ParsedTx{withdrawTx, transferTx, wasmTransferTx}, ""},
-		// {[]string{swapLogStr, wasmTransferLogStr, transferLogStr}, 1, 0, []parser.ParsedTx{swapTx, transferTx}, ""},
-		// {nil, 0, 0, []parser.ParsedTx{}, ""},
-		// {nil, 3, 1, []parser.ParsedTx{}, ""},
+		{[]string{swapLogStr, wasmTransferLogStr, transferLogStr}, 1, 0, []parser.ParsedTx{swapTx, transferTx}, ""},
+		{nil, 0, 0, []parser.ParsedTx{}, ""},
+		{nil, 3, 1, []parser.ParsedTx{}, ""},
 	}
 
 	for idx, tc := range tcs {
@@ -125,7 +125,7 @@ var (
 	createTx       = parser.ParsedTx{hash, time.Time{}, parser.CreatePair, sender, "PAIR_ADDR", [2]parser.Asset{{"Asset0", "1000"}, {"Asset1", "1000"}}, "Lp", "1000", "", nil}
 	swapTx         = parser.ParsedTx{hash, time.Time{}, parser.Swap, sender, "PAIR_ADDR", [2]parser.Asset{{"Asset0", "1000"}, {"Asset1", "-1000"}}, "", "", "1", map[string]interface{}{"tax_amount": parser.Asset{pair.Assets[1], "0"}}}
 	provideTx      = parser.ParsedTx{hash, time.Time{}, parser.Provide, sender, "PAIR_ADDR", [2]parser.Asset{{"Asset0", "1000"}, {"Asset1", "1000"}}, "Lp", "1000", "", nil}
-	withdrawTx     = parser.ParsedTx{hash, time.Time{}, parser.Withdraw, sender, "PAIR_ADDR", [2]parser.Asset{{"Asset0", "-1000"}, {"Asset1", "-1000"}}, "Lp", "1000", "", nil}
+	withdrawTx     = parser.ParsedTx{hash, time.Time{}, parser.Withdraw, sender, "PAIR_ADDR", [2]parser.Asset{{"Asset0", "-993"}, {"Asset1", "-993"}}, "Lp", "1000", "", nil}
 	transferTx     = parser.ParsedTx{hash, time.Time{}, parser.Transfer, sender, "PAIR_ADDR", [2]parser.Asset{{"Asset0", ""}, {"Asset1", "1000"}}, "", "", "", make(map[string]interface{})}
 	wasmTransferTx = parser.ParsedTx{hash, time.Time{}, parser.Transfer, sender, "PAIR_ADDR", [2]parser.Asset{{"Asset0", "1000"}, {"Asset1", ""}}, "", "", "", make(map[string]interface{})}
 )
