@@ -69,6 +69,17 @@ func (app *dexApp) Run() error {
 		return errors.Wrap(err, "app.Run")
 	}
 
+	// to avoid skipping validation error
+	if (localSynced % uint64(app.validationInterval)) == 0 {
+		poolInfos, err := app.GetPoolInfos((localSynced))
+		if err != nil {
+			return errors.Wrap(err, "app.Run")
+		}
+		if err := app.validate(0, (localSynced), poolInfos); err != nil {
+			return errors.Wrap(err, "app.Run")
+		}
+	}
+
 	app.logger.Infof("current synced height: %d, remote node height: %d", localSynced, srcHeight)
 	for cur := localSynced + 1; cur <= srcHeight; cur++ {
 		txs, err := app.GetSourceTxs(cur)
@@ -102,6 +113,12 @@ func (app *dexApp) Run() error {
 		}
 
 		if (cur % uint64(app.validationInterval)) == 0 {
+			if len(poolInfos) == 0 {
+				poolInfos, err = app.GetPoolInfos(cur)
+				if err != nil {
+					return errors.Wrap(err, "app.Run")
+				}
+			}
 			if err := app.validate(0, cur, poolInfos); err != nil {
 				return errors.Wrap(err, "app.Run")
 			}
