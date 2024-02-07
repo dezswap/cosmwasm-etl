@@ -150,10 +150,6 @@ func (m *pairMapper) withdrawMatchedToParsedTx(res eventlog.MatchedResult, pair 
 		return nil, errors.Wrap(err, "pairMapper.withdrawMatchedToParsedTx")
 	}
 	for idx := range assets {
-		assets[idx].Amount, err = parser.AmountMul(assets[idx].Amount, "0.9939285487078243")
-		if err != nil {
-			return nil, errors.Wrap(err, "pairMapper.withdrawMatchedToParsedTx")
-		}
 		assets[idx].Amount = fmt.Sprintf("-%s", assets[idx].Amount)
 	}
 
@@ -164,9 +160,12 @@ func (m *pairMapper) withdrawMatchedToParsedTx(res eventlog.MatchedResult, pair 
 	return &parser.ParsedTx{
 		Type:         parser.Withdraw,
 		ContractAddr: res[t.PairAddrIdx].Value,
-		Assets:       [2]parser.Asset{assets[0], assets[1]},
+		Assets:       [2]parser.Asset{{assets[0].Addr, "0"}, {assets[1].Addr, "0"}},
 		LpAddr:       pair.LpAddr,
 		LpAmount:     res[t.PairWithdrawWithdrawShareIdx].Value,
+		Meta: map[string]interface{}{
+			"withdraw_assets": assets,
+		},
 	}, nil
 
 }

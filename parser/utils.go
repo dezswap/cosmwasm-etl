@@ -6,8 +6,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/shopspring/decimal"
-
 	"github.com/pkg/errors"
 )
 
@@ -77,25 +75,4 @@ func AmountAdd(amount1, amount2 string) (string, error) {
 	}
 
 	return a1.Add(a1, a2).String(), nil
-}
-
-func AmountMul(amount1, amount2 string) (string, error) {
-	toDecimal := func(amount string) (*decimal.Decimal, error) {
-		amountDec, err := decimal.NewFromString(amount)
-		if err != nil {
-			return nil, errors.Wrap(err, "toDecimal")
-		}
-		return &amountDec, nil
-	}
-
-	a1, err := toDecimal(amount1)
-	if err != nil {
-		return "", errors.Wrap(err, "parser.AmountAdd")
-	}
-	a2, err := toDecimal(amount2)
-	if err != nil {
-		return "", errors.Wrap(err, "parser.AmountAdd")
-	}
-
-	return a1.Mul(*a2).BigInt().String(), nil
 }
