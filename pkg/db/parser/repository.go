@@ -286,43 +286,47 @@ func (r *readRepoImpl) GetParsedTxsWithPriceOfPair(pairId uint64, priceToken str
 
 func (r *readRepoImpl) PairStats(startTs float64, endTs float64, priceToken string) ([]schemas.PairStats30m, error) {
 	query := `
-select pair_id,
-       coalesce(sum(volume) filter (where type = 'swap'),0) as volume0,
-       coalesce(sum(volume_in_price) filter (where type = 'swap'),0) as volume0_in_price,
-       avg(last_volume) as last_swap_price,
-       sum(commission) as commission0,
-       sum(commission_in_price) as commission0_in_price,
-       count(distinct hash) as tx_cnt,
-       count(distinct sender) filter (where type = 'provide') as provider_cnt
-from (
-select distinct height,
-                pair_id,
-                hash,
-                sender,
-                type,
-                first_value(volume) over (partition by pair_id order by height desc) last_volume,
-                abs(volume) as volume,
-                abs(volume) * price / pow(10, decimals) as volume_in_price,
-                commission,
-                abs(commission) * price / pow(10, decimals) as commission_in_price
-from (select pt.height,
-             p.id pair_id,
-       pt.hash,
-       pt.sender,
-       pt.type,
-       pt.asset0_amount as volume,
-       pt.commission0_amount as commission,
-       first_value(pr.price) over (partition by pt.height order by pr.height desc) as price,
-       t.decimals
-    from parsed_tx pt
-        join pair p on pt.chain_id = p.chain_id and pt.contract = p.contract
-        join tokens t on pt.chain_id = t.chain_id and pt.asset0 = t.address
-        join (select height, token_id, price from price
- union select 0 height, id as token_id, 1 as price from tokens where address = ?) pr on t.id = pr.token_id and pr.height <= pt.height
-    where pt.chain_id = ?
-      and pt.timestamp >= ?
-      and pt.timestamp < ?
-      and type in ('swap', 'provide', 'withdraw')) t) t
+select -- asset0's stats by pairs
+    pair_id,
+    coalesce(sum(volume) filter (where type = 'swap'),0) as volume0,
+    coalesce(sum(volume_in_price) filter (where type = 'swap'),0) as volume0_in_price,
+    avg(last_volume) as last_swap_price,
+    sum(commission) as commission0,
+    sum(commission_in_price) as commission0_in_price,
+    count(distinct hash) as tx_cnt,
+    count(distinct sender) filter (where type = 'provide') as provider_cnt
+from (select distinct -- processed asset0 values
+          height,
+          pair_id,
+          hash,
+          sender,
+          type,
+          first_value(volume / pow(10, decimals)) over (partition by pair_id order by height desc) last_volume,
+          abs(volume) as volume,
+          abs(volume) * price / pow(10, decimals) as volume_in_price,
+          commission,
+          abs(commission) * price / pow(10, decimals) as commission_in_price
+      from (select -- txs' asset0 values in a specific time range
+                pt.height,
+                p.id pair_id,
+                pt.hash,
+                pt.sender,
+                pt.type,
+                pt.asset0_amount as volume,
+                pt.commission0_amount as commission,
+                first_value(pr.price) over (partition by pt.height order by pr.height desc) as price,
+                t.decimals
+            from parsed_tx pt
+                join pair p on pt.chain_id = p.chain_id and pt.contract = p.contract
+                join tokens t on pt.chain_id = t.chain_id and pt.asset0 = t.address
+                join (select height, token_id, price from price -- token prices
+                      union
+                      select 0 height, id as token_id, 1 as price from tokens where address = ?) pr
+                    on t.id = pr.token_id and pr.height <= pt.height
+            where pt.chain_id = ?
+              and pt.timestamp >= ?
+              and pt.timestamp < ?
+              and type in ('swap', 'provide', 'withdraw')) t) t
 group by pair_id
 `
 	res0 := []schemas.PairStats30m{}
@@ -331,39 +335,42 @@ group by pair_id
 	}
 
 	query = `
-select pair_id,
-       coalesce(sum(volume) filter (where type = 'swap'),0) as volume1,
-       coalesce(sum(volume_in_price) filter (where type = 'swap'),0) as volume1_in_price,
-       avg(last_volume) as last_swap_price,
-       sum(commission) commission1,
-       sum(commission_in_price) commission1_in_price
-from (
-select distinct height,
-                pair_id,
-                hash,
+select -- asset1's stats by pairs
+    pair_id,
+    coalesce(sum(volume) filter (where type = 'swap'),0) as volume1,
+    coalesce(sum(volume_in_price) filter (where type = 'swap'),0) as volume1_in_price,
+    avg(last_volume) as last_swap_price,
+    sum(commission) commission1,
+    sum(commission_in_price) commission1_in_price
+from (select distinct -- processed asset1 values
+          height,
+          pair_id,
+          hash,
+          type,
+          first_value(volume / pow(10, decimals)) over (partition by pair_id order by height desc) last_volume,
+          abs(volume) as volume,
+          abs(volume) * price / pow(10, decimals) as volume_in_price,
+          commission,
+          abs(commission) * price / pow(10, decimals) as commission_in_price
+      from (select -- txs' asset1 values in a specific time range
+                pt.height,
+                p.id pair_id,
+                pt.hash,
                 type,
-                first_value(volume) over (partition by pair_id order by height desc) last_volume,
-                abs(volume) as volume,
-                abs(volume) * price / pow(10, decimals) as volume_in_price,
-                commission,
-                abs(commission) * price / pow(10, decimals) as commission_in_price
-from (select pt.height,
-             p.id pair_id,
-       pt.hash,
-       type,
-       pt.asset1_amount as volume,
-       pt.commission1_amount as commission,
-       first_value(pr.price) over (partition by pt.height order by pr.height desc) as price,
-       t.decimals
-    from parsed_tx pt
-        join pair p on pt.chain_id = p.chain_id and pt.contract = p.contract
-        join tokens t on pt.chain_id = t.chain_id and pt.asset1 = t.address
-        join (select height, token_id, price from price
- union select 0 height, id as token_id, 1 as price from tokens where address = ?) pr on t.id = pr.token_id and pr.height <= pt.height
-    where pt.chain_id = ?
-      and pt.timestamp >= ?
-      and pt.timestamp < ?
-      and type in ('swap', 'provide', 'withdraw')) t) t
+                pt.asset1_amount as volume,
+                pt.commission1_amount as commission,
+                first_value(pr.price) over (partition by pt.height order by pr.height desc) as price,
+                t.decimals
+            from parsed_tx pt
+                join pair p on pt.chain_id = p.chain_id and pt.contract = p.contract
+                join tokens t on pt.chain_id = t.chain_id and pt.asset1 = t.address
+                join (select height, token_id, price from price 
+                      union select 0 height, id as token_id, 1 as price from tokens where address = ?) pr
+                    on t.id = pr.token_id and pr.height <= pt.height
+            where pt.chain_id = ?
+              and pt.timestamp >= ?
+              and pt.timestamp < ?
+              and type in ('swap', 'provide', 'withdraw')) t) t
 group by pair_id
 `
 	res1 := []schemas.PairStats30m{}
@@ -399,7 +406,7 @@ group by pair_id
 				if err != nil {
 					return nil, err
 				}
-				s.LastSwapPrice = lastVolume0.Quo(lastVolume1).Abs().String()
+				s.LastSwapPrice = lastVolume1.Quo(lastVolume0).Abs().String()
 
 				res0[i] = s
 			}
