@@ -8,3 +8,12 @@ func IsFactoryAddress(address string) bool {
 	}
 	return false
 }
+
+func TerraswapTypeOf(address string) TerraswapType {
+	for t, v := range FactoryAddress {
+		if v == address {
+			return t
+		}
+	}
+	return InvalidType
+}

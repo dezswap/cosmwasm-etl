@@ -31,7 +31,7 @@ func Test_parseTxs(t *testing.T) {
 	}
 
 	const (
-		factoryAddrKey = terraswap.TestnetKey
+		factoryAddrKey = terraswap.Pisco
 		height         = uint(100)
 	)
 	parser.FakerCustomGenerator()

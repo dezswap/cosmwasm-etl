@@ -31,10 +31,10 @@ func Test_CreateCreateLogFinder(t *testing.T) {
 		expectedResultLen int
 		errMsg            string
 	}{
-		{FactoryAddress[ClassicV1Key], CreatePairRawLogStr, 1, "must match once"},
-		{FactoryAddress[ClassicV1Key], createTwiceLogStr, 2, "must match twice"},
-		{FactoryAddress[ClassicV1Key], differentTypeLogsStr, 0, "must not match with different type"},
-		{FactoryAddress[ClassicV1Key], "[]", 0, "must not match with empty logs"},
+		{FactoryAddress[ClassicV1], CreatePairRawLogStr, 1, "must match once"},
+		{FactoryAddress[ClassicV1], createTwiceLogStr, 2, "must match twice"},
+		{FactoryAddress[ClassicV1], differentTypeLogsStr, 0, "must not match with different type"},
+		{FactoryAddress[ClassicV1], "[]", 0, "must not match with empty logs"},
 	}
 
 	for idx, tc := range tcs {
