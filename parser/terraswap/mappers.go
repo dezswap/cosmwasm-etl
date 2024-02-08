@@ -160,7 +160,7 @@ func (m *pairMapper) withdrawMatchedToParsedTx(res eventlog.MatchedResult, pair 
 	return &parser.ParsedTx{
 		Type:         parser.Withdraw,
 		ContractAddr: res[t.PairAddrIdx].Value,
-		Assets:       [2]parser.Asset{{assets[0].Addr, "0"}, {assets[1].Addr, "0"}},
+		Assets:       [2]parser.Asset{{Addr: assets[0].Addr, Amount: "0"}, {Addr: assets[1].Addr, Amount: "0"}},
 		LpAddr:       pair.LpAddr,
 		LpAmount:     res[t.PairWithdrawWithdrawShareIdx].Value,
 		Meta: map[string]interface{}{
@@ -217,7 +217,7 @@ func (m *wasmCommonTransferMapper) MatchedToParsedTx(res eventlog.MatchedResult,
 	return &parser.ParsedTx{
 		Type:         parser.Transfer,
 		Sender:       res[t.WasmTransferFromIdx].Value,
-		ContractAddr: res[t.WasmTransferToIdx].Value,
+		ContractAddr: pair.ContractAddr,
 		Assets:       assets,
 		Meta:         meta,
 	}, nil
