@@ -1,4 +1,4 @@
-package terraswap
+package columbus_v1
 
 import (
 	"encoding/json"
@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
+	"github.com/dezswap/cosmwasm-etl/pkg/rules/terraswap"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -31,10 +32,10 @@ func Test_CreateCreateLogFinder(t *testing.T) {
 		expectedResultLen int
 		errMsg            string
 	}{
-		{FactoryAddress[ClassicV1], CreatePairRawLogStr, 1, "must match once"},
-		{FactoryAddress[ClassicV1], createTwiceLogStr, 2, "must match twice"},
-		{FactoryAddress[ClassicV1], differentTypeLogsStr, 0, "must not match with different type"},
-		{FactoryAddress[ClassicV1], "[]", 0, "must not match with empty logs"},
+		{terraswap.FactoryAddress[terraswap.ClassicV1], CreatePairRawLogStr, 1, "must match once"},
+		{terraswap.FactoryAddress[terraswap.ClassicV1], createTwiceLogStr, 2, "must match twice"},
+		{terraswap.FactoryAddress[terraswap.ClassicV1], differentTypeLogsStr, 0, "must not match with different type"},
+		{terraswap.FactoryAddress[terraswap.ClassicV1], "[]", 0, "must not match with empty logs"},
 	}
 
 	for idx, tc := range tcs {

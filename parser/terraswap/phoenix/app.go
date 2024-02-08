@@ -1,4 +1,4 @@
-package columbus_v1
+package phoenix
 
 import (
 	"github.com/dezswap/cosmwasm-etl/configs"
@@ -6,7 +6,7 @@ import (
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 	ts "github.com/dezswap/cosmwasm-etl/pkg/rules/terraswap"
-	cv1 "github.com/dezswap/cosmwasm-etl/pkg/rules/terraswap/columbus_v1"
+	"github.com/dezswap/cosmwasm-etl/pkg/rules/terraswap/phoenix"
 	"github.com/pkg/errors"
 )
 
@@ -20,7 +20,7 @@ type terraswapApp struct {
 var _ parser.TargetApp = &terraswapApp{}
 
 func New(repo parser.PairRepo, logger logging.Logger, c configs.ParserConfig) (parser.TargetApp, error) {
-	finder, err := cv1.CreateCreatePairRuleFinder(c.FactoryAddress)
+	finder, err := phoenix.CreateCreatePairRuleFinder(c.FactoryAddress)
 	if err != nil {
 		return nil, errors.Wrap(err, "NewApp")
 	}
@@ -103,19 +103,19 @@ func (p *terraswapApp) updateParsers(pairs map[string]parser.Pair) error {
 		pairFilter[k] = true
 	}
 
-	pairFinder, err := cv1.CreatePairCommonRulesFinder(pairFilter)
+	pairFinder, err := phoenix.CreatePairCommonRulesFinder(pairFilter)
 	if err != nil {
 		return errors.Wrap(err, "createParsers")
 	}
 	p.Parsers.PairActionParser = parser.NewParser(pairFinder, &pairMapper{pairSet: pairs})
 
-	wasmTransferFinder, err := cv1.CreateWasmCommonTransferRuleFinder(pairFilter)
+	wasmTransferFinder, err := phoenix.CreateWasmCommonTransferRuleFinder(pairFilter)
 	if err != nil {
 		return errors.Wrap(err, "createParsers")
 	}
 	p.Parsers.WasmTransfer = parser.NewParser(wasmTransferFinder, &wasmCommonTransferMapper{pairSet: pairs})
 
-	transferRule, err := cv1.CreateTransferRuleFinder(nil)
+	transferRule, err := phoenix.CreateTransferRuleFinder(nil)
 	if err != nil {
 		return errors.Wrap(err, "createParsers")
 	}

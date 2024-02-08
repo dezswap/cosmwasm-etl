@@ -1,4 +1,4 @@
-package columbus_v1
+package phoenix
 
 import (
 	"fmt"
@@ -6,7 +6,7 @@ import (
 
 	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
-	ts "github.com/dezswap/cosmwasm-etl/pkg/rules/terraswap/columbus_v1"
+	ts "github.com/dezswap/cosmwasm-etl/pkg/rules/terraswap/phoenix"
 
 	"github.com/pkg/errors"
 )
@@ -100,21 +100,13 @@ func (m *pairMapper) swapMatchedToParsedTx(res eventlog.MatchedResult, pair pars
 	assets[offerIdx].Amount = res[ts.PairSwapOfferAmountIdx].Value
 	assets[returnIdx].Amount = fmt.Sprintf("-%s", res[ts.PairSwapReturnAmountIdx].Value)
 
-	if assets[returnIdx].Amount, err = parser.AmountAdd(assets[returnIdx].Amount, res[ts.PairSwapTaxAmountIdx].Value); err != nil {
-		return nil, errors.Wrap(err, "pairMapper.swapMatchedToParsedTx")
-	}
-
 	return &parser.ParsedTx{
 		Type:             parser.Swap,
 		ContractAddr:     res[ts.PairAddrIdx].Value,
+		Sender:           res[ts.PairSwapSenderIdx].Value,
 		Assets:           assets,
 		CommissionAmount: res[ts.PairSwapCommissionAmountIdx].Value,
-		Meta: map[string]interface{}{
-			res[ts.PairSwapTaxAmountIdx].Key: parser.Asset{
-				Addr:   assets[returnIdx].Addr,
-				Amount: res[ts.PairSwapTaxAmountIdx].Value,
-			},
-		},
+		Meta:             nil,
 	}, nil
 }
 
@@ -135,6 +127,7 @@ func (m *pairMapper) provideMatchedToParsedTx(res eventlog.MatchedResult, pair p
 	return &parser.ParsedTx{
 		Type:         parser.Provide,
 		ContractAddr: res[ts.PairAddrIdx].Value,
+		Sender:       res[ts.PairProvideSenderIdx].Value,
 		Assets:       [2]parser.Asset{assets[0], assets[1]},
 		LpAddr:       pair.LpAddr,
 		LpAmount:     res[ts.PairProvideShareIdx].Value,
@@ -165,6 +158,7 @@ func (m *pairMapper) withdrawMatchedToParsedTx(res eventlog.MatchedResult, pair 
 	return &parser.ParsedTx{
 		Type:         parser.Withdraw,
 		ContractAddr: res[ts.PairAddrIdx].Value,
+		Sender:       res[ts.PairWithdrawSenderIdx].Value,
 		Assets:       [2]parser.Asset{assets[0], assets[1]},
 		LpAddr:       pair.LpAddr,
 		LpAmount:     res[ts.PairWithdrawWithdrawShareIdx].Value,
