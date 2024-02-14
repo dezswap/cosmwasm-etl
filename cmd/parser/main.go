@@ -13,6 +13,7 @@ import (
 	collector_store "github.com/dezswap/cosmwasm-etl/collector/datastore"
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/parser"
+	"github.com/pkg/errors"
 
 	"github.com/dezswap/cosmwasm-etl/parser/dezswap"
 	"github.com/dezswap/cosmwasm-etl/parser/repo"
@@ -24,8 +25,11 @@ import (
 	"github.com/dezswap/cosmwasm-etl/pkg/grpc"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 	parsable_rules "github.com/dezswap/cosmwasm-etl/pkg/rules"
+	rule_ts "github.com/dezswap/cosmwasm-etl/pkg/rules/terraswap"
 	"github.com/dezswap/cosmwasm-etl/pkg/s3client"
 	"github.com/dezswap/cosmwasm-etl/pkg/terra/col4"
+	terra_phoenix "github.com/dezswap/cosmwasm-etl/pkg/terra/phoenix"
+	"github.com/dezswap/cosmwasm-etl/pkg/terra/rpc"
 )
 
 const (
@@ -95,22 +99,40 @@ func main() {
 
 	var rawDataStore parser.SourceDataStore
 	if c.Parser.TargetApp == parsable_rules.Terraswap {
-		rpc := col4.NewRpc(c.Parser.NodeConfig.RestClientConfig.RpcHost, &http.Client{
+		r := rpc.New(c.Parser.NodeConfig.RestClientConfig.RpcHost, &http.Client{
 			Transport: &http.Transport{
 				MaxIdleConns:      10,               // Maximum idle connections to keep open
 				IdleConnTimeout:   30 * time.Second, // Time to keep idle connections open
 				DisableKeepAlives: false,            // Use HTTP Keep-Alive
 			},
 		})
-		lcd := col4.NewLcd(c.Parser.NodeConfig.RestClientConfig.LcdHost, &http.Client{
-			Transport: &http.Transport{
-				MaxIdleConns:      10,               // Maximum idle connections to keep open
-				IdleConnTimeout:   30 * time.Second, // Time to keep idle connections open
-				DisableKeepAlives: false,            // Use HTTP Keep-Alive
-			},
-		})
-		terraswapQueryClient := ts_client.NewCol4Client(lcd)
-		rawDataStore = ts_srcstore.NewCol4Store(c.Parser.FactoryAddress, rpc, lcd, terraswapQueryClient)
+
+		switch rule_ts.TerraswapTypeOf(c.Parser.FactoryAddress) {
+		case rule_ts.Mainnet:
+			lcd := terra_phoenix.NewLcd(c.Parser.NodeConfig.RestClientConfig.LcdHost, &http.Client{
+				Transport: &http.Transport{
+					MaxIdleConns:      10,               // Maximum idle connections to keep open
+					IdleConnTimeout:   30 * time.Second, // Time to keep idle connections open
+					DisableKeepAlives: false,            // Use HTTP Keep-Alive
+				},
+			})
+			terraswapQueryClient := ts_client.NewPhoenixClient(lcd)
+			rawDataStore = ts_srcstore.NewPhoenixStore(c.Parser.FactoryAddress, r, lcd, terraswapQueryClient)
+		case rule_ts.ClassicV2, rule_ts.Pisco:
+			panic(errors.New("not implemented yet"))
+		case rule_ts.ClassicV1:
+			lcd := col4.NewLcd(c.Parser.NodeConfig.RestClientConfig.LcdHost, &http.Client{
+				Transport: &http.Transport{
+					MaxIdleConns:      10,               // Maximum idle connections to keep open
+					IdleConnTimeout:   30 * time.Second, // Time to keep idle connections open
+					DisableKeepAlives: false,            // Use HTTP Keep-Alive
+				},
+			})
+			terraswapQueryClient := ts_client.NewCol4Client(lcd)
+			rawDataStore = ts_srcstore.NewCol4Store(c.Parser.FactoryAddress, r, lcd, terraswapQueryClient)
+		default:
+			panic(errors.Errorf("invalid factory address: %s", c.Parser.FactoryAddress))
+		}
 	} else {
 		readStore := getCollectorReadStore(&c)
 		rawDataStore = srcstore.New(readStore)
