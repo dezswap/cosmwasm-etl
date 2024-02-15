@@ -16,7 +16,7 @@ func NewPhoenixClient(lcd phoenix.Lcd) QueryClient {
 
 // QueryPool implements Col4QueryClient.
 func (c *phoenixQueryClient) QueryPool(pairAddr string, height ...uint64) (*dex.PoolInfoRes, error) {
-	res, err := phoenix.QueryContractState[dex.PoolInfoRes](c.lcd, pairAddr, dex.PAIR_QUERY_POOL_STRING, height...)
+	res, err := phoenix.QueryContractState[dex.PoolInfoRes](c.lcd, pairAddr, dex.PAIR_QUERY_POOL_BASE64_STRING, height...)
 	if err != nil {
 		return nil, errors.Wrap(err, "phoenixQueryClient.QueryPool")
 	}
@@ -31,7 +31,7 @@ func (c *phoenixQueryClient) QueryPairs(factoryAddr string, startAfter []dex.Ass
 		pairsReq.Pairs.StartAfter = (*[2]dex.AssetInfo)(startAfter)
 	}
 
-	req, err := dex.QueryToJsonStr[dex.FactoryPairsReq](pairsReq)
+	req, err := dex.QueryToBase64Str[dex.FactoryPairsReq](pairsReq)
 	if err != nil {
 		return nil, errors.Wrap(err, "phoenixQueryClient.QueryPairs")
 	}

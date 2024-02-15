@@ -112,7 +112,7 @@ func (m *pairMapper) swapMatchedToParsedTx(res eventlog.MatchedResult, pair pars
 
 func (m *pairMapper) provideMatchedToParsedTx(res eventlog.MatchedResult, pair parser.Pair) (*parser.ParsedTx, error) {
 	if err := m.mixin.checkResult(res, ts.PairProvideMatchedLen); err != nil {
-		return nil, errors.Wrap(err, "pairMapper.PairProvideMatchedLen")
+		return nil, errors.Wrap(err, "pairMapper.provideMatchedToParsedTx")
 	}
 
 	assets, err := parser.GetAssetsFromAssetsString(res[ts.PairProvideAssetsIdx].Value)
@@ -144,10 +144,6 @@ func (m *pairMapper) withdrawMatchedToParsedTx(res eventlog.MatchedResult, pair 
 		return nil, errors.Wrap(err, "pairMapper.withdrawMatchedToParsedTx")
 	}
 	for idx := range assets {
-		assets[idx].Amount, err = parser.AmountMul(assets[idx].Amount, "0.9939285487078243")
-		if err != nil {
-			return nil, errors.Wrap(err, "pairMapper.withdrawMatchedToParsedTx")
-		}
 		assets[idx].Amount = fmt.Sprintf("-%s", assets[idx].Amount)
 	}
 
@@ -213,7 +209,7 @@ func (m *wasmCommonTransferMapper) MatchedToParsedTx(res eventlog.MatchedResult,
 	return &parser.ParsedTx{
 		Type:         parser.Transfer,
 		Sender:       res[ts.WasmTransferFromIdx].Value,
-		ContractAddr: res[ts.WasmTransferToIdx].Value,
+		ContractAddr: pair.ContractAddr,
 		Assets:       assets,
 		Meta:         meta,
 	}, nil

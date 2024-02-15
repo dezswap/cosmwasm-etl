@@ -125,7 +125,7 @@ var (
 	createTx       = parser.ParsedTx{hash, time.Time{}, parser.CreatePair, sender, "PAIR_ADDR", [2]parser.Asset{{"Asset0", "1000"}, {"Asset1", "1000"}}, "Lp", "1000", "", nil}
 	swapTx         = parser.ParsedTx{hash, time.Time{}, parser.Swap, sender, "PAIR_ADDR", [2]parser.Asset{{"Asset0", "1000"}, {"Asset1", "-1000"}}, "", "", "1", nil}
 	provideTx      = parser.ParsedTx{hash, time.Time{}, parser.Provide, sender, "PAIR_ADDR", [2]parser.Asset{{"Asset0", "1000"}, {"Asset1", "1000"}}, "Lp", "1000", "", nil}
-	withdrawTx     = parser.ParsedTx{hash, time.Time{}, parser.Withdraw, sender, "PAIR_ADDR", [2]parser.Asset{{"Asset0", "-993"}, {"Asset1", "-993"}}, "Lp", "1000", "", nil}
+	withdrawTx     = parser.ParsedTx{hash, time.Time{}, parser.Withdraw, sender, "PAIR_ADDR", [2]parser.Asset{{"Asset0", "-1000"}, {"Asset1", "-1000"}}, "Lp", "1000", "", nil}
 	transferTx     = parser.ParsedTx{hash, time.Time{}, parser.Transfer, sender, "PAIR_ADDR", [2]parser.Asset{{"Asset0", ""}, {"Asset1", "1000"}}, "", "", "", make(map[string]interface{})}
 	wasmTransferTx = parser.ParsedTx{hash, time.Time{}, parser.Transfer, sender, "PAIR_ADDR", [2]parser.Asset{{"Asset0", "1000"}, {"Asset1", ""}}, "", "", "", make(map[string]interface{})}
 )

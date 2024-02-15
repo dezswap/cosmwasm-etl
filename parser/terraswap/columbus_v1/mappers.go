@@ -6,7 +6,7 @@ import (
 
 	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
-	ts "github.com/dezswap/cosmwasm-etl/pkg/rules/terraswap/columbus_v1"
+	t "github.com/dezswap/cosmwasm-etl/pkg/rules/terraswap/columbus_v1"
 
 	"github.com/pkg/errors"
 )
@@ -34,11 +34,11 @@ type wasmCommonTransferMapper struct {
 
 // match implements mapper
 func (m *createPairMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) (*parser.ParsedTx, error) {
-	if err := m.mapperMixin.checkResult(res, ts.CreatePairMatchedLen); err != nil {
+	if err := m.mapperMixin.checkResult(res, t.CreatePairMatchedLen); err != nil {
 		return nil, errors.Wrap(err, "createPairMapper.MatchedToParsedTx")
 	}
 
-	assets := strings.Split(res[ts.FactoryPairIdx].Value, "-")
+	assets := strings.Split(res[t.FactoryPairIdx].Value, "-")
 	if len(assets) != 2 {
 		msg := fmt.Sprintf("expected assets length(%d)", 2)
 		return nil, errors.New(msg)
@@ -47,45 +47,45 @@ func (m *createPairMapper) MatchedToParsedTx(res eventlog.MatchedResult, optiona
 	return &parser.ParsedTx{
 		Type:         parser.CreatePair,
 		Sender:       "",
-		ContractAddr: res[ts.FactoryPairAddrIdx].Value,
+		ContractAddr: res[t.FactoryPairAddrIdx].Value,
 		Assets: [2]parser.Asset{
 			{Addr: assets[0]},
 			{Addr: assets[1]},
 		},
-		LpAddr:   res[ts.FactoryLpAddrIdx].Value,
+		LpAddr:   res[t.FactoryLpAddrIdx].Value,
 		LpAmount: "",
 	}, nil
 }
 
 // match implements mapper
 func (m *pairMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) (*parser.ParsedTx, error) {
-	pair, ok := m.pairSet[res[ts.PairAddrIdx].Value]
+	pair, ok := m.pairSet[res[t.PairAddrIdx].Value]
 	if !ok {
-		msg := fmt.Sprintf("pairMapper.MatchedToParsedTx no pair(%s)", res[ts.PairAddrIdx].Value)
+		msg := fmt.Sprintf("pairMapper.MatchedToParsedTx no pair(%s)", res[t.PairAddrIdx].Value)
 		return nil, errors.New(msg)
 	}
 
-	action := ts.PairAction(res[ts.PairActionIdx].Value)
+	action := t.PairAction(res[t.PairActionIdx].Value)
 	switch action {
-	case ts.SwapAction:
+	case t.SwapAction:
 		return m.swapMatchedToParsedTx(res, pair)
-	case ts.ProvideAction:
+	case t.ProvideAction:
 		return m.provideMatchedToParsedTx(res, pair)
-	case ts.WithdrawAction:
+	case t.WithdrawAction:
 		return m.withdrawMatchedToParsedTx(res, pair)
 	}
 
-	msg := fmt.Sprintf("action must be (%s, %s, %s)", ts.SwapAction, ts.ProvideAction, ts.WithdrawAction)
+	msg := fmt.Sprintf("action must be (%s, %s, %s)", t.SwapAction, t.ProvideAction, t.WithdrawAction)
 	return nil, errors.New(msg)
 }
 
 func (m *pairMapper) swapMatchedToParsedTx(res eventlog.MatchedResult, pair parser.Pair) (*parser.ParsedTx, error) {
 	var err error
-	if err = m.mixin.checkResult(res, ts.PairSwapMatchedLen); err != nil {
+	if err = m.mixin.checkResult(res, t.PairSwapMatchedLen); err != nil {
 		return nil, errors.Wrap(err, "pairMapper.swapMatchedToParsedTx")
 	}
 
-	offerAsset := res[ts.PairSwapOfferAssetIdx].Value
+	offerAsset := res[t.PairSwapOfferAssetIdx].Value
 	offerIdx := 0
 	if pair.Assets[1] == offerAsset {
 		offerIdx = 1
@@ -97,33 +97,33 @@ func (m *pairMapper) swapMatchedToParsedTx(res eventlog.MatchedResult, pair pars
 		{Addr: pair.Assets[1]},
 	}
 
-	assets[offerIdx].Amount = res[ts.PairSwapOfferAmountIdx].Value
-	assets[returnIdx].Amount = fmt.Sprintf("-%s", res[ts.PairSwapReturnAmountIdx].Value)
+	assets[offerIdx].Amount = res[t.PairSwapOfferAmountIdx].Value
+	assets[returnIdx].Amount = fmt.Sprintf("-%s", res[t.PairSwapReturnAmountIdx].Value)
 
-	if assets[returnIdx].Amount, err = parser.AmountAdd(assets[returnIdx].Amount, res[ts.PairSwapTaxAmountIdx].Value); err != nil {
+	if assets[returnIdx].Amount, err = parser.AmountAdd(assets[returnIdx].Amount, res[t.PairSwapTaxAmountIdx].Value); err != nil {
 		return nil, errors.Wrap(err, "pairMapper.swapMatchedToParsedTx")
 	}
 
 	return &parser.ParsedTx{
 		Type:             parser.Swap,
-		ContractAddr:     res[ts.PairAddrIdx].Value,
+		ContractAddr:     res[t.PairAddrIdx].Value,
 		Assets:           assets,
-		CommissionAmount: res[ts.PairSwapCommissionAmountIdx].Value,
+		CommissionAmount: res[t.PairSwapCommissionAmountIdx].Value,
 		Meta: map[string]interface{}{
-			res[ts.PairSwapTaxAmountIdx].Key: parser.Asset{
+			res[t.PairSwapTaxAmountIdx].Key: parser.Asset{
 				Addr:   assets[returnIdx].Addr,
-				Amount: res[ts.PairSwapTaxAmountIdx].Value,
+				Amount: res[t.PairSwapTaxAmountIdx].Value,
 			},
 		},
 	}, nil
 }
 
 func (m *pairMapper) provideMatchedToParsedTx(res eventlog.MatchedResult, pair parser.Pair) (*parser.ParsedTx, error) {
-	if err := m.mixin.checkResult(res, ts.PairProvideMatchedLen); err != nil {
+	if err := m.mixin.checkResult(res, t.PairProvideMatchedLen); err != nil {
 		return nil, errors.Wrap(err, "pairMapper.PairProvideMatchedLen")
 	}
 
-	assets, err := parser.GetAssetsFromAssetsString(res[ts.PairProvideAssetsIdx].Value)
+	assets, err := parser.GetAssetsFromAssetsString(res[t.PairProvideAssetsIdx].Value)
 	if err != nil {
 		return nil, errors.Wrap(err, "pairMapper.provideMatchedToParsedTx")
 	}
@@ -134,19 +134,19 @@ func (m *pairMapper) provideMatchedToParsedTx(res eventlog.MatchedResult, pair p
 
 	return &parser.ParsedTx{
 		Type:         parser.Provide,
-		ContractAddr: res[ts.PairAddrIdx].Value,
+		ContractAddr: res[t.PairAddrIdx].Value,
 		Assets:       [2]parser.Asset{assets[0], assets[1]},
 		LpAddr:       pair.LpAddr,
-		LpAmount:     res[ts.PairProvideShareIdx].Value,
+		LpAmount:     res[t.PairProvideShareIdx].Value,
 	}, nil
 }
 
 func (m *pairMapper) withdrawMatchedToParsedTx(res eventlog.MatchedResult, pair parser.Pair) (*parser.ParsedTx, error) {
-	if err := m.mixin.checkResult(res, ts.PairWithdrawMatchedLen); err != nil {
+	if err := m.mixin.checkResult(res, t.PairWithdrawMatchedLen); err != nil {
 		return nil, errors.Wrap(err, "pairMapper.withdrawMatchedToParsedTx")
 	}
 
-	assets, err := parser.GetAssetsFromAssetsString(res[ts.PairWithdrawRefundAssetsIdx].Value)
+	assets, err := parser.GetAssetsFromAssetsString(res[t.PairWithdrawRefundAssetsIdx].Value)
 	if err != nil {
 		return nil, errors.Wrap(err, "pairMapper.withdrawMatchedToParsedTx")
 	}
@@ -164,10 +164,10 @@ func (m *pairMapper) withdrawMatchedToParsedTx(res eventlog.MatchedResult, pair 
 
 	return &parser.ParsedTx{
 		Type:         parser.Withdraw,
-		ContractAddr: res[ts.PairAddrIdx].Value,
+		ContractAddr: res[t.PairAddrIdx].Value,
 		Assets:       [2]parser.Asset{assets[0], assets[1]},
 		LpAddr:       pair.LpAddr,
-		LpAmount:     res[ts.PairWithdrawWithdrawShareIdx].Value,
+		LpAmount:     res[t.PairWithdrawWithdrawShareIdx].Value,
 	}, nil
 
 }
@@ -178,8 +178,8 @@ func (m *wasmCommonTransferMapper) MatchedToParsedTx(res eventlog.MatchedResult,
 		return nil, errors.Wrap(err, "wasmCommonTransferMapper.MatchedToParsedTx")
 	}
 
-	fp, fromPair := m.pairSet[res[ts.WasmTransferFromIdx].Value]
-	tp, toPair := m.pairSet[res[ts.WasmTransferToIdx].Value]
+	fp, fromPair := m.pairSet[res[t.WasmTransferFromIdx].Value]
+	tp, toPair := m.pairSet[res[t.WasmTransferToIdx].Value]
 	if fromPair && toPair {
 		msg := fmt.Sprintf("cannot be both from and to, see the tx, result(%v)", res)
 		return nil, errors.New(msg)
@@ -200,10 +200,10 @@ func (m *wasmCommonTransferMapper) MatchedToParsedTx(res eventlog.MatchedResult,
 	}
 	meta := make(map[string]interface{})
 
-	target := res[ts.WasmTransferCw20AddrIdx].Value
+	target := res[t.WasmTransferCw20AddrIdx].Value
 	idx := parser.IndexOf(pair.Assets, target)
 	if idx == -1 {
-		meta[target] = res[ts.WasmTransferAmountIdx].Value
+		meta[target] = res[t.WasmTransferAmountIdx].Value
 	} else {
 		for _, item := range res {
 			if item.Key == "amount" {
@@ -218,8 +218,8 @@ func (m *wasmCommonTransferMapper) MatchedToParsedTx(res eventlog.MatchedResult,
 
 	return &parser.ParsedTx{
 		Type:         parser.Transfer,
-		Sender:       res[ts.WasmTransferFromIdx].Value,
-		ContractAddr: res[ts.WasmTransferToIdx].Value,
+		Sender:       res[t.WasmTransferFromIdx].Value,
+		ContractAddr: res[t.WasmTransferToIdx].Value,
 		Assets:       assets,
 		Meta:         meta,
 	}, nil
@@ -228,8 +228,8 @@ func (m *wasmCommonTransferMapper) MatchedToParsedTx(res eventlog.MatchedResult,
 
 // match implements mapper
 func (m *transferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) (*parser.ParsedTx, error) {
-	fp, fromPair := m.pairSet[res[ts.TransferSenderIdx].Value]
-	tp, toPair := m.pairSet[res[ts.TransferRecipientIdx].Value]
+	fp, fromPair := m.pairSet[res[t.TransferSenderIdx].Value]
+	tp, toPair := m.pairSet[res[t.TransferRecipientIdx].Value]
 
 	if fromPair && toPair {
 		msg := fmt.Sprintf("cannot be both from and to, see the tx, result(%v)", res)
@@ -251,7 +251,7 @@ func (m *transferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals
 	}
 	meta := make(map[string]interface{})
 
-	amountStrs := strings.Split(res[ts.TransferAmountIdx].Value, ",")
+	amountStrs := strings.Split(res[t.TransferAmountIdx].Value, ",")
 	for _, amountStr := range amountStrs {
 		asset, err := parser.GetAssetFromAmountAssetString(amountStr)
 		if err != nil {
@@ -270,7 +270,7 @@ func (m *transferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals
 
 	return &parser.ParsedTx{
 		Type:         parser.Transfer,
-		Sender:       res[ts.TransferSenderIdx].Value,
+		Sender:       res[t.TransferSenderIdx].Value,
 		ContractAddr: pair.ContractAddr,
 		Assets:       assets,
 		LpAddr:       "",

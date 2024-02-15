@@ -62,8 +62,15 @@ func (l *lcdImpl) ContractState(address string, query string, height ...uint64) 
 		return nil, errors.Wrap(err, "lcdImpl.ContractState")
 	}
 	defer response.Body.Close()
-	cHeight := response.Header.Get("Grpc-Metadata-X-Cosmos-Block-Height")
-	fmt.Printf(cHeight)
+	if len(height) > 0 {
+		resHeight, err := strconv.ParseUint(response.Header.Get("Grpc-Metadata-X-Cosmos-Block-Height"), 10, 64)
+		if err != nil {
+			return nil, errors.Wrap(err, "lcdImpl.ContractState")
+		}
+		if resHeight != height[0] {
+			return nil, errors.New(fmt.Sprintf("lcdImpl.ContractState: invalid height, expected %d, got %d", height[0], resHeight))
+		}
+	}
 
 	data, err := io.ReadAll(response.Body)
 	if err != nil {

@@ -285,7 +285,7 @@ func Test_PairMapper(t *testing.T) {
 				{Key: "withdrawn_share", Value: "12418119"},
 				{Key: "refund_assets", Value: fmt.Sprintf("%s%s, %s%s", "24999998", pair.Assets[0], "24939789", pair.Assets[1])},
 			},
-			&parser.ParsedTx{"", time.Time{}, parser.Withdraw, userAddr, pair.ContractAddr, [2]parser.Asset{{pair.Assets[0], "-24848211"}, {pair.Assets[1], "-24788368"}}, pair.LpAddr, "12418119", "", nil},
+			&parser.ParsedTx{"", time.Time{}, parser.Withdraw, userAddr, pair.ContractAddr, [2]parser.Asset{{pair.Assets[0], "-24999998"}, {pair.Assets[1], "-24939789"}}, pair.LpAddr, "12418119", "", nil},
 			"",
 		},
 		{
