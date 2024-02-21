@@ -140,7 +140,21 @@ func Test07UploadBlockBinaryAsLatest(t *testing.T) {
 
 func Test08GetCurrentPairsList(t *testing.T) {
 	m := serviceClientMock{}
-	m.On("SmartContractState", mock.Anything, mock.Anything).Return(&wasm.QuerySmartContractStateResponse{
+
+	m.On("SmartContractState",
+		mock.Anything,
+		&wasm.QuerySmartContractStateRequest{
+			Address:   storeimpl.FactoryContractAddress,
+			QueryData: wasm.RawContractMessage([]byte(`{"pairs":{"start_after":[{"token":{"contract_addr":"terra1spkm49wd9dqkranhrks4cupecl3rtgeqqljq3qrvrrts2ev2gw6sy5vz3k"}},{"native_token":{"denom":"uluna"}}]}}`)),
+		}).Once().Return(&wasm.QuerySmartContractStateResponse{
+		Data: wasm.RawContractMessage([]byte(`{"pairs":[]}`)),
+	}, nil)
+
+	m.On("SmartContractState", mock.Anything,
+		&wasm.QuerySmartContractStateRequest{
+			Address:   storeimpl.FactoryContractAddress,
+			QueryData: wasm.RawContractMessage([]byte(`{"pairs":{}}`)),
+		}).Once().Return(&wasm.QuerySmartContractStateResponse{
 		Data: wasm.RawContractMessage([]byte(factoryResponse)),
 	}, nil)
 
@@ -210,11 +224,19 @@ func Test09GetCurrentPoolStatusOfUnitPair(t *testing.T) {
 func Test10GetCurrentPoolStatusOfAllPairs(t *testing.T) {
 	m := serviceClientMock{}
 
+	m.On("SmartContractState",
+		mock.Anything,
+		&wasm.QuerySmartContractStateRequest{
+			Address:   "",
+			QueryData: wasm.RawContractMessage([]byte(`{"pairs":{"start_after":[{"token":{"contract_addr":"terra1qj5hs3e86qn4vm9dvtgtlkdp550r0rayk9wpay44mfw3gn3tr8nq5jw3dg"}},{"native_token":{"denom":"uluna"}}]}}`)),
+		}).Once().Return(&wasm.QuerySmartContractStateResponse{
+		Data: wasm.RawContractMessage([]byte(`{"pairs":[]}`)),
+	}, nil)
 	m.On("SmartContractState", mock.Anything,
 		&wasm.QuerySmartContractStateRequest{
 			Address:   "",
-			QueryData: wasm.RawContractMessage([]byte(`{"pairs": {}}`)),
-		}).Return(&wasm.QuerySmartContractStateResponse{
+			QueryData: wasm.RawContractMessage([]byte(`{"pairs":{}}`)),
+		}).Once().Return(&wasm.QuerySmartContractStateResponse{
 		Data: wasm.RawContractMessage([]byte(lightFactoryResp)),
 	}, nil)
 

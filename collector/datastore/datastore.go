@@ -452,28 +452,42 @@ func (store *dataStoreImpl) getTxHash(rawTx []byte) string {
 }
 
 func (store *dataStoreImpl) getCurrentPairsList(conn *grpc.ClientConn, height int64) (*PairListDTO, error) {
-	queryMsg := `{"pairs": {}}`
-
-	queryByte, err := store.contractQuery(conn, height, store.FactoryContractAddress, queryMsg)
-	if err != nil {
-		err = errors.Wrap(err, "getCurrentPairsList, contractQuery")
-		return nil, err
+	type pairsReq struct {
+		Pairs struct {
+			StartAfter *[2]AssetInfo `json:"start_after,omitempty"`
+		} `json:"pairs"`
 	}
-
-	rawRet := &PairListResponse{}
-	err = json.Unmarshal(queryByte, rawRet)
-	if err != nil {
-		err = errors.Wrap(err, "getCurrentPairsList, Unmarshal")
-		return nil, err
+	req := pairsReq{}
+	ret := &PairListDTO{
+		Pairs: make(map[string]UnitPairDTO),
 	}
+	for {
+		reqMsg, err := json.Marshal(&req)
+		if err != nil {
+			return nil, errors.Wrap(err, "datastoreImpl.getCurrentPairsList")
+		}
 
-	ret := &PairListDTO{}
-	ret.Pairs = make(map[string]UnitPairDTO)
+		queryByte, err := store.contractQuery(conn, height, store.FactoryContractAddress, string(reqMsg))
+		if err != nil {
+			err = errors.Wrap(err, "getCurrentPairsList, contractQuery")
+			return nil, err
+		}
 
-	for _, unit := range rawRet.Pairs {
-		ret.Pairs[unit.ContractAddr] = *unit.Convert()
+		rawRet := &PairListResponse{}
+		err = json.Unmarshal(queryByte, rawRet)
+		if err != nil {
+			err = errors.Wrap(err, "getCurrentPairsList, Unmarshal")
+			return nil, err
+		}
+		if len(rawRet.Pairs) == 0 {
+			break
+		}
+
+		for _, unit := range rawRet.Pairs {
+			ret.Pairs[unit.ContractAddr] = *unit.Convert()
+		}
+		req.Pairs.StartAfter = &rawRet.Pairs[len(rawRet.Pairs)-1].AssetInfo
 	}
-
 	return ret, nil
 }
 
