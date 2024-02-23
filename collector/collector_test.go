@@ -95,11 +95,20 @@ func Test01DoCollect(t *testing.T) {
 		}, nil)
 
 	// querying pairs
+	m.On("SmartContractState",
+		mock.Anything,
+		&wasm.QuerySmartContractStateRequest{
+			Address:   testFactoryAddr,
+			QueryData: wasm.RawContractMessage([]byte(`{"pairs":{"start_after":[{"token":{"contract_addr":"terra1qj5hs3e86qn4vm9dvtgtlkdp550r0rayk9wpay44mfw3gn3tr8nq5jw3dg"}},{"native_token":{"denom":"uluna"}}]}}`)),
+		}).Once().Return(&wasm.QuerySmartContractStateResponse{
+		Data: wasm.RawContractMessage([]byte(emptyFactoryPairsRes)),
+	}, nil)
+
 	m.On("SmartContractState", mock.Anything,
 		&wasm.QuerySmartContractStateRequest{
 			Address:   testFactoryAddr,
-			QueryData: wasm.RawContractMessage([]byte(`{"pairs": {}}`)),
-		}).Return(&wasm.QuerySmartContractStateResponse{
+			QueryData: wasm.RawContractMessage([]byte(`{"pairs":{}}`)),
+		}).Once().Return(&wasm.QuerySmartContractStateResponse{
 		Data: wasm.RawContractMessage([]byte(lightFactoryResp)),
 	}, nil)
 
@@ -351,6 +360,7 @@ const (
 			]
 		}
 	`
+	emptyFactoryPairsRes = `{"pairs": []}`
 )
 
 type lcdClientMock struct {
