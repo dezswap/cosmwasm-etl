@@ -1,6 +1,8 @@
 package srcstore
 
 import (
+	"strings"
+
 	"github.com/dezswap/cosmwasm-etl/collector/datastore"
 	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/pkg/errors"
@@ -42,10 +44,18 @@ func (r *rawDataStoreImpl) GetPoolInfos(height uint64) ([]parser.PoolInfo, error
 
 // GetSourceTxs implements parser.RawDataStore
 func (r *rawDataStoreImpl) GetSourceTxs(height uint64) (parser.RawTxs, error) {
-	block, err := r.GetBlockByHeight(height)
-	if err != nil {
-		return nil, errors.Wrap(err, "rawDataStoreImpl.GetSourceTxs")
+	retryCount := 3
+	var block *datastore.BlockTxsDTO
+	var err error
+	for ; retryCount > 0; retryCount-- {
+		block, err = r.GetBlockByHeight(height)
+		if err != nil {
+			if strings.Contains(err.Error(), "height must not be less than 1 or greater than the current height") {
+				continue
+			}
+			return nil, errors.Wrap(err, "rawDataStoreImpl.GetSourceTxs")
+		}
+		return r.mapper.blockToRawTxs(block), nil
 	}
-
-	return r.mapper.blockToRawTxs(block), nil
+	return nil, err
 }
