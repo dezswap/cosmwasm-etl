@@ -1,4 +1,4 @@
-package col4
+package rpc
 
 import (
 	"encoding/json"
@@ -26,7 +26,7 @@ type rpcImpl struct {
 	client  *http.Client
 }
 
-func NewRpc(baseUrl string, client *http.Client) Rpc {
+func New(baseUrl string, client *http.Client) Rpc {
 	return &rpcImpl{baseUrl, client}
 }
 

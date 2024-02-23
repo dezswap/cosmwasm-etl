@@ -7,40 +7,40 @@ import (
 	"github.com/dezswap/cosmwasm-etl/pkg/dex"
 	"github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
-	"github.com/dezswap/cosmwasm-etl/pkg/terra/col4"
+	"github.com/dezswap/cosmwasm-etl/pkg/terra/phoenix"
 	"github.com/dezswap/cosmwasm-etl/pkg/terra/rpc"
 	"github.com/pkg/errors"
 )
 
-type col4RawDataStoreImpl struct {
+type phoenixRawDataStoreImpl struct {
 	factoryAddress string
 	mapper
 	rpc rpc.Rpc
-	lcd col4.Lcd
+	lcd phoenix.Lcd
 	terraswap.QueryClient
 }
 
-var _ parser.SourceDataStore = &col4RawDataStoreImpl{}
+var _ parser.SourceDataStore = &phoenixRawDataStoreImpl{}
 
-func NewCol4Store(factoryAddress string, rpc rpc.Rpc, lcd col4.Lcd, client terraswap.QueryClient) parser.SourceDataStore {
-	return &col4RawDataStoreImpl{factoryAddress, &mapperImpl{}, rpc, lcd, client}
+func NewPhoenixStore(factoryAddress string, rpc rpc.Rpc, lcd phoenix.Lcd, client terraswap.QueryClient) parser.SourceDataStore {
+	return &phoenixRawDataStoreImpl{factoryAddress, &mapperImpl{}, rpc, lcd, client}
 }
 
 // GetSourceSyncedHeight implements parser.RawDataStore
-func (r *col4RawDataStoreImpl) GetSourceSyncedHeight() (uint64, error) {
+func (r *phoenixRawDataStoreImpl) GetSourceSyncedHeight() (uint64, error) {
 	height, err := r.rpc.RemoteBlockHeight()
 	if err != nil {
-		return 0, errors.Wrap(err, "col4RawDataStoreImpl.GetSourceSyncedHeight")
+		return 0, errors.Wrap(err, "phoenixRawDataStoreImpl.GetSourceSyncedHeight")
 	}
 
 	return uint64(height), nil
 }
 
 // GetPoolInfos implements parser.RawDataStore
-func (r *col4RawDataStoreImpl) GetPoolInfos(height uint64) ([]parser.PoolInfo, error) {
+func (r *phoenixRawDataStoreImpl) GetPoolInfos(height uint64) ([]parser.PoolInfo, error) {
 	allPairs, err := r.AllPairs(height)
 	if err != nil {
-		return nil, errors.Wrap(err, "col4RawDataStoreImpl.GetPoolInfos")
+		return nil, errors.Wrap(err, "phoenixRawDataStoreImpl.GetPoolInfos")
 	}
 
 	poolInfos := make([]parser.PoolInfo, len(allPairs))
@@ -48,7 +48,7 @@ func (r *col4RawDataStoreImpl) GetPoolInfos(height uint64) ([]parser.PoolInfo, e
 	for idx, pair := range allPairs {
 		poolRes, err := r.QueryPool(pair.ContractAddr, height)
 		if err != nil {
-			return nil, errors.Wrap(err, "col4RawDataStoreImpl.GetPoolInfos")
+			return nil, errors.Wrap(err, "phoenixRawDataStoreImpl.GetPoolInfos")
 		}
 		poolInfos[idx] = parser.PoolInfo{
 			ContractAddr: pair.ContractAddr,
@@ -63,10 +63,10 @@ func (r *col4RawDataStoreImpl) GetPoolInfos(height uint64) ([]parser.PoolInfo, e
 }
 
 // GetSourceTxs implements parser.RawDataStore
-func (r *col4RawDataStoreImpl) GetSourceTxs(height uint64) (parser.RawTxs, error) {
+func (r *phoenixRawDataStoreImpl) GetSourceTxs(height uint64) (parser.RawTxs, error) {
 	rpcRes, err := r.rpc.Block(height)
 	if err != nil {
-		return nil, errors.Wrap(err, "col4RawDataStoreImpl.GetSourceTxs")
+		return nil, errors.Wrap(err, "phoenixRawDataStoreImpl.GetSourceTxs")
 	}
 	blockRes := rpcRes.Result
 	blockTime := blockRes.Block.Header.Time
@@ -74,12 +74,12 @@ func (r *col4RawDataStoreImpl) GetSourceTxs(height uint64) (parser.RawTxs, error
 
 	rpcResultRes, err := r.rpc.BlockResults(height)
 	if err != nil {
-		return nil, errors.Wrap(err, "col4RawDataStoreImpl.GetSourceTxs")
+		return nil, errors.Wrap(err, "phoenixRawDataStoreImpl.GetSourceTxs")
 	}
 
 	txResults := rpcResultRes.Result.TxsResults
 	if len(txHashes) != len(txResults) {
-		return nil, errors.New("col4RawDataStoreImpl.GetSourceTxs: txs length mismatch")
+		return nil, errors.New("phoenixRawDataStoreImpl.GetSourceTxs: txs length mismatch")
 	}
 
 	type logResults []struct {
@@ -101,7 +101,7 @@ func (r *col4RawDataStoreImpl) GetSourceTxs(height uint64) (parser.RawTxs, error
 
 		logs := logResults{}
 		if err := json.Unmarshal([]byte(txResults[idx].Log), &logs); err != nil {
-			return nil, errors.Wrap(err, "col4RawDataStoreImpl.GetSourceTxs")
+			return nil, errors.Wrap(err, "phoenixRawDataStoreImpl.GetSourceTxs")
 		}
 
 		for _, log := range logs {
@@ -121,7 +121,7 @@ func (r *col4RawDataStoreImpl) GetSourceTxs(height uint64) (parser.RawTxs, error
 
 		if tx.Sender == "" {
 			if tx.Sender, err = r.txSenderOf(txHash); err != nil {
-				return nil, errors.Wrap(err, "col4RawDataStoreImpl.GetSourceTxs")
+				return nil, errors.Wrap(err, "phoenixRawDataStoreImpl.GetSourceTxs")
 			}
 		}
 		rawTxs = append(rawTxs, tx)
@@ -129,13 +129,13 @@ func (r *col4RawDataStoreImpl) GetSourceTxs(height uint64) (parser.RawTxs, error
 	return rawTxs, nil
 }
 
-func (r *col4RawDataStoreImpl) AllPairs(height uint64) ([]parser.Pair, error) {
+func (r *phoenixRawDataStoreImpl) AllPairs(height uint64) ([]parser.Pair, error) {
 	pairs := []parser.Pair{}
 	var startAfter []dex.AssetInfo = nil
 	for {
 		factoryRes, err := r.QueryPairs(r.factoryAddress, startAfter, height)
 		if err != nil {
-			return nil, errors.Wrap(err, "col4RawDataStoreImpl.AllPairs")
+			return nil, errors.Wrap(err, "phoenixRawDataStoreImpl.AllPairs")
 		}
 
 		if len(factoryRes.Pairs) == 0 {
@@ -152,15 +152,15 @@ func (r *col4RawDataStoreImpl) AllPairs(height uint64) ([]parser.Pair, error) {
 	return pairs, nil
 }
 
-func (r *col4RawDataStoreImpl) txSenderOf(hash string) (string, error) {
+func (r *phoenixRawDataStoreImpl) txSenderOf(hash string) (string, error) {
 	res, err := r.lcd.Tx(hash)
 	if err != nil {
 		return "", errors.Wrap(err, "txSenderOf")
 	}
 
-	for _, msg := range res.Tx.Value.Msg {
-		if msg.Type == col4.LCD_TERRA_TX_MSG_WASM_TYPE {
-			return msg.Value.Sender, nil
+	for _, msg := range res.Tx.Body.Messages {
+		if msg.Type == "/cosmwasm.wasm.v1.MsgExecuteContract" {
+			return msg.Sender, nil
 		}
 	}
 

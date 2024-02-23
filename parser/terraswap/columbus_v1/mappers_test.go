@@ -1,4 +1,4 @@
-package terraswap
+package columbus_v1
 
 import (
 	"fmt"
