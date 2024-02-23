@@ -5,19 +5,19 @@ import (
 	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/parser/terraswap/columbus_v1"
 	"github.com/dezswap/cosmwasm-etl/parser/terraswap/phoenix"
+	ts "github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
-	ts "github.com/dezswap/cosmwasm-etl/pkg/rules/terraswap"
 
 	"github.com/pkg/errors"
 )
 
 func New(repo parser.PairRepo, logger logging.Logger, c configs.ParserConfig) (parser.TargetApp, error) {
-	switch ts.TerraswapTypeOf(c.FactoryAddress) {
-	case ts.Mainnet:
+	switch ts.TerraswapFactory(c.FactoryAddress) {
+	case ts.MAINNET_FACTORY:
 		return phoenix.New(repo, logger, c)
-	case ts.ClassicV2, ts.Pisco:
+	case ts.CLASSIC_V2_FACTORY, ts.PISCO_FACTORY:
 		return nil, errors.New("not implemented yet")
-	case ts.ClassicV1:
+	case ts.CLASSIC_V1_FACTORY:
 		return columbus_v1.New(repo, logger, c)
 	default:
 		return nil, errors.Errorf("invalid factory address: %s", c.FactoryAddress)

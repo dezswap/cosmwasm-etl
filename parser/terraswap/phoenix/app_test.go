@@ -8,10 +8,10 @@ import (
 
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/parser"
+	dts "github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 	"github.com/dezswap/cosmwasm-etl/pkg/faker"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
-	"github.com/dezswap/cosmwasm-etl/pkg/rules/terraswap"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -31,8 +31,8 @@ func Test_parseTxs(t *testing.T) {
 	}
 
 	const (
-		factoryAddrKey = terraswap.Pisco
-		height         = uint(100)
+		factoryAddr = string(dts.MAINNET_FACTORY)
+		height      = uint(100)
 	)
 	parser.FakerCustomGenerator()
 	faker.CustomGenerator()
@@ -51,7 +51,7 @@ func Test_parseTxs(t *testing.T) {
 		rawStore := parser.RawStoreMock{}
 		app := terraswapApp{&repo, &parser.PairParsers{CreatePairParser: &createPairParser}, parser.DexMixin{}}
 
-		dexApp := parser.NewDexApp(&app, &rawStore, &repo, logging.New("test", configs.LogConfig{}), configs.ParserConfig{FactoryAddress: terraswap.FactoryAddress[factoryAddrKey]})
+		dexApp := parser.NewDexApp(&app, &rawStore, &repo, logging.New("test", configs.LogConfig{}), configs.ParserConfig{FactoryAddress: factoryAddr})
 		pairMap := map[string]parser.Pair{pair.ContractAddr: pair}
 
 		pairs := []parser.Pair{}

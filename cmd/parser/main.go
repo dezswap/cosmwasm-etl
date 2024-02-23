@@ -21,11 +21,10 @@ import (
 	ts_srcstore "github.com/dezswap/cosmwasm-etl/parser/srcstore/terraswap"
 	"github.com/dezswap/cosmwasm-etl/parser/starfleit"
 	"github.com/dezswap/cosmwasm-etl/parser/terraswap"
-	ts_client "github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap"
+	dts "github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap"
 	"github.com/dezswap/cosmwasm-etl/pkg/grpc"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 	parsable_rules "github.com/dezswap/cosmwasm-etl/pkg/rules"
-	rule_ts "github.com/dezswap/cosmwasm-etl/pkg/rules/terraswap"
 	"github.com/dezswap/cosmwasm-etl/pkg/s3client"
 	"github.com/dezswap/cosmwasm-etl/pkg/terra/col4"
 	terra_phoenix "github.com/dezswap/cosmwasm-etl/pkg/terra/phoenix"
@@ -107,8 +106,8 @@ func main() {
 			},
 		})
 
-		switch rule_ts.TerraswapTypeOf(c.Parser.FactoryAddress) {
-		case rule_ts.Mainnet:
+		switch dts.TerraswapFactory(c.Parser.FactoryAddress) {
+		case dts.MAINNET_FACTORY:
 			lcd := terra_phoenix.NewLcd(c.Parser.NodeConfig.RestClientConfig.LcdHost, &http.Client{
 				Transport: &http.Transport{
 					MaxIdleConns:      10,               // Maximum idle connections to keep open
@@ -116,11 +115,11 @@ func main() {
 					DisableKeepAlives: false,            // Use HTTP Keep-Alive
 				},
 			})
-			terraswapQueryClient := ts_client.NewPhoenixClient(lcd)
+			terraswapQueryClient := dts.NewPhoenixClient(lcd)
 			rawDataStore = ts_srcstore.NewPhoenixStore(c.Parser.FactoryAddress, r, lcd, terraswapQueryClient)
-		case rule_ts.ClassicV2, rule_ts.Pisco:
+		case dts.CLASSIC_V2_FACTORY, dts.PISCO_FACTORY:
 			panic(errors.New("not implemented yet"))
-		case rule_ts.ClassicV1:
+		case dts.CLASSIC_V1_FACTORY:
 			lcd := col4.NewLcd(c.Parser.NodeConfig.RestClientConfig.LcdHost, &http.Client{
 				Transport: &http.Transport{
 					MaxIdleConns:      10,               // Maximum idle connections to keep open
@@ -128,7 +127,7 @@ func main() {
 					DisableKeepAlives: false,            // Use HTTP Keep-Alive
 				},
 			})
-			terraswapQueryClient := ts_client.NewCol4Client(lcd)
+			terraswapQueryClient := dts.NewCol4Client(lcd)
 			rawDataStore = ts_srcstore.NewCol4Store(c.Parser.FactoryAddress, r, lcd, terraswapQueryClient)
 		default:
 			panic(errors.Errorf("invalid factory address: %s", c.Parser.FactoryAddress))

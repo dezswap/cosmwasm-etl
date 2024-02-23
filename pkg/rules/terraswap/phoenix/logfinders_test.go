@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"testing"
 
+	dts "github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
-	"github.com/dezswap/cosmwasm-etl/pkg/rules/terraswap"
+
 	"github.com/stretchr/testify/assert"
 )
 
 func Test_CreateCreateLogFinder(t *testing.T) {
+	factoryAddr := string(dts.MAINNET_FACTORY)
 	var logFinder eventlog.LogFinder
 	var eventLogs eventlog.LogResults
 	var err error
@@ -32,10 +34,10 @@ func Test_CreateCreateLogFinder(t *testing.T) {
 		expectedResultLen int
 		errMsg            string
 	}{
-		{terraswap.FactoryAddress[terraswap.Mainnet], CreatePairRawLogStr, 1, "must match once"},
-		{terraswap.FactoryAddress[terraswap.Mainnet], createTwiceLogStr, 2, "must match twice"},
-		{terraswap.FactoryAddress[terraswap.Mainnet], differentTypeLogsStr, 0, "must not match with different type"},
-		{terraswap.FactoryAddress[terraswap.Mainnet], "[]", 0, "must not match with empty logs"},
+		{factoryAddr, CreatePairRawLogStr, 1, "must match once"},
+		{factoryAddr, createTwiceLogStr, 2, "must match twice"},
+		{factoryAddr, differentTypeLogsStr, 0, "must not match with different type"},
+		{factoryAddr, "[]", 0, "must not match with empty logs"},
 	}
 
 	for idx, tc := range tcs {
