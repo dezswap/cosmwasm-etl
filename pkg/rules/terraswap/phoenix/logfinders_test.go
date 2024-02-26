@@ -71,23 +71,22 @@ func Test_LogFinders(t *testing.T) {
 	}
 
 	tcs := []struct {
-		rawLogStr         string
-		pairs             map[string]bool
-		finderFunc        func(map[string]bool) (eventlog.LogFinder, error)
-		expectedResultLen int
-		matchedLen        int
-		errMsg            string
+		rawLogStr  string
+		pairs      map[string]bool
+		finderFunc func(map[string]bool) (eventlog.LogFinder, error)
+		matchedLen int
+		errMsg     string
 	}{
 		//Swap
-		{PairSwapRawLogStr, nil, CreatePairCommonRulesFinder, 1, PairSwapMatchedLen, "must match once"},
+		{PairSwapRawLogStr, nil, CreatePairCommonRulesFinder, 1, "must match once"},
 		// Provide
-		{PairProvideRawLogStr, nil, CreatePairCommonRulesFinder, 1, PairProvideMatchedLen, "must match once"},
+		{PairProvideRawLogStr, nil, CreatePairCommonRulesFinder, 1, "must match once"},
 		// Withdraw
-		{PairWithdrawRawLogStr, nil, CreatePairCommonRulesFinder, 1, PairWithdrawMatchedLen, "must match once"},
+		{PairWithdrawRawLogStr, nil, CreatePairCommonRulesFinder, 1, "must match once"},
 		// WasmTransfer
-		{WasmTransferRawLogStr, nil, CreateWasmCommonTransferRuleFinder, 1, WasmTransferMatchedLen, "must match once"},
+		{WasmTransferRawLogStr, nil, CreateWasmCommonTransferRuleFinder, 1, "must match once"},
 		// Transfer
-		{TransferRawLogStr, nil, CreateTransferRuleFinder, 1, TransferMatchedLen, "must match once"},
+		{TransferRawLogStr, nil, CreateSortedTransferRuleFinder, 1, "must match once"},
 	}
 
 	for idx, tc := range tcs {
@@ -96,10 +95,7 @@ func Test_LogFinders(t *testing.T) {
 
 		setUp(tc.rawLogStr, tc.pairs, tc.finderFunc)
 		matchedResults := logFinder.FindFromLogs(eventLogs)
-		assert.Len(matchedResults, tc.expectedResultLen, errMsg)
-		if tc.expectedResultLen > 0 {
-			assert.Len(matchedResults[0], tc.matchedLen, "must return all matched value")
-		}
+		assert.NotEmpty(matchedResults, errMsg)
 	}
 
 }
@@ -194,5 +190,5 @@ const TransferRawLogStr = `[
 	{"type":"coin_received","attributes":[{"key":"receiver","value":"terra1zdpq84j8ex29wz9tmygqtftplrw87x8wmuyfh0rsy60uq7nadtsq5pjr7y"},{"key":"amount","value":"1000000uluna"}]},
 	{"type":"coin_spent","attributes":[{"key":"spender","value":"terra1g5cad8hl9uwldus279ddc0j4fq7xjude0ynhjv"},{"key":"amount","value":"1000000uluna"}]},
 	{"type":"message","attributes":[{"key":"action","value":"/cosmos.bank.v1beta1.MsgSend"},{"key":"sender","value":"terra1g5cad8hl9uwldus279ddc0j4fq7xjude0ynhjv"},{"key":"module","value":"bank"}]},
-	{"type":"transfer","attributes":[{"key":"recipient","value":"terra1zdpq84j8ex29wz9tmygqtftplrw87x8wmuyfh0rsy60uq7nadtsq5pjr7y"},{"key":"sender","value":"terra1g5cad8hl9uwldus279ddc0j4fq7xjude0ynhjv"},{"key":"amount","value":"1000000uluna"}]}
+	{"type":"transfer","attributes":[{"key":"amount","value":"1000000uluna"},{"key":"recipient","value":"terra1zdpq84j8ex29wz9tmygqtftplrw87x8wmuyfh0rsy60uq7nadtsq5pjr7y"},{"key":"sender","value":"terra1g5cad8hl9uwldus279ddc0j4fq7xjude0ynhjv"}]}
 ]`

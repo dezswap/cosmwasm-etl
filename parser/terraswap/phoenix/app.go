@@ -80,6 +80,18 @@ func (p *terraswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]parser.Parsed
 		}
 		wasmTxs = append(wasmTxs, wtxs...)
 
+		if raw.Type == eventlog.TransferType {
+			// event log messages are not sorted well
+			// bug tx: C51473267BEF98BAE991C19AD8A5EFF6370BC64B63ACB68190170095C1AE0ABE
+			filter := map[string]bool{
+				phoenix.SortedTransferAmountKey: true, phoenix.SortedTransferRecipientKey: true, phoenix.SortedTransferSenderKey: true,
+			}
+			attrs, err := eventlog.SortAttributes(raw.Attributes, filter)
+			if err != nil {
+				return nil, errors.Wrap(err, "phoenix.terraswapApp.ParseTxs")
+			}
+			raw.Attributes = *attrs
+		}
 		transfers, err := p.Parsers.Transfer.Parse(tx.Hash, tx.Timestamp, eventlog.LogResults{raw})
 		if err != nil {
 			return nil, errors.Wrap(err, "phoenix.terraswapApp.ParseTxs")
@@ -115,7 +127,7 @@ func (p *terraswapApp) updateParsers(pairs map[string]parser.Pair) error {
 	}
 	p.Parsers.WasmTransfer = parser.NewParser(wasmTransferFinder, &wasmCommonTransferMapper{pairSet: pairs})
 
-	transferRule, err := phoenix.CreateTransferRuleFinder(nil)
+	transferRule, err := phoenix.CreateSortedTransferRuleFinder(nil)
 	if err != nil {
 		return errors.Wrap(err, "updateParsers")
 	}
