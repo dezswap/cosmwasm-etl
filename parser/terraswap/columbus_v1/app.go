@@ -3,10 +3,10 @@ package columbus_v1
 import (
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/parser"
+	"github.com/dezswap/cosmwasm-etl/pkg/dex"
+	cv1 "github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap/columbus_v1"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
-	ts "github.com/dezswap/cosmwasm-etl/pkg/rules/terraswap"
-	cv1 "github.com/dezswap/cosmwasm-etl/pkg/rules/terraswap/columbus_v1"
 	"github.com/pkg/errors"
 )
 
@@ -65,7 +65,7 @@ func (p *terraswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]parser.Parsed
 	wasmTxs := []*parser.ParsedTx{}
 	transferTxs := []*parser.ParsedTx{}
 	for _, raw := range tx.LogResults {
-		if !ts.ParsableRules[string(raw.Type)] {
+		if !dex.ParsableRules[string(raw.Type)] {
 			continue
 		}
 		ptxs, err := p.Parsers.PairActionParser.Parse(tx.Hash, tx.Timestamp, eventlog.LogResults{raw})

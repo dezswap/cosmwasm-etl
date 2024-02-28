@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/dezswap/cosmwasm-etl/parser"
+	sf "github.com/dezswap/cosmwasm-etl/pkg/dex/starfleit"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
-	sf "github.com/dezswap/cosmwasm-etl/pkg/rules/starfleit"
 	"github.com/pkg/errors"
 )
 

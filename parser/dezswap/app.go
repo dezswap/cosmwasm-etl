@@ -3,9 +3,9 @@ package dezswap
 import (
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/parser"
+	ds "github.com/dezswap/cosmwasm-etl/pkg/dex/dezswap"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
-	ds "github.com/dezswap/cosmwasm-etl/pkg/rules/dezswap"
 	"github.com/pkg/errors"
 )
 

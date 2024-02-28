@@ -15,16 +15,19 @@ import (
 	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/pkg/errors"
 
-	"github.com/dezswap/cosmwasm-etl/parser/dezswap"
+	pds "github.com/dezswap/cosmwasm-etl/parser/dezswap"
 	"github.com/dezswap/cosmwasm-etl/parser/repo"
 	"github.com/dezswap/cosmwasm-etl/parser/srcstore"
 	ts_srcstore "github.com/dezswap/cosmwasm-etl/parser/srcstore/terraswap"
-	"github.com/dezswap/cosmwasm-etl/parser/starfleit"
-	"github.com/dezswap/cosmwasm-etl/parser/terraswap"
+	psf "github.com/dezswap/cosmwasm-etl/parser/starfleit"
+	pts "github.com/dezswap/cosmwasm-etl/parser/terraswap"
+	"github.com/dezswap/cosmwasm-etl/pkg/dex"
 	dts "github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap"
+	dts_colv1 "github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap/columbus_v1"
+	dts_phoenix "github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap/phoenix"
+
 	"github.com/dezswap/cosmwasm-etl/pkg/grpc"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
-	parsable_rules "github.com/dezswap/cosmwasm-etl/pkg/rules"
 	"github.com/dezswap/cosmwasm-etl/pkg/s3client"
 	"github.com/dezswap/cosmwasm-etl/pkg/terra/col4"
 	terra_phoenix "github.com/dezswap/cosmwasm-etl/pkg/terra/phoenix"
@@ -82,12 +85,12 @@ func main() {
 	repo := repo.New(c.Parser.ChainId, c.Rdb)
 	var app parser.TargetApp
 	var err error
-	if c.Parser.TargetApp == parsable_rules.Terraswap {
-		app, err = terraswap.New(repo, logger, c.Parser)
-	} else if c.Parser.TargetApp == parsable_rules.Dezswap {
-		app, err = dezswap.New(repo, logger, c.Parser, c.Parser.ChainId)
-	} else if c.Parser.TargetApp == parsable_rules.Starfleit {
-		app, err = starfleit.New(repo, logger, c.Parser, c.Parser.ChainId)
+	if c.Parser.TargetApp == dex.Terraswap {
+		app, err = pts.New(repo, logger, c.Parser)
+	} else if c.Parser.TargetApp == dex.Dezswap {
+		app, err = pds.New(repo, logger, c.Parser, c.Parser.ChainId)
+	} else if c.Parser.TargetApp == dex.Starfleit {
+		app, err = psf.New(repo, logger, c.Parser, c.Parser.ChainId)
 	} else {
 		panic("unknown target app: " + c.Parser.TargetApp)
 	}
@@ -97,7 +100,7 @@ func main() {
 	}
 
 	var rawDataStore parser.SourceDataStore
-	if c.Parser.TargetApp == parsable_rules.Terraswap {
+	if c.Parser.TargetApp == dex.Terraswap {
 		r := rpc.New(c.Parser.NodeConfig.RestClientConfig.RpcHost, &http.Client{
 			Transport: &http.Transport{
 				MaxIdleConns:      10,               // Maximum idle connections to keep open
@@ -115,7 +118,7 @@ func main() {
 					DisableKeepAlives: false,            // Use HTTP Keep-Alive
 				},
 			})
-			terraswapQueryClient := dts.NewPhoenixClient(lcd)
+			terraswapQueryClient := dts_phoenix.NewPhoenixClient(lcd)
 			rawDataStore = ts_srcstore.NewPhoenixStore(c.Parser.FactoryAddress, r, lcd, terraswapQueryClient)
 		case dts.CLASSIC_V2_FACTORY, dts.PISCO_FACTORY:
 			panic(errors.New("not implemented yet"))
@@ -127,7 +130,7 @@ func main() {
 					DisableKeepAlives: false,            // Use HTTP Keep-Alive
 				},
 			})
-			terraswapQueryClient := dts.NewCol4Client(lcd)
+			terraswapQueryClient := dts_colv1.NewCol4Client(lcd)
 			rawDataStore = ts_srcstore.NewCol4Store(c.Parser.FactoryAddress, r, lcd, terraswapQueryClient)
 		default:
 			panic(errors.Errorf("invalid factory address: %s", c.Parser.FactoryAddress))

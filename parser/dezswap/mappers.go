@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/dezswap/cosmwasm-etl/parser"
+	ds "github.com/dezswap/cosmwasm-etl/pkg/dex/dezswap"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
-	ds "github.com/dezswap/cosmwasm-etl/pkg/rules/dezswap"
 	"github.com/pkg/errors"
 )
 

@@ -7,9 +7,9 @@ import (
 	"math/big"
 
 	"github.com/dezswap/cosmwasm-etl/parser"
+	"github.com/dezswap/cosmwasm-etl/pkg/dex/dezswap"
+	ds "github.com/dezswap/cosmwasm-etl/pkg/dex/dezswap"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
-	"github.com/dezswap/cosmwasm-etl/pkg/rules/dezswap"
-	ds "github.com/dezswap/cosmwasm-etl/pkg/rules/dezswap"
 	"github.com/dezswap/cosmwasm-etl/pkg/xpla"
 	"github.com/pkg/errors"
 )

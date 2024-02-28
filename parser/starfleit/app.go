@@ -3,9 +3,9 @@ package starfleit
 import (
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/parser"
+	sf "github.com/dezswap/cosmwasm-etl/pkg/dex/starfleit"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
-	sf "github.com/dezswap/cosmwasm-etl/pkg/rules/starfleit"
 	"github.com/pkg/errors"
 )
 
