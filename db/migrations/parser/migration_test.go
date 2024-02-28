@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/dezswap/cosmwasm-etl/configs"
-	"github.com/dezswap/cosmwasm-etl/parser"
+	p_dex "github.com/dezswap/cosmwasm-etl/parser/dex"
 	"github.com/dezswap/cosmwasm-etl/pkg/db"
 	"github.com/dezswap/cosmwasm-etl/pkg/db/schemas"
 	"github.com/dezswap/cosmwasm-etl/pkg/faker"
@@ -26,7 +26,7 @@ const batch_size = 100
 func Test_ParserMigration(t *testing.T) {
 	c := configs.New()
 	faker.MigFakerInit()
-	parser.FakerCustomGenerator()
+	p_dex.FakerCustomGenerator()
 	pdb := db.PostgresDb{}
 	if err := pdb.Init(c.Rdb); err != nil {
 		panic(err)
