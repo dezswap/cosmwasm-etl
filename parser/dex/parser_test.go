@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
@@ -55,9 +56,8 @@ func Test_parser(t *testing.T) {
 		setUp(tc)
 		msg := fmt.Sprintf("tcs(%d): ", idx)
 		assert := assert.New(t)
-		parser := NewParser(&logFinder, &mapper)
-
-		dtos, err := parser.Parse("hash", time.Time{}, eventlog.LogResults{})
+		p := parser.NewParser[ParsedTx](&logFinder, &mapper)
+		dtos, err := p.Parse(eventlog.LogResults{}, ParsedTx{Hash: "hash", Timestamp: time.Time{}})
 
 		assert.Equal(tc.expected, dtos, fmt.Sprintf("%s must return expected dtos", msg))
 
@@ -69,7 +69,7 @@ func Test_parser(t *testing.T) {
 }
 
 var _ eventlog.LogFinder = &logfinderMock{}
-var _ Mapper = &mapperMock{}
+var _ parser.Mapper[ParsedTx] = &mapperMock{}
 
 // matchedToParsedTx implements mapper
 func (m *mapperMock) MatchedToParsedTx(result eventlog.MatchedResult, optionals ...interface{}) (*ParsedTx, error) {

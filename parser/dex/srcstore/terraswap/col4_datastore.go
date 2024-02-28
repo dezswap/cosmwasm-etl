@@ -3,6 +3,7 @@ package terraswap
 import (
 	"encoding/json"
 
+	"github.com/dezswap/cosmwasm-etl/parser"
 	p_dex "github.com/dezswap/cosmwasm-etl/parser/dex"
 	"github.com/dezswap/cosmwasm-etl/pkg/dex"
 	"github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap"
@@ -63,7 +64,7 @@ func (r *col4RawDataStoreImpl) GetPoolInfos(height uint64) ([]p_dex.PoolInfo, er
 }
 
 // GetSourceTxs implements p_dex.RawDataStore
-func (r *col4RawDataStoreImpl) GetSourceTxs(height uint64) (p_dex.RawTxs, error) {
+func (r *col4RawDataStoreImpl) GetSourceTxs(height uint64) (parser.RawTxs, error) {
 	rpcRes, err := r.rpc.Block(height)
 	if err != nil {
 		return nil, errors.Wrap(err, "col4RawDataStoreImpl.GetSourceTxs")
@@ -88,13 +89,13 @@ func (r *col4RawDataStoreImpl) GetSourceTxs(height uint64) (p_dex.RawTxs, error)
 		Events   eventlog.LogResults `json:"events"`
 	}
 
-	rawTxs := []p_dex.RawTx{}
+	rawTxs := []parser.RawTx{}
 	for idx, txHash := range txHashes {
 		if txResults[idx].Code != 0 {
 			continue
 		}
 
-		tx := p_dex.RawTx{
+		tx := parser.RawTx{
 			Hash:      txHash,
 			Timestamp: blockTime,
 		}

@@ -3,13 +3,14 @@ package srcstore
 import (
 	"github.com/aws/smithy-go/time"
 	"github.com/dezswap/cosmwasm-etl/collector/datastore"
+	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/parser/dex"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 )
 
 type mapper interface {
-	blockToRawTxs(block *datastore.BlockTxsDTO) dex.RawTxs
-	txToParserRawTx(rawTx datastore.TxDTO) dex.RawTx
+	blockToRawTxs(block *datastore.BlockTxsDTO) parser.RawTxs
+	txToParserRawTx(rawTx datastore.TxDTO) parser.RawTx
 
 	rawPoolInfosToPoolInfos(rawPoolInfos *datastore.PoolInfoList) []dex.PoolInfo
 	rawPoolInfoToPoolInfo(pairAddr string, rawPoolInfo datastore.PoolInfoDTO) dex.PoolInfo
@@ -20,8 +21,8 @@ type mapperImpl struct{}
 var _ mapper = &mapperImpl{}
 
 // blockToRawTxs implements mapper
-func (m *mapperImpl) blockToRawTxs(block *datastore.BlockTxsDTO) dex.RawTxs {
-	rawTxs := dex.RawTxs{}
+func (m *mapperImpl) blockToRawTxs(block *datastore.BlockTxsDTO) parser.RawTxs {
+	rawTxs := parser.RawTxs{}
 	for _, tx := range block.Txs {
 		rawTxs = append(rawTxs, m.txToParserRawTx(tx))
 	}
@@ -29,8 +30,8 @@ func (m *mapperImpl) blockToRawTxs(block *datastore.BlockTxsDTO) dex.RawTxs {
 }
 
 // txToRawTx implements mapper
-func (*mapperImpl) txToParserRawTx(tx datastore.TxDTO) dex.RawTx {
-	rawTx := dex.RawTx{}
+func (*mapperImpl) txToParserRawTx(tx datastore.TxDTO) parser.RawTx {
+	rawTx := parser.RawTx{}
 	rawTx.Hash = tx.TxHash
 	rawTx.LogResults = eventlog.LogResults{}
 	logResultMap := make(map[eventlog.LogType]eventlog.Attributes)

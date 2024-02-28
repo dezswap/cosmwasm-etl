@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/dezswap/cosmwasm-etl/configs"
+	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/parser/dex"
 	dts "github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
@@ -40,7 +41,7 @@ func Test_parseTxs(t *testing.T) {
 	createTxs := []*dex.ParsedTx{}
 	raws := eventlog.LogResults{}
 
-	tx := dex.RawTx{
+	tx := parser.RawTx{
 		Sender: sender,
 		Hash:   hash,
 	}

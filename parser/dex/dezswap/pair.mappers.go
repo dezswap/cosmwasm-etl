@@ -6,6 +6,7 @@ import (
 
 	"math/big"
 
+	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/parser/dex"
 	"github.com/dezswap/cosmwasm-etl/pkg/dex/dezswap"
 	ds "github.com/dezswap/cosmwasm-etl/pkg/dex/dezswap"
@@ -14,7 +15,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-var _ dex.Mapper = &pairMapperImpl{}
+var _ parser.Mapper[dex.ParsedTx] = &pairMapperImpl{}
 var _ pairMapper = &pairMapperImpl{}
 
 type pairMapper interface {
@@ -38,7 +39,7 @@ type pairV2Mapper struct {
 	*pairMapperMixin
 }
 
-func pairMapperBy(chainId string, height uint64, pairSet map[string]dex.Pair) (dex.Mapper, error) {
+func pairMapperBy(chainId string, height uint64, pairSet map[string]dex.Pair) (parser.Mapper[dex.ParsedTx], error) {
 	base := &pairMapperMixin{mapperMixin{}, pairSet}
 	if strings.HasPrefix(chainId, dezswap.TestnetPrefix) {
 		if height < dezswap.TestnetV2Height {

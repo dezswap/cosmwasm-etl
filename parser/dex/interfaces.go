@@ -1,21 +1,13 @@
 package dex
 
-import (
-	"time"
-
-	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
-)
-
-type Runner interface {
-	Run() error
-}
+import "github.com/dezswap/cosmwasm-etl/parser"
 
 type TargetApp interface {
-	ParseTxs(tx RawTx, height uint64) ([]ParsedTx, error)
+	parser.TargetApp[ParsedTx]
 }
 
 type Dex interface {
-	Runner
+	Run() error
 	TargetApp
 	insert(height uint64, txs []ParsedTx, pools []PoolInfo) error
 	checkRemoteHeight(srcHeight uint64) error
@@ -26,24 +18,12 @@ type PairRepo interface {
 }
 
 type Repo interface {
-	Insert(height uint64, txs []ParsedTx, pools []PoolInfo, pairDto []Pair) error
-	GetSyncedHeight() (uint64, error)
+	parser.Repo[ParsedTx]
 	PairRepo
 	ParsedPoolsInfo(from, to uint64) ([]PoolInfo, error)
 }
 
 type SourceDataStore interface {
-	GetSourceSyncedHeight() (uint64, error)
-	GetSourceTxs(height uint64) (RawTxs, error)
+	parser.SourceDataStore
 	GetPoolInfos(height uint64) ([]PoolInfo, error)
-}
-
-type Mapper interface {
-	// return nil if the matched result is not for this parser
-	MatchedToParsedTx(eventlog.MatchedResult, ...interface{}) (*ParsedTx, error)
-}
-
-type Parser interface {
-	Parse(hash string, timestamp time.Time, raws eventlog.LogResults, optionals ...interface{}) ([]*ParsedTx, error)
-	Mapper
 }

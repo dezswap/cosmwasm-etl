@@ -1,9 +1,11 @@
 package dex
 
 import (
-	"time"
+	"fmt"
 
+	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/mock"
 )
 
@@ -13,7 +15,7 @@ type RawStoreMock struct{ mock.Mock }
 
 var _ Repo = &RepoMock{}
 
-var _ Parser = &ParserMock{}
+var _ parser.Parser[ParsedTx] = &ParserMock{}
 var _ SourceDataStore = &RawStoreMock{}
 
 // matchedToParsedTx implements parser
@@ -23,7 +25,7 @@ func (p *ParserMock) MatchedToParsedTx(result eventlog.MatchedResult, optional .
 }
 
 // parse implements parser
-func (p *ParserMock) Parse(hash string, timestamp time.Time, raws eventlog.LogResults, optionals ...interface{}) ([]*ParsedTx, error) {
+func (p *ParserMock) Parse(aws eventlog.LogResults, defaultValue parser.Overrider[ParsedTx], optionals ...interface{}) ([]*ParsedTx, error) {
 	args := p.Mock.MethodCalled("parse", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	return args.Get(0).([]*ParsedTx), args.Error(1)
 }
@@ -41,9 +43,9 @@ func (r *RawStoreMock) GetSourceSyncedHeight() (uint64, error) {
 }
 
 // GetSourceTxs implements RawDataStore
-func (r *RawStoreMock) GetSourceTxs(height uint64) (RawTxs, error) {
+func (r *RawStoreMock) GetSourceTxs(height uint64) (parser.RawTxs, error) {
 	args := r.Mock.MethodCalled("GetSourceTxs", height)
-	return args.Get(0).(RawTxs), args.Error(1)
+	return args.Get(0).(parser.RawTxs), args.Error(1)
 }
 
 // GetPairs implements Repo
@@ -59,8 +61,23 @@ func (m *RepoMock) GetSyncedHeight() (uint64, error) {
 }
 
 // Insert implements Repo
-func (m *RepoMock) Insert(height uint64, txs []ParsedTx, pools []PoolInfo, pairDto []Pair) error {
-	args := m.Mock.MethodCalled("Insert", height, txs, pools, pairDto)
+func (m *RepoMock) Insert(height uint64, txs []ParsedTx, arg ...interface{}) error {
+	if len(arg) != 2 {
+		errMsg := fmt.Sprintf("invalid others(%v)", arg)
+		return errors.New(errMsg)
+	}
+
+	pools, ok := arg[0].([]PoolInfo)
+	if !ok {
+		errMsg := fmt.Sprintf("invalid pools(%v)", arg[0])
+		return errors.New(errMsg)
+	}
+	pairs, ok := arg[1].([]Pair)
+	if !ok {
+		errMsg := fmt.Sprintf("invalid pairs(%v)", arg[1])
+		return errors.New(errMsg)
+	}
+	args := m.Mock.MethodCalled("Insert", height, txs, pools, pairs)
 	return args.Error(0)
 }
 

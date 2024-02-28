@@ -5,16 +5,17 @@ import (
 	"strings"
 
 	"github.com/dezswap/cosmwasm-etl/configs"
+	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 	"github.com/pkg/errors"
 )
 
 type PairParsers struct {
-	CreatePairParser Parser
-	PairActionParser Parser
-	InitialProvide   Parser
-	WasmTransfer     Parser
-	Transfer         Parser
+	CreatePairParser parser.Parser[ParsedTx]
+	PairActionParser parser.Parser[ParsedTx]
+	InitialProvide   parser.Parser[ParsedTx]
+	WasmTransfer     parser.Parser[ParsedTx]
+	Transfer         parser.Parser[ParsedTx]
 }
 
 // common mixin logic for all dex apps

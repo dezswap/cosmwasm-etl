@@ -1,6 +1,7 @@
 package columbus_v1
 
 import (
+	"github.com/dezswap/cosmwasm-etl/parser"
 	p_dex "github.com/dezswap/cosmwasm-etl/parser/dex"
 
 	"github.com/dezswap/cosmwasm-etl/configs"
@@ -27,7 +28,7 @@ func New(repo p_dex.PairRepo, logger logging.Logger, c configs.ParserConfig) (p_
 	}
 
 	parsers := p_dex.PairParsers{
-		CreatePairParser: p_dex.NewParser(finder, &createPairMapper{}),
+		CreatePairParser: parser.NewParser[p_dex.ParsedTx](finder, &createPairMapper{}),
 		PairActionParser: nil,
 		InitialProvide:   nil,
 		WasmTransfer:     nil,
@@ -37,14 +38,14 @@ func New(repo p_dex.PairRepo, logger logging.Logger, c configs.ParserConfig) (p_
 	return &terraswapApp{repo, &parsers, p_dex.DexMixin{}}, nil
 }
 
-func (p *terraswapApp) ParseTxs(tx p_dex.RawTx, height uint64) ([]p_dex.ParsedTx, error) {
+func (p *terraswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]p_dex.ParsedTx, error) {
 	pairs, err := p.GetPairs()
 	if err != nil {
 		return nil, errors.Wrap(err, "parseTxs")
 	}
 
 	txDtos := []p_dex.ParsedTx{}
-	createPairTxs, err := p.Parsers.CreatePairParser.Parse(tx.Hash, tx.Timestamp, tx.LogResults, nil)
+	createPairTxs, err := p.Parsers.CreatePairParser.Parse(tx.LogResults, p_dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp}, nil)
 	if err != nil {
 		return nil, errors.Wrap(err, "parseTxs")
 	}
@@ -69,19 +70,19 @@ func (p *terraswapApp) ParseTxs(tx p_dex.RawTx, height uint64) ([]p_dex.ParsedTx
 		if !dex.ParsableRules[string(raw.Type)] {
 			continue
 		}
-		ptxs, err := p.Parsers.PairActionParser.Parse(tx.Hash, tx.Timestamp, eventlog.LogResults{raw})
+		ptxs, err := p.Parsers.PairActionParser.Parse(eventlog.LogResults{raw}, p_dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
 		if err != nil {
 			return nil, errors.Wrap(err, "parseTxs")
 		}
 		pairTxs = append(pairTxs, ptxs...)
 
-		wtxs, err := p.Parsers.WasmTransfer.Parse(tx.Hash, tx.Timestamp, eventlog.LogResults{raw})
+		wtxs, err := p.Parsers.WasmTransfer.Parse(eventlog.LogResults{raw}, p_dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
 		if err != nil {
 			return nil, errors.Wrap(err, "parseTxs")
 		}
 		wasmTxs = append(wasmTxs, wtxs...)
 
-		transfers, err := p.Parsers.Transfer.Parse(tx.Hash, tx.Timestamp, eventlog.LogResults{raw})
+		transfers, err := p.Parsers.Transfer.Parse(eventlog.LogResults{raw}, p_dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
 		if err != nil {
 			return nil, errors.Wrap(err, "parseTxs")
 		}
@@ -108,18 +109,18 @@ func (p *terraswapApp) updateParsers(pairs map[string]p_dex.Pair) error {
 	if err != nil {
 		return errors.Wrap(err, "createParsers")
 	}
-	p.Parsers.PairActionParser = p_dex.NewParser(pairFinder, &pairMapper{pairSet: pairs})
+	p.Parsers.PairActionParser = parser.NewParser[p_dex.ParsedTx](pairFinder, &pairMapper{pairSet: pairs})
 
 	wasmTransferFinder, err := cv1.CreateWasmCommonTransferRuleFinder(pairFilter)
 	if err != nil {
 		return errors.Wrap(err, "createParsers")
 	}
-	p.Parsers.WasmTransfer = p_dex.NewParser(wasmTransferFinder, &wasmCommonTransferMapper{pairSet: pairs})
+	p.Parsers.WasmTransfer = parser.NewParser[p_dex.ParsedTx](wasmTransferFinder, &wasmCommonTransferMapper{pairSet: pairs})
 
 	transferRule, err := cv1.CreateTransferRuleFinder(nil)
 	if err != nil {
 		return errors.Wrap(err, "createParsers")
 	}
-	p.Parsers.Transfer = p_dex.NewParser(transferRule, &transferMapper{pairSet: pairs})
+	p.Parsers.Transfer = parser.NewParser[p_dex.ParsedTx](transferRule, &transferMapper{pairSet: pairs})
 	return nil
 }

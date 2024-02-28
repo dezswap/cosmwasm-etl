@@ -5,15 +5,16 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/parser/dex"
 	ds "github.com/dezswap/cosmwasm-etl/pkg/dex/dezswap"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 	"github.com/pkg/errors"
 )
 
-var _ dex.Mapper = &createPairMapper{}
-var _ dex.Mapper = &transferMapper{}
-var _ dex.Mapper = &wasmTransferMapper{}
+var _ parser.Mapper[dex.ParsedTx] = &createPairMapper{}
+var _ parser.Mapper[dex.ParsedTx] = &transferMapper{}
+var _ parser.Mapper[dex.ParsedTx] = &wasmTransferMapper{}
 
 type mapperMixin struct{}
 

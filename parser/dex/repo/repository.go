@@ -1,6 +1,8 @@
 package repo
 
 import (
+	"fmt"
+
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/parser/dex"
 	"github.com/dezswap/cosmwasm-etl/pkg/db"
@@ -65,7 +67,23 @@ func (r *repoImpl) GetPairs() (map[string]dex.Pair, error) {
 }
 
 // Insert implements p_dex.Repo
-func (r *repoImpl) Insert(height uint64, txs []dex.ParsedTx, pools []dex.PoolInfo, pairs []dex.Pair) error {
+func (r *repoImpl) Insert(height uint64, txs []dex.ParsedTx, arg ...interface{}) error {
+	if len(arg) != 2 {
+		errMsg := fmt.Sprintf("invalid others(%v)", arg)
+		return errors.New(errMsg)
+	}
+
+	pools, ok := arg[0].([]dex.PoolInfo)
+	if !ok {
+		errMsg := fmt.Sprintf("invalid pools(%v)", arg[0])
+		return errors.New(errMsg)
+	}
+	pairs, ok := arg[1].([]dex.Pair)
+	if !ok {
+		errMsg := fmt.Sprintf("invalid pair(%v)", arg[1])
+		return errors.New(errMsg)
+	}
+
 	parsedTxs := []schemas.ParsedTx{}
 	for _, tx := range txs {
 		parsedTxs = append(parsedTxs, r.mapper.toParsedTxModel(r.chainId, height, tx))

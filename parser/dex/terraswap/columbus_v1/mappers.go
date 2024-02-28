@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/parser/dex"
 	"github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap/columbus_v1"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
@@ -11,10 +12,10 @@ import (
 	"github.com/pkg/errors"
 )
 
-var _ dex.Mapper = &createPairMapper{}
-var _ dex.Mapper = &pairMapper{}
-var _ dex.Mapper = &transferMapper{}
-var _ dex.Mapper = &wasmCommonTransferMapper{}
+var _ parser.Mapper[dex.ParsedTx] = &createPairMapper{}
+var _ parser.Mapper[dex.ParsedTx] = &pairMapper{}
+var _ parser.Mapper[dex.ParsedTx] = &transferMapper{}
+var _ parser.Mapper[dex.ParsedTx] = &wasmCommonTransferMapper{}
 
 type mapperMixin struct{}
 

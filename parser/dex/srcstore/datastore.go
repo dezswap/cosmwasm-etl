@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/dezswap/cosmwasm-etl/collector/datastore"
+	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/parser/dex"
 	"github.com/pkg/errors"
 )
@@ -43,7 +44,7 @@ func (r *rawDataStoreImpl) GetPoolInfos(height uint64) ([]dex.PoolInfo, error) {
 }
 
 // GetSourceTxs implements p_dex.RawDataStore
-func (r *rawDataStoreImpl) GetSourceTxs(height uint64) (dex.RawTxs, error) {
+func (r *rawDataStoreImpl) GetSourceTxs(height uint64) (parser.RawTxs, error) {
 	retryCount := 3
 	var block *datastore.BlockTxsDTO
 	var err error

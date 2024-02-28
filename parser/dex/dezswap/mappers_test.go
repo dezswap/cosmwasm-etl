@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/parser/dex"
 	el "github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 	"github.com/dezswap/cosmwasm-etl/pkg/xpla"
@@ -54,7 +55,7 @@ func Test_TransferMapper(t *testing.T) {
 	pair := dex.Pair{ContractAddr: "Pair", LpAddr: "LiquidityToken", Assets: []string{"Asset1", "Asset2"}}
 	pairSet := map[string]dex.Pair{pair.ContractAddr: pair}
 	tcs := []struct {
-		mapper         dex.Mapper
+		mapper         parser.Mapper[dex.ParsedTx]
 		matchedResults el.MatchedResult
 		expectedTx     *dex.ParsedTx
 		errMsg         string
@@ -162,7 +163,7 @@ func Test_CreatePairMapper(t *testing.T) {
 	const factoryAddr = "xpla1466nf3zuxpya8q9emxukd7vftaf6h4psr0a07srl5zw74zh84yjqxl5qul"
 
 	tcs := []struct {
-		mapper         dex.Mapper
+		mapper         parser.Mapper[dex.ParsedTx]
 		matchedResults el.MatchedResult
 		expectedTx     *dex.ParsedTx
 		errMsg         string
@@ -215,7 +216,7 @@ func Test_PairMapper(t *testing.T) {
 	pair := dex.Pair{ContractAddr: "Pair", LpAddr: "LiquidityToken", Assets: []string{"Asset1", "Asset2"}}
 	pairSet := map[string]dex.Pair{pair.ContractAddr: pair}
 	tcs := []struct {
-		mapper         dex.Mapper
+		mapper         parser.Mapper[dex.ParsedTx]
 		matchedResults el.MatchedResult
 		expectedTx     *dex.ParsedTx
 		errMsg         string
@@ -336,7 +337,7 @@ func Test_InitialProvideMapper(t *testing.T) {
 	const userAddr = "userAddr"
 	pair := dex.Pair{ContractAddr: "Pair", LpAddr: "LiquidityToken", Assets: []string{"Asset1", "Asset2"}}
 	tcs := []struct {
-		mapper         dex.Mapper
+		mapper         parser.Mapper[dex.ParsedTx]
 		matchedResults el.MatchedResult
 		expectedTx     *dex.ParsedTx
 		errMsg         string
