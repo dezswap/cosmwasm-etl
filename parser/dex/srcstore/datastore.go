@@ -18,9 +18,12 @@ var _ dex.SourceDataStore = &rawDataStoreImpl{}
 
 func New(store datastore.ReadStore) dex.SourceDataStore {
 	pstore := psrcstore.New(store)
+	pm := psrcstore.NewMapper()
+	m := newMapper(pm)
+
 	return &rawDataStoreImpl{
 		pstore,
-		&mapperImpl{},
+		m,
 		store,
 	}
 }

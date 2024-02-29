@@ -9,7 +9,7 @@ import (
 )
 
 type rawDataStoreImpl struct {
-	mapper
+	Mapper
 	datastore.ReadStore
 }
 
@@ -45,7 +45,7 @@ func (r *rawDataStoreImpl) GetSourceTxs(height uint64) (parser.RawTxs, error) {
 			}
 			return nil, errors.Wrap(err, "rawDataStoreImpl.GetSourceTxs")
 		}
-		return r.mapper.blockToRawTxs(block), nil
+		return r.BlockToRawTxs(block), nil
 	}
 	return nil, err
 }

@@ -4,33 +4,33 @@ import (
 	"github.com/aws/smithy-go/time"
 	"github.com/dezswap/cosmwasm-etl/collector/datastore"
 	"github.com/dezswap/cosmwasm-etl/parser"
-	"github.com/dezswap/cosmwasm-etl/parser/dex"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 )
 
-type mapper interface {
-	blockToRawTxs(block *datastore.BlockTxsDTO) parser.RawTxs
-	txToParserRawTx(rawTx datastore.TxDTO) parser.RawTx
-
-	rawPoolInfosToPoolInfos(rawPoolInfos *datastore.PoolInfoList) []dex.PoolInfo
-	rawPoolInfoToPoolInfo(pairAddr string, rawPoolInfo datastore.PoolInfoDTO) dex.PoolInfo
+type Mapper interface {
+	BlockToRawTxs(block *datastore.BlockTxsDTO) parser.RawTxs
+	TxToParserRawTx(rawTx datastore.TxDTO) parser.RawTx
 }
 
 type mapperImpl struct{}
 
-var _ mapper = &mapperImpl{}
+var _ Mapper = &mapperImpl{}
 
-// blockToRawTxs implements mapper
-func (m *mapperImpl) blockToRawTxs(block *datastore.BlockTxsDTO) parser.RawTxs {
+func NewMapper() Mapper {
+	return &mapperImpl{}
+}
+
+// BlockToRawTxs implements mapper
+func (m *mapperImpl) BlockToRawTxs(block *datastore.BlockTxsDTO) parser.RawTxs {
 	rawTxs := parser.RawTxs{}
 	for _, tx := range block.Txs {
-		rawTxs = append(rawTxs, m.txToParserRawTx(tx))
+		rawTxs = append(rawTxs, m.TxToParserRawTx(tx))
 	}
 	return rawTxs
 }
 
 // txToRawTx implements mapper
-func (*mapperImpl) txToParserRawTx(tx datastore.TxDTO) parser.RawTx {
+func (*mapperImpl) TxToParserRawTx(tx datastore.TxDTO) parser.RawTx {
 	rawTx := parser.RawTx{}
 	rawTx.Hash = tx.TxHash
 	rawTx.LogResults = eventlog.LogResults{}
@@ -67,32 +67,4 @@ func (*mapperImpl) txToParserRawTx(tx datastore.TxDTO) parser.RawTx {
 		}
 	}
 	return rawTx
-}
-
-// rawPoolInfosToPoolInfos implements mapper
-func (m *mapperImpl) rawPoolInfosToPoolInfos(rawPoolInfos *datastore.PoolInfoList) []dex.PoolInfo {
-	infos := []dex.PoolInfo{}
-	for addr, rawPoolInfo := range rawPoolInfos.Pairs {
-		infos = append(infos, m.rawPoolInfoToPoolInfo(addr, rawPoolInfo))
-	}
-	return infos
-}
-
-// rawPoolInfoToPoolInfo implements mapper
-func (*mapperImpl) rawPoolInfoToPoolInfo(contractAddr string, rawPoolInfo datastore.PoolInfoDTO) dex.PoolInfo {
-	poolInfo := dex.PoolInfo{
-		ContractAddr: contractAddr,
-		Assets: []dex.Asset{
-			{
-				Addr:   rawPoolInfo.Assets[0].Info.DenomOrAddress,
-				Amount: rawPoolInfo.Assets[0].Amount.String(),
-			},
-			{
-				Addr:   rawPoolInfo.Assets[1].Info.DenomOrAddress,
-				Amount: rawPoolInfo.Assets[1].Amount.String(),
-			},
-		},
-		TotalShare: rawPoolInfo.TotalShare.String(),
-	}
-	return poolInfo
 }
