@@ -46,7 +46,7 @@ func Test_parseTxs(t *testing.T) {
 		Hash:   hash,
 	}
 
-	setUp := func(tc testcase) dex.Dex {
+	setUp := func(tc testcase) dex.DexParserApp {
 		createPairParser := dex.ParserMock{}
 		repo := dex.RepoMock{}
 		rawStore := dex.RawStoreMock{}
@@ -84,7 +84,7 @@ func Test_parseTxs(t *testing.T) {
 		createPairParser.On("parse", raws, mock.Anything).Return(createTxs, nil)
 		tx.LogResults = raws
 
-		return dexApp
+		return dexApp.(dex.DexParserApp)
 	}
 
 	tcs := []testcase{

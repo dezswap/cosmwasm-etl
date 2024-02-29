@@ -2,19 +2,15 @@ package dex
 
 import "github.com/dezswap/cosmwasm-etl/parser"
 
-type TargetApp interface {
-	parser.TargetApp[ParsedTx]
-}
-
-type Dex interface {
+type DexParserApp interface {
 	Run() error
 	TargetApp
-	insert(height uint64, txs []ParsedTx, pools []PoolInfo) error
-	checkRemoteHeight(srcHeight uint64) error
+	SourceDataStore
+	Repo
 }
 
-type PairRepo interface {
-	GetPairs() (map[string]Pair, error)
+type TargetApp interface {
+	parser.TargetApp[ParsedTx]
 }
 
 type Repo interface {
@@ -26,4 +22,8 @@ type Repo interface {
 type SourceDataStore interface {
 	parser.SourceDataStore
 	GetPoolInfos(height uint64) ([]PoolInfo, error)
+}
+
+type PairRepo interface {
+	GetPairs() (map[string]Pair, error)
 }
