@@ -12,23 +12,24 @@ collector:
   pair_factory_contract_address:
 
 parser:
-  chainId: # string
-  factoryAddress: #(optional) it is driven by chainId except terraswap. Terra classic(columbus) network has two factories of Terraswap.
-  errTolerance: # uint
-  targetApp: # dezswap, terraswap
-  poolSnapshotInterval: # uint save pools' status every interval default 100
-  validationInterval: # uint validate every interval default 100
-  node:
-    rest:
-      lcd:
-      rpc:
-    grpc:
-      host: # Domain or ip
-      port: # Port of the host
-      backoffdelay: # retry delay e.g.) 3s, 1m
-      noTls: # true - direct IP connection / false - tls is enabled that its cert should be set first
-    failover_lcd_host:
-  sameHeightTolerance: # uint
+  dex:
+    chainId: # string
+    factoryAddress: #(optional) it is driven by chainId except terraswap. Terra classic(columbus) network has two factories of Terraswap.
+    errTolerance: # uint
+    targetApp: # dezswap, terraswap
+    poolSnapshotInterval: # uint save pools' status every interval default 100
+    validationInterval: # uint validate every interval default 100
+    node:
+      rest:
+        lcd:
+        rpc:
+      grpc:
+        host: # Domain or ip
+        port: # Port of the host
+        backoffdelay: # retry delay e.g.) 3s, 1m
+        noTls: # true - direct IP connection / false - tls is enabled that its cert should be set first
+      failover_lcd_host:
+    sameHeightTolerance: # uint
 
 
 aggregator:

@@ -20,7 +20,7 @@ type starfleitApp struct {
 
 var _ dex.TargetApp = &starfleitApp{}
 
-func New(repo dex.PairRepo, logger logging.Logger, c configs.ParserConfig, chainId string) (dex.TargetApp, error) {
+func New(repo dex.PairRepo, logger logging.Logger, c configs.ParserDexConfig, chainId string) (dex.TargetApp, error) {
 	finder, err := sf.CreateCreatePairRuleFinder(c.ChainId)
 	if err != nil {
 		return nil, errors.Wrap(err, "NewApp")
