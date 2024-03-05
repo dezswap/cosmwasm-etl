@@ -21,9 +21,9 @@ var _ pairMapper = &pairMapperImpl{}
 type pairMapper interface {
 	getPair(addr string) (dex.Pair, error)
 	checkResult(res eventlog.MatchedResult, expectedLen int) error
-	swapMatchedToParsedTx(res eventlog.MatchedResult, pair dex.Pair) (*dex.ParsedTx, error)
-	provideMatchedToParsedTx(res eventlog.MatchedResult, pair dex.Pair) (*dex.ParsedTx, error)
-	withdrawMatchedToParsedTx(res eventlog.MatchedResult, pair dex.Pair) (*dex.ParsedTx, error)
+	swapMatchedToParsedTx(res eventlog.MatchedResult, pair dex.Pair) ([]*dex.ParsedTx, error)
+	provideMatchedToParsedTx(res eventlog.MatchedResult, pair dex.Pair) ([]*dex.ParsedTx, error)
+	withdrawMatchedToParsedTx(res eventlog.MatchedResult, pair dex.Pair) ([]*dex.ParsedTx, error)
 }
 
 type pairMapperImpl struct {
@@ -58,7 +58,7 @@ func pairMapperBy(chainId string, height uint64, pairSet map[string]dex.Pair) (p
 	return nil, errors.New("chainId is not supported")
 }
 
-func (m *pairMapperImpl) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) (*dex.ParsedTx, error) {
+func (m *pairMapperImpl) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) ([]*dex.ParsedTx, error) {
 	if len(res) < ds.PairCommonMatchedLen {
 		msg := fmt.Sprintf("results length must bigger than %d", ds.PairCommonMatchedLen)
 		return nil, errors.New(msg)
@@ -92,7 +92,7 @@ func (m *pairMapperMixin) getPair(addr string) (dex.Pair, error) {
 	return pair, nil
 }
 
-func (m *pairMapperMixin) swapMatchedToParsedTx(res eventlog.MatchedResult, pair dex.Pair) (*dex.ParsedTx, error) {
+func (m *pairMapperMixin) swapMatchedToParsedTx(res eventlog.MatchedResult, pair dex.Pair) ([]*dex.ParsedTx, error) {
 	if err := m.checkResult(res, ds.PairSwapMatchedLen); err != nil {
 		return nil, errors.Wrap(err, "pairMapper.swapMatchedToParsedTx")
 	}
@@ -112,16 +112,16 @@ func (m *pairMapperMixin) swapMatchedToParsedTx(res eventlog.MatchedResult, pair
 	assets[offerIdx].Amount = res[ds.PairSwapOfferAmountIdx].Value
 	assets[returnIdx].Amount = fmt.Sprintf("-%s", res[ds.PairSwapReturnAmountIdx].Value)
 
-	return &dex.ParsedTx{
+	return []*dex.ParsedTx{{
 		Type:             dex.Swap,
 		Sender:           res[ds.PairSwapSenderIdx].Value,
 		ContractAddr:     res[ds.PairAddrIdx].Value,
 		Assets:           assets,
 		CommissionAmount: res[ds.PairSwapCommissionAmountIdx].Value,
-	}, nil
+	}}, nil
 }
 
-func (m *pairMapperMixin) provideMatchedToParsedTx(res eventlog.MatchedResult, pair dex.Pair) (*dex.ParsedTx, error) {
+func (m *pairMapperMixin) provideMatchedToParsedTx(res eventlog.MatchedResult, pair dex.Pair) ([]*dex.ParsedTx, error) {
 	if err := m.checkResult(res, ds.PairProvideMatchedLen); err != nil {
 		return nil, errors.Wrap(err, "pairMapper.PairProvideMatchedLen")
 	}
@@ -135,17 +135,17 @@ func (m *pairMapperMixin) provideMatchedToParsedTx(res eventlog.MatchedResult, p
 		assets = []dex.Asset{assets[1], assets[0]}
 	}
 
-	return &dex.ParsedTx{
+	return []*dex.ParsedTx{{
 		Type:         dex.Provide,
 		Sender:       res[ds.PairProvideSenderIdx].Value,
 		ContractAddr: res[ds.PairAddrIdx].Value,
 		Assets:       [2]dex.Asset{assets[0], assets[1]},
 		LpAddr:       pair.LpAddr,
 		LpAmount:     res[ds.PairProvideShareIdx].Value,
-	}, nil
+	}}, nil
 }
 
-func (m *pairMapperMixin) withdrawMatchedToParsedTx(res eventlog.MatchedResult, pair dex.Pair) (*dex.ParsedTx, error) {
+func (m *pairMapperMixin) withdrawMatchedToParsedTx(res eventlog.MatchedResult, pair dex.Pair) ([]*dex.ParsedTx, error) {
 	if err := m.checkResult(res, ds.PairWithdrawMatchedLen); err != nil {
 		return nil, errors.Wrap(err, "pairMapper.withdrawMatchedToParsedTx")
 	}
@@ -162,18 +162,18 @@ func (m *pairMapperMixin) withdrawMatchedToParsedTx(res eventlog.MatchedResult, 
 		assets = []dex.Asset{assets[1], assets[0]}
 	}
 
-	return &dex.ParsedTx{
+	return []*dex.ParsedTx{{
 		Type:         dex.Withdraw,
 		Sender:       res[ds.PairWithdrawSenderIdx].Value,
 		ContractAddr: res[ds.PairAddrIdx].Value,
 		Assets:       [2]dex.Asset{assets[0], assets[1]},
 		LpAddr:       pair.LpAddr,
 		LpAmount:     res[ds.PairWithdrawWithdrawShareIdx].Value,
-	}, nil
+	}}, nil
 
 }
 
-func (m *pairV2Mapper) provideMatchedToParsedTx(res eventlog.MatchedResult, pair dex.Pair) (*dex.ParsedTx, error) {
+func (m *pairV2Mapper) provideMatchedToParsedTx(res eventlog.MatchedResult, pair dex.Pair) ([]*dex.ParsedTx, error) {
 	if err := m.checkResult(res, ds.PairV2ProvideMatchedLen); err != nil {
 		return nil, errors.Wrap(err, "v2PairMapper.PairProvideMatchedLen")
 	}
@@ -203,7 +203,7 @@ func (m *pairV2Mapper) provideMatchedToParsedTx(res eventlog.MatchedResult, pair
 		return nil, errors.Wrap(err, "v2PairMapper.provideMatchedToParsedTx")
 	}
 
-	return &dex.ParsedTx{
+	return []*dex.ParsedTx{{
 		Type:         dex.Provide,
 		Sender:       res[ds.PairV2ProvideSenderIdx].Value,
 		ContractAddr: res[ds.PairAddrIdx].Value,
@@ -211,7 +211,7 @@ func (m *pairV2Mapper) provideMatchedToParsedTx(res eventlog.MatchedResult, pair
 		LpAddr:       pair.LpAddr,
 		LpAmount:     res[ds.PairV2ProvideShareIdx].Value,
 		Meta:         meta,
-	}, nil
+	}}, nil
 }
 
 // Apply refund asset to provided asset for cw20

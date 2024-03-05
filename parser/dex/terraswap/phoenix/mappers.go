@@ -34,7 +34,7 @@ type wasmCommonTransferMapper struct {
 }
 
 // match implements mapper
-func (m *createPairMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) (*dex.ParsedTx, error) {
+func (m *createPairMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) ([]*dex.ParsedTx, error) {
 	if err := m.mapperMixin.checkResult(res, phoenix.CreatePairMatchedLen); err != nil {
 		return nil, errors.Wrap(err, "createPairMapper.MatchedToParsedTx")
 	}
@@ -45,7 +45,7 @@ func (m *createPairMapper) MatchedToParsedTx(res eventlog.MatchedResult, optiona
 		return nil, errors.New(msg)
 	}
 
-	return &dex.ParsedTx{
+	return []*dex.ParsedTx{{
 		Type:         dex.CreatePair,
 		Sender:       "",
 		ContractAddr: res[phoenix.FactoryPairAddrIdx].Value,
@@ -55,11 +55,11 @@ func (m *createPairMapper) MatchedToParsedTx(res eventlog.MatchedResult, optiona
 		},
 		LpAddr:   res[phoenix.FactoryLpAddrIdx].Value,
 		LpAmount: "",
-	}, nil
+	}}, nil
 }
 
 // match implements mapper
-func (m *pairMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) (*dex.ParsedTx, error) {
+func (m *pairMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) ([]*dex.ParsedTx, error) {
 	pair, ok := m.pairSet[res[phoenix.PairAddrIdx].Value]
 	if !ok {
 		msg := fmt.Sprintf("pairMapper.MatchedToParsedTx no pair(%s)", res[phoenix.PairAddrIdx].Value)
@@ -80,7 +80,7 @@ func (m *pairMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...
 	return nil, errors.New(msg)
 }
 
-func (m *pairMapper) swapMatchedToParsedTx(res eventlog.MatchedResult, pair dex.Pair) (*dex.ParsedTx, error) {
+func (m *pairMapper) swapMatchedToParsedTx(res eventlog.MatchedResult, pair dex.Pair) ([]*dex.ParsedTx, error) {
 	if err := m.mixin.checkResult(res); err != nil {
 		return nil, errors.Wrap(err, "pairMapper.swapMatchedToParsedTx")
 	}
@@ -105,17 +105,17 @@ func (m *pairMapper) swapMatchedToParsedTx(res eventlog.MatchedResult, pair dex.
 	assets[offerIdx].Amount = matchMap[phoenix.PairSwapOfferAmountKey].Value
 	assets[returnIdx].Amount = fmt.Sprintf("-%s", matchMap[phoenix.PairSwapReturnAmountKey].Value)
 
-	return &dex.ParsedTx{
+	return []*dex.ParsedTx{{
 		Type:             dex.Swap,
 		ContractAddr:     matchMap[phoenix.PairAddrKey].Value,
 		Sender:           matchMap[phoenix.PairSwapSenderKey].Value,
 		Assets:           assets,
 		CommissionAmount: matchMap[phoenix.PairSwapCommissionAmountKey].Value,
 		Meta:             nil,
-	}, nil
+	}}, nil
 }
 
-func (m *pairMapper) provideMatchedToParsedTx(res eventlog.MatchedResult, pair dex.Pair) (*dex.ParsedTx, error) {
+func (m *pairMapper) provideMatchedToParsedTx(res eventlog.MatchedResult, pair dex.Pair) ([]*dex.ParsedTx, error) {
 	if err := m.mixin.checkResult(res); err != nil {
 		return nil, errors.Wrap(err, "pairMapper.provideMatchedToParsedTx")
 	}
@@ -134,17 +134,17 @@ func (m *pairMapper) provideMatchedToParsedTx(res eventlog.MatchedResult, pair d
 		assets = []dex.Asset{assets[1], assets[0]}
 	}
 
-	return &dex.ParsedTx{
+	return []*dex.ParsedTx{{
 		Type:         dex.Provide,
 		ContractAddr: matchMap[phoenix.PairAddrKey].Value,
 		Sender:       matchMap[phoenix.PairProvideSenderKey].Value,
 		Assets:       [2]dex.Asset{assets[0], assets[1]},
 		LpAddr:       pair.LpAddr,
 		LpAmount:     matchMap[phoenix.PairProvideShareKey].Value,
-	}, nil
+	}}, nil
 }
 
-func (m *pairMapper) withdrawMatchedToParsedTx(res eventlog.MatchedResult, pair dex.Pair) (*dex.ParsedTx, error) {
+func (m *pairMapper) withdrawMatchedToParsedTx(res eventlog.MatchedResult, pair dex.Pair) ([]*dex.ParsedTx, error) {
 	if err := m.mixin.checkResult(res); err != nil {
 		return nil, errors.Wrap(err, "pairMapper.withdrawMatchedToParsedTx")
 	}
@@ -166,19 +166,19 @@ func (m *pairMapper) withdrawMatchedToParsedTx(res eventlog.MatchedResult, pair 
 		assets = []dex.Asset{assets[1], assets[0]}
 	}
 
-	return &dex.ParsedTx{
+	return []*dex.ParsedTx{{
 		Type:         dex.Withdraw,
 		ContractAddr: matchMap[phoenix.PairAddrKey].Value,
 		Sender:       matchMap[phoenix.PairWithdrawSenderKey].Value,
 		Assets:       [2]dex.Asset{assets[0], assets[1]},
 		LpAddr:       pair.LpAddr,
 		LpAmount:     matchMap[phoenix.PairWithdrawWithdrawShareKey].Value,
-	}, nil
+	}}, nil
 
 }
 
 // match implements mapper
-func (m *wasmCommonTransferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) (*dex.ParsedTx, error) {
+func (m *wasmCommonTransferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) ([]*dex.ParsedTx, error) {
 	if err := m.mixin.checkResult(res); err != nil {
 		return nil, errors.Wrap(err, "wasmCommonTransferMapper.MatchedToParsedTx")
 	}
@@ -226,18 +226,18 @@ func (m *wasmCommonTransferMapper) MatchedToParsedTx(res eventlog.MatchedResult,
 		assets[idx].Amount = fmt.Sprintf("-%s", assets[idx].Amount)
 	}
 
-	return &dex.ParsedTx{
+	return []*dex.ParsedTx{{
 		Type:         dex.Transfer,
 		Sender:       matchMap[phoenix.WasmTransferFromKey].Value,
 		ContractAddr: pair.ContractAddr,
 		Assets:       assets,
 		Meta:         meta,
-	}, nil
+	}}, nil
 
 }
 
 // match implements mapper
-func (m *transferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) (*dex.ParsedTx, error) {
+func (m *transferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) ([]*dex.ParsedTx, error) {
 	matchMap, err := resultToMap(res)
 	if err != nil {
 		return nil, errors.Wrap(err, "transferMapper.MatchedToParsedTx")
@@ -283,7 +283,7 @@ func (m *transferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals
 		}
 	}
 
-	return &dex.ParsedTx{
+	return []*dex.ParsedTx{{
 		Type:         dex.Transfer,
 		Sender:       matchMap[phoenix.SortedTransferSenderKey].Value,
 		ContractAddr: pair.ContractAddr,
@@ -291,7 +291,7 @@ func (m *transferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals
 		LpAddr:       "",
 		LpAmount:     "",
 		Meta:         meta,
-	}, nil
+	}}, nil
 }
 
 func (*mapperMixin) checkResult(res eventlog.MatchedResult, expectedLen ...int) error {

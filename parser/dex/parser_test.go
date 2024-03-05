@@ -19,7 +19,7 @@ func Test_parser(t *testing.T) {
 	type testCase struct {
 		expected    []*ParsedTx
 		matched     eventlog.MatchedResults
-		dto         *ParsedTx
+		dto         []*ParsedTx
 		mapperError string
 	}
 
@@ -33,21 +33,21 @@ func Test_parser(t *testing.T) {
 		if t.mapperError == "" {
 			mapper.On("matchedToParsedTx", mock.Anything, mock.Anything).Return(t.dto, nil)
 		} else {
-			mapper.On("matchedToParsedTx", mock.Anything, mock.Anything).Return(&ParsedTx{}, errors.New(t.mapperError))
+			mapper.On("matchedToParsedTx", mock.Anything, mock.Anything).Return([]*ParsedTx{{}}, errors.New(t.mapperError))
 		}
 	}
 	parsedTx := &ParsedTx{"hash", time.Time{}, Provide, "sender", "ContractAddr", [2]Asset{{"Asset0", "100"}, {"Asset1", "100"}}, "Lp", "1000", "", make(map[string]interface{})}
 
 	tcs := []testCase{
-		{[]*ParsedTx{}, eventlog.MatchedResults{}, &ParsedTx{}, ""},
-		{nil, eventlog.MatchedResults{eventlog.MatchedResult{{Key: "key", Value: "value"}}}, &ParsedTx{}, "mapper errors"},
+		{[]*ParsedTx{}, eventlog.MatchedResults{}, []*ParsedTx{&ParsedTx{}}, ""},
+		{nil, eventlog.MatchedResults{eventlog.MatchedResult{{Key: "key", Value: "value"}}}, []*ParsedTx{&ParsedTx{}}, "mapper errors"},
 		{
 			[]*ParsedTx{parsedTx, parsedTx},
 			eventlog.MatchedResults{
 				[]eventlog.MatchedItem{{Key: "Key", Value: "First"}},
 				[]eventlog.MatchedItem{{Key: "Key", Value: "Second"}},
 			},
-			parsedTx,
+			[]*ParsedTx{parsedTx},
 			"",
 		},
 	}
@@ -72,9 +72,9 @@ var _ eventlog.LogFinder = &logfinderMock{}
 var _ parser.Mapper[ParsedTx] = &mapperMock{}
 
 // matchedToParsedTx implements mapper
-func (m *mapperMock) MatchedToParsedTx(result eventlog.MatchedResult, optionals ...interface{}) (*ParsedTx, error) {
+func (m *mapperMock) MatchedToParsedTx(result eventlog.MatchedResult, optionals ...interface{}) ([]*ParsedTx, error) {
 	args := m.Mock.MethodCalled("matchedToParsedTx", result, optionals)
-	return args.Get(0).(*ParsedTx), args.Error(1)
+	return args.Get(0).([]*ParsedTx), args.Error(1)
 }
 
 // FindFromAttrs implements eventlog.LogFinder
