@@ -238,6 +238,7 @@ func (mixin *DexMixin) RemoveDuplicatedTxs(pairTxs []*ParsedTx, transferTxs []*P
 	return txs
 }
 
+// TODO: more specific logic
 func (mixin *DexMixin) isDuplicatedTx(ptx *ParsedTx, transfer *ParsedTx) bool {
 	isSameAssetAmount := func(a1, a2 Asset) bool {
 		return a1.Addr == a2.Addr && a1.Amount == a2.Amount

@@ -108,7 +108,7 @@ func (m *pairMapperMixin) swapMatchedToParsedTx(res eventlog.MatchedResult, pair
 	assets[offerIdx].Amount = res[sf.PairSwapOfferAmountIdx].Value
 	assets[returnIdx].Amount = fmt.Sprintf("-%s", res[sf.PairSwapReturnAmountIdx].Value)
 
-	return []*dex.ParsedTx{&dex.ParsedTx{
+	return []*dex.ParsedTx{{
 		Type:             dex.Swap,
 		Sender:           res[sf.PairSwapSenderIdx].Value,
 		ContractAddr:     res[sf.PairAddrIdx].Value,
@@ -131,7 +131,7 @@ func (m *pairMapperMixin) provideMatchedToParsedTx(res eventlog.MatchedResult, p
 		assets = []dex.Asset{assets[1], assets[0]}
 	}
 
-	return []*dex.ParsedTx{&dex.ParsedTx{
+	return []*dex.ParsedTx{{
 		Type:         dex.Provide,
 		Sender:       res[sf.PairProvideSenderIdx].Value,
 		ContractAddr: res[sf.PairAddrIdx].Value,
@@ -158,7 +158,7 @@ func (m *pairMapperMixin) withdrawMatchedToParsedTx(res eventlog.MatchedResult, 
 		assets = []dex.Asset{assets[1], assets[0]}
 	}
 
-	return []*dex.ParsedTx{&dex.ParsedTx{
+	return []*dex.ParsedTx{{
 		Type:         dex.Withdraw,
 		Sender:       res[sf.PairWithdrawSenderIdx].Value,
 		ContractAddr: res[sf.PairAddrIdx].Value,
@@ -191,7 +191,7 @@ func (m *pairV2Mapper) provideMatchedToParsedTx(res eventlog.MatchedResult, pair
 		assets = []dex.Asset{assets[1], assets[0]}
 	}
 
-	return []*dex.ParsedTx{&dex.ParsedTx{
+	return []*dex.ParsedTx{{
 		Type:         dex.Provide,
 		Sender:       res[sf.PairV2ProvideSenderIdx].Value,
 		ContractAddr: res[sf.PairAddrIdx].Value,

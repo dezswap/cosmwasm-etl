@@ -38,7 +38,7 @@ func (p *parserImpl[T]) Parse(raws eventlog.LogResults, defaultVal Overrider[T],
 			return nil, errors.Wrap(err, "parserImpl.Parse")
 		}
 		// skip if no dto
-		if dtos == nil {
+		if len(dtos) == 0 {
 			continue
 		}
 
