@@ -5,54 +5,54 @@ import (
 	"fmt"
 	"testing"
 
-	dts "github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_CreateCreateLogFinder(t *testing.T) {
-	var (
-		logFinder   eventlog.LogFinder
-		eventLogs   eventlog.LogResults
-		err         error
-		factoryAddr = string(dts.CLASSIC_V1_FACTORY)
-	)
-	setUp := func(factoryAddr, rawLogsStr string) {
-		logFinder = nil
-		eventLogs = eventlog.LogResults{}
-		logFinder, err = CreateCreatePairRuleFinder(factoryAddr)
-		if err != nil {
-			panic(err)
-		}
-		if err := json.Unmarshal([]byte(rawLogsStr), &eventLogs); err != nil {
-			panic(err)
-		}
-	}
+// // move to dex
+// func Test_CreateCreateLogFinder(t *testing.T) {
+// 	var (
+// 		logFinder   eventlog.LogFinder
+// 		eventLogs   eventlog.LogResults
+// 		err         error
+// 		factoryAddr = string(dts.CLASSIC_V1_FACTORY)
+// 	)
+// 	setUp := func(factoryAddr, rawLogsStr string) {
+// 		logFinder = nil
+// 		eventLogs = eventlog.LogResults{}
+// 		logFinder, err = CreateCreatePairRuleFinder(factoryAddr)
+// 		if err != nil {
+// 			panic(err)
+// 		}
+// 		if err := json.Unmarshal([]byte(rawLogsStr), &eventLogs); err != nil {
+// 			panic(err)
+// 		}
+// 	}
 
-	tcs := []struct {
-		factoryAddr       string
-		rawLogStr         string
-		expectedResultLen int
-		errMsg            string
-	}{
-		{factoryAddr, CreatePairRawLogStr, 1, "must match once"},
-		{factoryAddr, createTwiceLogStr, 2, "must match twice"},
-		{factoryAddr, differentTypeLogsStr, 0, "must not match with different type"},
-		{factoryAddr, "[]", 0, "must not match with empty logs"},
-	}
+// 	tcs := []struct {
+// 		factoryAddr       string
+// 		rawLogStr         string
+// 		expectedResultLen int
+// 		errMsg            string
+// 	}{
+// 		{factoryAddr, CreatePairRawLogStr, 1, "must match once"},
+// 		{factoryAddr, createTwiceLogStr, 2, "must match twice"},
+// 		{factoryAddr, differentTypeLogsStr, 0, "must not match with different type"},
+// 		{factoryAddr, "[]", 0, "must not match with empty logs"},
+// 	}
 
-	for idx, tc := range tcs {
-		errMsg := fmt.Sprintf("idx(%d): %s", idx, tc.errMsg)
-		assert := assert.New(t)
+// 	for idx, tc := range tcs {
+// 		errMsg := fmt.Sprintf("idx(%d): %s", idx, tc.errMsg)
+// 		assert := assert.New(t)
 
-		setUp(tc.factoryAddr, tc.rawLogStr)
-		matchedResults := logFinder.FindFromLogs(eventLogs)
-		assert.Len(matchedResults, tc.expectedResultLen, errMsg)
-		if tc.expectedResultLen > 0 {
-			assert.Len(matchedResults[0], CreatePairMatchedLen, "must return all matched value")
-		}
-	}
-}
+// 		setUp(tc.factoryAddr, tc.rawLogStr)
+// 		matchedResults := logFinder.FindFromLogs(eventLogs)
+// 		assert.Len(matchedResults, tc.expectedResultLen, errMsg)
+// 		if tc.expectedResultLen > 0 {
+// 			assert.Len(matchedResults[0], CreatePairMatchedLen, "must return all matched value")
+// 		}
+// 	}
+// }
 
 func Test_LogFinders(t *testing.T) {
 	var logFinder eventlog.LogFinder

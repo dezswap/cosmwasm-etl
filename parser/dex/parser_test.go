@@ -39,8 +39,8 @@ func Test_parser(t *testing.T) {
 	parsedTx := &ParsedTx{"hash", time.Time{}, Provide, "sender", "ContractAddr", [2]Asset{{"Asset0", "100"}, {"Asset1", "100"}}, "Lp", "1000", "", make(map[string]interface{})}
 
 	tcs := []testCase{
-		{[]*ParsedTx{}, eventlog.MatchedResults{}, []*ParsedTx{&ParsedTx{}}, ""},
-		{nil, eventlog.MatchedResults{eventlog.MatchedResult{{Key: "key", Value: "value"}}}, []*ParsedTx{&ParsedTx{}}, "mapper errors"},
+		{[]*ParsedTx{}, eventlog.MatchedResults{}, []*ParsedTx{{}}, ""},
+		{nil, eventlog.MatchedResults{eventlog.MatchedResult{{Key: "key", Value: "value"}}}, []*ParsedTx{{}}, "mapper errors"},
 		{
 			[]*ParsedTx{parsedTx, parsedTx},
 			eventlog.MatchedResults{

@@ -70,11 +70,3 @@ const (
 	PairWithdrawSenderKey        = "sender"
 	PairWithdrawWithdrawShareKey = "withdrawn_share"
 )
-
-const (
-	WasmTransferCw20AddrKey = "_contract_address"
-	WasmTransferActionKey   = "action"
-	WasmTransferAmountKey   = "amount"
-	WasmTransferFromKey     = "from"
-	WasmTransferToKey       = "to"
-)
