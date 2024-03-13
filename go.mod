@@ -19,7 +19,6 @@ require (
 	github.com/golang/protobuf v1.5.2
 	github.com/lib/pq v1.10.6
 	github.com/pkg/errors v0.9.1
-	github.com/shopspring/decimal v1.3.1
 	github.com/sirupsen/logrus v1.8.1
 	github.com/spf13/viper v1.12.0
 	github.com/stretchr/testify v1.8.0
@@ -27,7 +26,7 @@ require (
 	github.com/thoas/go-funk v0.9.2
 	google.golang.org/genproto v0.0.0-20220519153652-3a47de7e79bd
 	google.golang.org/grpc v1.47.0
-	google.golang.org/protobuf v1.28.0
+	google.golang.org/protobuf v1.33.0
 	gorm.io/driver/postgres v1.3.8
 	gorm.io/gorm v1.23.8
 	sigs.k8s.io/yaml v1.2.0
@@ -126,6 +125,7 @@ require (
 	github.com/rcrowley/go-metrics v0.0.0-20200313005456-10cdbea86bc0 // indirect
 	github.com/regen-network/cosmos-proto v0.3.1 // indirect
 	github.com/sasha-s/go-deadlock v0.2.1-0.20190427202633-1595213edefa // indirect
+	github.com/shopspring/decimal v1.3.1 // indirect
 	github.com/spf13/afero v1.8.2 // indirect
 	github.com/spf13/cast v1.5.0 // indirect
 	github.com/spf13/cobra v1.5.0 // indirect
