@@ -12,15 +12,15 @@ import (
 	"github.com/dezswap/cosmwasm-etl/collector/datastore"
 	collector_store "github.com/dezswap/cosmwasm-etl/collector/datastore"
 	"github.com/dezswap/cosmwasm-etl/configs"
-	"github.com/dezswap/cosmwasm-etl/parser"
+	p_dex "github.com/dezswap/cosmwasm-etl/parser/dex"
 	"github.com/pkg/errors"
 
-	pds "github.com/dezswap/cosmwasm-etl/parser/dezswap"
-	"github.com/dezswap/cosmwasm-etl/parser/repo"
-	"github.com/dezswap/cosmwasm-etl/parser/srcstore"
-	ts_srcstore "github.com/dezswap/cosmwasm-etl/parser/srcstore/terraswap"
-	psf "github.com/dezswap/cosmwasm-etl/parser/starfleit"
-	pts "github.com/dezswap/cosmwasm-etl/parser/terraswap"
+	pds "github.com/dezswap/cosmwasm-etl/parser/dex/dezswap"
+	"github.com/dezswap/cosmwasm-etl/parser/dex/repo"
+	"github.com/dezswap/cosmwasm-etl/parser/dex/srcstore"
+	ts_srcstore "github.com/dezswap/cosmwasm-etl/parser/dex/srcstore/terraswap"
+	psf "github.com/dezswap/cosmwasm-etl/parser/dex/starfleit"
+	pts "github.com/dezswap/cosmwasm-etl/parser/dex/terraswap"
 	"github.com/dezswap/cosmwasm-etl/pkg/dex"
 	dts "github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap"
 	dts_colv1 "github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap/columbus_v1"
@@ -83,7 +83,7 @@ func main() {
 	defer catch(logger)
 
 	repo := repo.New(c.Parser.ChainId, c.Rdb)
-	var app parser.TargetApp
+	var app p_dex.TargetApp
 	var err error
 	if c.Parser.TargetApp == dex.Terraswap {
 		app, err = pts.New(repo, logger, c.Parser)
@@ -99,7 +99,7 @@ func main() {
 		panic(err)
 	}
 
-	var rawDataStore parser.SourceDataStore
+	var rawDataStore p_dex.SourceDataStore
 	if c.Parser.TargetApp == dex.Terraswap {
 		r := rpc.New(c.Parser.NodeConfig.RestClientConfig.RpcHost, &http.Client{
 			Transport: &http.Transport{
@@ -140,7 +140,7 @@ func main() {
 		rawDataStore = srcstore.New(readStore)
 	}
 
-	runner := parser.NewDexApp(app, rawDataStore, repo, logger, c.Parser)
+	runner := p_dex.NewDexApp(app, rawDataStore, repo, logger, c.Parser)
 
 	const BLOCK_SECONDS = 5 * time.Second
 	for errCount := uint(0); errCount <= c.Parser.ErrTolerance; {

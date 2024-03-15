@@ -1,46 +1,58 @@
 package parser
 
 import (
-	"time"
-
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 	"github.com/pkg/errors"
 )
 
-var _ Parser = &parserImpl{}
+type Overrider[T any] interface {
+	Override(new T) (T, error)
+}
+type Mapper[T any] interface {
+	// return nil if the matched result is not for this parser
+	MatchedToParsedTx(eventlog.MatchedResult, ...interface{}) (*T, error)
+}
 
-type parserImpl struct {
-	Mapper
+type Parser[T any] interface {
+	Parse(raws eventlog.LogResults, defaultVal Overrider[T], optionals ...interface{}) ([]*T, error)
+	Mapper[T]
+}
+
+type parserImpl[T any] struct {
+	Mapper[T]
 	eventlog.LogFinder
 }
 
-func NewParser(finder eventlog.LogFinder, mapper Mapper) Parser {
-	return &parserImpl{mapper, finder}
+func NewParser[T any](finder eventlog.LogFinder, mapper Mapper[T]) Parser[T] {
+	return &parserImpl[T]{mapper, finder}
 }
 
 // parse implements parser
-func (p *parserImpl) Parse(hash string, timestamp time.Time, raws eventlog.LogResults, optionals ...interface{}) ([]*ParsedTx, error) {
+func (p *parserImpl[T]) Parse(raws eventlog.LogResults, defaultVal Overrider[T], optionals ...interface{}) ([]*T, error) {
 	matched := p.FindFromLogs(raws)
-	dtos := []*ParsedTx{}
+	dtos := []*T{}
 
 	for _, match := range matched {
 		dto, err := p.MatchedToParsedTx(match, optionals...)
 		if err != nil {
-			return nil, errors.Wrap(err, "parse")
+			return nil, errors.Wrap(err, "parserImpl.Parse")
 		}
 		// skip if no dto
 		if dto == nil {
 			continue
 		}
-		dto.Hash = hash
-		dto.Timestamp = timestamp
-		dtos = append(dtos, dto)
+
+		overridden, err := defaultVal.Override(*dto)
+		if err != nil {
+			return nil, errors.Wrap(err, "parserImpl.Parse")
+		}
+		dtos = append(dtos, &overridden)
 	}
 
 	return dtos, nil
 }
 
 // matchedToParsedTxDto implements parser
-func (p *parserImpl) MatchedToParsedTx(matched eventlog.MatchedResult, optionals ...interface{}) (*ParsedTx, error) {
+func (p *parserImpl[T]) MatchedToParsedTx(matched eventlog.MatchedResult, optionals ...interface{}) (*T, error) {
 	return p.Mapper.MatchedToParsedTx(matched, optionals...)
 }

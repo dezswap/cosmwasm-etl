@@ -364,7 +364,7 @@ from (select distinct -- processed asset1 values
             from parsed_tx pt
                 join pair p on pt.chain_id = p.chain_id and pt.contract = p.contract
                 join tokens t on pt.chain_id = t.chain_id and pt.asset1 = t.address
-                join (select height, token_id, price from price 
+                join (select height, token_id, price from price
                       union select 0 height, id as token_id, 1 as price from tokens where address = ?) pr
                     on t.id = pr.token_id and pr.height <= pt.height
             where pt.chain_id = ?

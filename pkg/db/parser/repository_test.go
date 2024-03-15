@@ -11,7 +11,7 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/dezswap/cosmwasm-etl/configs"
-	"github.com/dezswap/cosmwasm-etl/parser"
+	"github.com/dezswap/cosmwasm-etl/parser/dex"
 	"github.com/dezswap/cosmwasm-etl/pkg/db"
 	"github.com/dezswap/cosmwasm-etl/pkg/db/schemas"
 	"github.com/dezswap/cosmwasm-etl/pkg/faker"
@@ -74,7 +74,7 @@ var (
 			Timestamp:        start,
 			Hash:             "7348EBEC7428CD5F3CA1DC6B15604FAF3C8BEFE8213F1D2F8733F37E25CC1991",
 			Sender:           accounts[0].Address,
-			Type:             parser.Provide,
+			Type:             dex.Provide,
 			Contract:         pairs[0].Contract,
 			Asset0:           pairs[0].Asset0,
 			Asset0Amount:     "25000000",
@@ -90,7 +90,7 @@ var (
 			Timestamp:        end - 1,
 			Hash:             "D59E85ADF83DF8D9D4B00C4D89056FB53B54B6F47CCBA5BD5561842499B3095A",
 			Sender:           accounts[0].Address,
-			Type:             parser.Provide,
+			Type:             dex.Provide,
 			Contract:         pairs[0].Contract,
 			Asset0:           pairs[0].Asset0,
 			Asset0Amount:     "13517017",
@@ -106,7 +106,7 @@ var (
 			Timestamp:        end - 1,
 			Hash:             "271CBA45F65D39ACF147F9B21F2991DE6669F218C2CBA256FB8948B11F34D2B0",
 			Sender:           accounts[1].Address,
-			Type:             parser.Provide,
+			Type:             dex.Provide,
 			Contract:         pairs[1].Contract,
 			Asset0:           pairs[1].Asset0,
 			Asset0Amount:     "13517017",
@@ -125,7 +125,7 @@ var (
 			Timestamp:        start,
 			Hash:             "A07CECA3F91454AFD8D78A7E242EE6A5371EBBACE1F4219FC7134C5620C92C5C",
 			Sender:           accounts[0].Address,
-			Type:             parser.Swap,
+			Type:             dex.Swap,
 			Contract:         pairs[0].Contract,
 			Asset0:           pairs[0].Asset0,
 			Asset0Amount:     "-4804871",
@@ -141,7 +141,7 @@ var (
 			Timestamp:        end - 1,
 			Hash:             "F2A46F9128C41BBD9CBC8F99316E80EBAA71CD644CAE095E473E049799068FEE",
 			Sender:           accounts[1].Address,
-			Type:             parser.Swap,
+			Type:             dex.Swap,
 			Contract:         pairs[0].Contract,
 			Asset0:           pairs[0].Asset0,
 			Asset0Amount:     "1000000",
@@ -433,7 +433,7 @@ func (s *aggregatorReadRepoSuite) Test_NewPairIds() {
 	// prepare
 	createTestAccounts(s.DB)
 	createTestPairs(s.DB)
-	createTestTxs(s.DB, parser.Provide)
+	createTestTxs(s.DB, dex.Provide)
 
 	actual, err := s.Repo.NewPairIds(accounts[0].Address, start, end)
 
@@ -449,7 +449,7 @@ func (s *aggregatorReadRepoSuite) Test_NewAccounts() {
 
 	// prepare
 	s.DB.Exec(`TRUNCATE TABLE account`)
-	createTestTxs(s.DB, parser.Provide)
+	createTestTxs(s.DB, dex.Provide)
 
 	// execute
 	actual, err := s.Repo.NewAccounts(start, end)
@@ -467,7 +467,7 @@ func (s *aggregatorReadRepoSuite) Test_ProviderCount() {
 
 	// prepare
 	createTestPairs(s.DB)
-	createTestTxs(s.DB, parser.Provide)
+	createTestTxs(s.DB, dex.Provide)
 
 	// execute
 	actual, err := s.Repo.ProviderCount(pairId, start, end)
@@ -486,7 +486,7 @@ func (s *aggregatorReadRepoSuite) Test_TxCountOfAccount() {
 	// prepare
 	createTestAccounts(s.DB)
 	createTestPairs(s.DB)
-	createTestTxs(s.DB, parser.Provide)
+	createTestTxs(s.DB, dex.Provide)
 
 	// execute
 	actual, err := s.Repo.TxCountOfAccount(accounts[0].Address, pairId, start, end)
@@ -505,7 +505,7 @@ func (s *aggregatorReadRepoSuite) Test_AssetAmountInPair() {
 	// prepare
 	createTestAccounts(s.DB)
 	createTestPairs(s.DB)
-	createTestTxs(s.DB, parser.Provide)
+	createTestTxs(s.DB, dex.Provide)
 
 	// execute
 	actualAsset0, actualAsset1, actualLp, err := s.Repo.AssetAmountInPair(pairId, start, end)
@@ -526,7 +526,7 @@ func (s *aggregatorReadRepoSuite) Test_AssetAmountInPairOfAccount() {
 	// prepare
 	createTestAccounts(s.DB)
 	createTestPairs(s.DB)
-	createTestTxs(s.DB, parser.Provide)
+	createTestTxs(s.DB, dex.Provide)
 
 	// execute
 	actualAsset0, actualAsset1, actualLp, err := s.Repo.AssetAmountInPairOfAccount(accounts[0].Address, pairId, start, end)
@@ -546,7 +546,7 @@ func (s *aggregatorReadRepoSuite) Test_CommissionAmountInPair() {
 
 	// prepare
 	createTestPairs(s.DB)
-	createTestTxs(s.DB, parser.Swap)
+	createTestTxs(s.DB, dex.Swap)
 
 	actualAsset0, actualAsset1, err := s.Repo.CommissionAmountInPair(pairId, start, end)
 
@@ -568,19 +568,19 @@ func createTestAccounts(db *gorm.DB) {
 	db.Omit("CreatedAt").Create(&accounts)
 }
 
-func createTestTxs(db *gorm.DB, txType parser.TxType) {
+func createTestTxs(db *gorm.DB, txType dex.TxType) {
 	db.Exec(`TRUNCATE TABLE parsed_tx`)
 
 	switch txType {
-	case parser.Provide:
+	case dex.Provide:
 		db.Omit("Id", "CreatedAt").Create(&provideTxs)
-	case parser.Swap:
+	case dex.Swap:
 		db.Omit("Id", "CreatedAt").Create(&swapTxs)
 	}
 }
 
 func Test_readRepo(t *testing.T) {
-	parser.FakerCustomGenerator()
+	dex.FakerCustomGenerator()
 	faker.CustomGenerator()
 	suite.Run(t, new(readSyncedHeightSuite))
 	suite.Run(t, new(readPairsSuite))
