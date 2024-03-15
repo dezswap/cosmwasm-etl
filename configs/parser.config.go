@@ -1,7 +1,7 @@
 package configs
 
 import (
-	"github.com/dezswap/cosmwasm-etl/pkg/rules"
+	"github.com/dezswap/cosmwasm-etl/pkg/dex"
 	"github.com/spf13/viper"
 )
 
@@ -14,7 +14,7 @@ const (
 type ParserConfig struct {
 	ChainId             string
 	FactoryAddress      string
-	TargetApp           rules.RuleType
+	TargetApp           dex.DexType
 	SameHeightTolerance uint
 	ErrTolerance        uint
 
@@ -32,7 +32,7 @@ func parserConfig(v *viper.Viper) ParserConfig {
 	return ParserConfig{
 		ChainId:             v.GetString("parser.chainId"),
 		FactoryAddress:      v.GetString("parser.factoryAddress"),
-		TargetApp:           rules.ToRuleType(v.GetString("parser.targetApp")),
+		TargetApp:           dex.ToDexType(v.GetString("parser.targetApp")),
 		SameHeightTolerance: v.GetUint("parser.sameHeightTolerance"),
 		ErrTolerance:        v.GetUint("parser.errTolerance"),
 

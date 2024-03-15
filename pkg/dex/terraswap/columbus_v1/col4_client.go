@@ -1,9 +1,10 @@
-package terraswap
+package columbus_v1
 
 import (
 	"strconv"
 
 	"github.com/dezswap/cosmwasm-etl/pkg/dex"
+	"github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap"
 	"github.com/dezswap/cosmwasm-etl/pkg/terra/col4"
 	"github.com/pkg/errors"
 )
@@ -12,7 +13,7 @@ type col4QueryClient struct {
 	lcd col4.Lcd
 }
 
-func NewCol4Client(lcd col4.Lcd) QueryClient {
+func NewCol4Client(lcd col4.Lcd) terraswap.QueryClient {
 	return &col4QueryClient{lcd}
 }
 

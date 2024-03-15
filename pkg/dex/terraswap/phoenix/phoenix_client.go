@@ -1,7 +1,8 @@
-package terraswap
+package phoenix
 
 import (
 	"github.com/dezswap/cosmwasm-etl/pkg/dex"
+	"github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap"
 	"github.com/dezswap/cosmwasm-etl/pkg/terra/phoenix"
 	"github.com/pkg/errors"
 )
@@ -10,7 +11,7 @@ type phoenixQueryClient struct {
 	lcd phoenix.Lcd
 }
 
-func NewPhoenixClient(lcd phoenix.Lcd) QueryClient {
+func NewPhoenixClient(lcd phoenix.Lcd) terraswap.QueryClient {
 	return &phoenixQueryClient{lcd}
 }
 

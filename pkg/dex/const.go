@@ -1,6 +1,16 @@
 package dex
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
+)
+
+var ParsableRules = map[string]bool{
+	string(eventlog.TransferType): true,
+	string(eventlog.FromContract): true,
+	string(eventlog.WasmType):     true,
+}
 
 var (
 	PAIR_QUERY_POOL_STRING, _        = QueryToJsonStr[PoolInfoReq](PoolInfoReq{})
