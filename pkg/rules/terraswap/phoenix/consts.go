@@ -13,12 +13,8 @@ const (
 )
 
 const (
-	CreatePairMatchedLen   = FactoryLpAddrIdx + 1
-	PairSwapMatchedLen     = PairSwapCommissionAmountIdx + 1
-	PairProvideMatchedLen  = PairProvideShareIdx + 1
-	PairWithdrawMatchedLen = PairWithdrawRefundAssetsIdx + 1
-	WasmTransferMatchedLen = WasmTransferAmountIdx + 1
-	TransferMatchedLen     = TransferAmountIdx + 1
+	CreatePairMatchedLen     = FactoryLpAddrIdx + 1
+	SortedTransferMatchedLen = SortedTransferSenderIdx + 1
 )
 
 const (
@@ -35,39 +31,50 @@ const (
 )
 
 const (
-	PairSwapSenderIdx = iota + PairActionIdx + 1
-	PairSwapReceiverIdx
-	PairSwapOfferAssetIdx
-	PairSwapAskAssetIdx
-	PairSwapOfferAmountIdx
-	PairSwapReturnAmountIdx
-	PairSwapSpreadAmountIdx
-	PairSwapCommissionAmountIdx
+	SortedTransferAmountIdx = iota
+	SortedTransferRecipientIdx
+	SortedTransferSenderIdx
 )
 
 const (
-	PairProvideSenderIdx = iota + PairActionIdx + 1
-	PairProvideReceiverIdx
-	PairProvideAssetsIdx
-	PairProvideShareIdx
+	PairAddrKey   = "_contract_address"
+	PairActionKey = "action"
 )
 
 const (
-	PairWithdrawSenderIdx = iota + PairActionIdx + 1
-	PairWithdrawWithdrawShareIdx
-	PairWithdrawRefundAssetsIdx
+	PairSwapAskAssetKey         = "ask_asset"
+	PairSwapCommissionAmountKey = "commission_amount"
+	PairSwapOfferAmountKey      = "offer_amount"
+	PairSwapOfferAssetKey       = "offer_asset"
+	PairSwapReceiverKey         = "receiver"
+	PairSwapReturnAmountKey     = "return_amount"
+	PairSwapSenderKey           = "sender"
+	PairSwapSpreadAmountKey     = "spread_amount"
 )
 
 const (
-	WasmTransferCw20AddrIdx = iota
-	WasmTransferActionIdx
-	WasmTransferFromIdx
-	WasmTransferToIdx
-	WasmTransferAmountIdx
+	SortedTransferAmountKey    = "amount"
+	SortedTransferRecipientKey = "recipient"
+	SortedTransferSenderKey    = "sender"
 )
 
 const (
-	TransferRecipientIdx = iota
-	TransferSenderIdx
-	TransferAmountIdx
+	PairProvideAssetsKey   = "assets"
+	PairProvideSenderKey   = "sender"
+	PairProvideReceiverKey = "receiver"
+	PairProvideShareKey    = "share"
+)
+
+const (
+	PairWithdrawRefundAssetsKey  = "refund_assets"
+	PairWithdrawSenderKey        = "sender"
+	PairWithdrawWithdrawShareKey = "withdrawn_share"
+)
+
+const (
+	WasmTransferCw20AddrKey = "_contract_address"
+	WasmTransferActionKey   = "action"
+	WasmTransferAmountKey   = "amount"
+	WasmTransferFromKey     = "from"
+	WasmTransferToKey       = "to"
 )
