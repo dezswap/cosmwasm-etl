@@ -25,7 +25,7 @@ func (p *ParserMock) MatchedToParsedTx(result eventlog.MatchedResult, optional .
 }
 
 // parse implements parser
-func (p *ParserMock) Parse(aws eventlog.LogResults, defaultValue parser.Overrider[ParsedTx], optionals ...interface{}) ([]*ParsedTx, error) {
+func (p *ParserMock) Parse(raws eventlog.LogResults, defaultValue parser.Overrider[ParsedTx], optionals ...interface{}) ([]*ParsedTx, error) {
 	args := p.Mock.MethodCalled("parse", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	return args.Get(0).([]*ParsedTx), args.Error(1)
 }
