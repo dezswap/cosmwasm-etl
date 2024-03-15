@@ -20,14 +20,6 @@ type pairMapper struct {
 	pairSet map[string]dex.Pair
 }
 
-type transferMapper struct {
-	pairSet map[string]dex.Pair
-}
-type wasmCommonTransferMapper struct {
-	mixin   mapperMixin
-	pairSet map[string]dex.Pair
-}
-
 // match implements mapper
 
 // match implements mapper

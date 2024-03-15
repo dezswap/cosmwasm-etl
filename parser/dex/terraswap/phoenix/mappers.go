@@ -2,11 +2,13 @@ package phoenix
 
 import (
 	"fmt"
+	"math/big"
 
 	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/parser/dex"
 	"github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap/phoenix"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
+	"github.com/dezswap/cosmwasm-etl/pkg/terra"
 
 	"github.com/pkg/errors"
 )
@@ -80,16 +82,33 @@ func (m *pairMapper) provideMatchedToParsedTx(res eventlog.MatchedResult, pair d
 	if err != nil {
 		return nil, errors.Wrap(err, "pairMapper.provideMatchedToParsedTx")
 	}
-
 	if assets[0].Addr != pair.Assets[0] {
 		assets = []dex.Asset{assets[1], assets[0]}
+	}
+
+	meta := map[string]interface{}{}
+	refundItem, ok := matchMap[phoenix.PairProvideRefundAssetKey]
+	if ok {
+		refundAssets, err := dex.GetAssetsFromAssetsString(refundItem.Value)
+		if err != nil {
+			return nil, errors.Wrap(err, "pairMapper.provideMatchedToParsedTx")
+		}
+		if refundAssets[0].Addr != pair.Assets[0] {
+			refundAssets = []dex.Asset{refundAssets[1], refundAssets[0]}
+		}
+
+		assets, err = m.applyRefundAsset(assets, refundAssets)
+		if err != nil {
+			return nil, errors.Wrap(err, "pairMapper.provideMatchedToParsedTx")
+		}
+		meta[phoenix.PairProvideRefundAssetKey] = refundAssets
 	}
 
 	return []*dex.ParsedTx{{
 		Type:         dex.Provide,
 		ContractAddr: matchMap[phoenix.PairAddrKey].Value,
 		Sender:       matchMap[phoenix.PairProvideSenderKey].Value,
-		Assets:       [2]dex.Asset{assets[0], assets[1]},
+		Assets:       [2]dex.Asset(assets),
 		LpAddr:       pair.LpAddr,
 		LpAmount:     matchMap[phoenix.PairProvideShareKey].Value,
 	}}, nil
@@ -122,4 +141,40 @@ func (m *pairMapper) withdrawMatchedToParsedTx(res eventlog.MatchedResult, pair 
 		LpAmount:     matchMap[phoenix.PairWithdrawWithdrawShareKey].Value,
 	}}, nil
 
+}
+
+// Apply refund asset to provided asset for cw20
+// cw20 token is not refunded in provide event, it is transferred deducted amount to pair once.
+// wasm message shows users requested amount rather than actual provided amount.
+func (m *pairMapper) applyRefundAsset(provide []dex.Asset, refund []dex.Asset) (applied []dex.Asset, err error) {
+	toBigInt := func(amount string) (*big.Int, error) {
+		amountBigInt, ok := big.NewInt(0).SetString(amount, 10)
+		if !ok {
+			return nil, errors.New("invalid amount")
+		}
+		return amountBigInt, nil
+	}
+	applied = make([]dex.Asset, len(provide))
+	copy(applied, provide)
+
+	for idx := range provide {
+		if provide[idx].Addr != refund[idx].Addr {
+			return nil, errors.New("provide and refund assets must be same order")
+		}
+		if !terra.IsCw20(provide[idx].Addr) {
+			continue
+		}
+
+		amount, err := toBigInt(provide[idx].Amount)
+		if err != nil {
+			return nil, err
+		}
+		refundAmount, err := toBigInt(refund[idx].Amount)
+		if err != nil {
+			return nil, err
+		}
+		applied[idx].Amount = amount.Sub(amount, refundAmount).String()
+	}
+
+	return applied, nil
 }
