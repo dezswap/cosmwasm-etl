@@ -20,3 +20,35 @@ var (
 var (
 	QUERY_DIFFERENT_HEIGHT_ERROR = errors.New("query different height")
 )
+
+const (
+	CreatePairMatchedLen = FactoryLpAddrIdx + 1
+)
+
+const (
+	FactoryAddrIdx = iota
+	FactoryActionIdx
+	FactoryPairIdx
+	FactoryPairAddrIdx
+	FactoryLpAddrIdx
+)
+
+const (
+	TransferAmountKey    = "amount"
+	TransferRecipientKey = "recipient"
+	TransferSenderKey    = "sender"
+)
+
+const (
+	WasmTransferAction     = "transfer"
+	WasmTransferFromAction = "transfer_from"
+)
+
+const (
+	WasmTransferLegacyCw20AddrKey = "contract_address"
+	WasmTransferCw20AddrKey       = "_contract_address"
+	WasmTransferActionKey         = "action"
+	WasmTransferAmountKey         = "amount"
+	WasmTransferFromKey           = "from"
+	WasmTransferToKey             = "to"
+)

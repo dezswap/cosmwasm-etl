@@ -5,6 +5,7 @@ import (
 	"github.com/pkg/errors"
 )
 
+// TODO move to dex
 func CreateCreatePairRuleFinder(factoryAddr string) (eventlog.LogFinder, error) {
 	if factoryAddr == "" {
 		errMsg := "no factory address"

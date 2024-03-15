@@ -19,9 +19,9 @@ var _ parser.Parser[ParsedTx] = &ParserMock{}
 var _ SourceDataStore = &RawStoreMock{}
 
 // matchedToParsedTx implements parser
-func (p *ParserMock) MatchedToParsedTx(result eventlog.MatchedResult, optional ...interface{}) (*ParsedTx, error) {
+func (p *ParserMock) MatchedToParsedTx(result eventlog.MatchedResult, optional ...interface{}) ([]*ParsedTx, error) {
 	args := p.Mock.MethodCalled("matchedToParsedTx", result)
-	return args.Get(0).(*ParsedTx), args.Error(1)
+	return args.Get(0).([]*ParsedTx), args.Error(1)
 }
 
 // parse implements parser

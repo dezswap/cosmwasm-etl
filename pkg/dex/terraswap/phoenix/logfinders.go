@@ -1,6 +1,7 @@
 package phoenix
 
 import (
+	"github.com/dezswap/cosmwasm-etl/pkg/dex"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 	"github.com/pkg/errors"
 )
@@ -12,7 +13,7 @@ func CreateCreatePairRuleFinder(factoryAddr string) (eventlog.LogFinder, error) 
 	}
 
 	rule := createPairRule
-	rule.Items[FactoryAddrIdx].Filter = factoryAddr
+	rule.Items[dex.FactoryAddrIdx].Filter = factoryAddr
 
 	return eventlog.NewLogFinder(rule)
 }
@@ -68,7 +69,7 @@ var pairCommonRule = eventlog.Rule{Type: eventlog.WasmType, Until: "_contract_ad
 var wasmTransferCommonRule = eventlog.Rule{Type: eventlog.WasmType, Until: "_contract_address", Items: eventlog.RuleItems{
 	eventlog.RuleItem{Key: "_contract_address", Filter: nil},
 	eventlog.RuleItem{Key: "action", Filter: func(v string) bool {
-		return v == WasmTransferAction || v == WasmTransferFromAction
+		return v == dex.WasmTransferAction || v == dex.WasmTransferFromAction
 	}},
 }}
 

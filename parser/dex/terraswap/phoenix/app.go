@@ -27,7 +27,7 @@ func New(repo p_dex.PairRepo, logger logging.Logger, c configs.ParserConfig) (p_
 	}
 
 	parsers := p_dex.PairParsers{
-		CreatePairParser: parser.NewParser[p_dex.ParsedTx](finder, &createPairMapper{}),
+		CreatePairParser: parser.NewParser(finder, p_dex.NewFactoryMapper()),
 		PairActionParser: nil,
 		InitialProvide:   nil,
 		WasmTransfer:     nil,
@@ -126,12 +126,12 @@ func (p *terraswapApp) updateParsers(pairs map[string]p_dex.Pair) error {
 	if err != nil {
 		return errors.Wrap(err, "updateParsers")
 	}
-	p.Parsers.WasmTransfer = parser.NewParser[p_dex.ParsedTx](wasmTransferFinder, &wasmCommonTransferMapper{pairSet: pairs})
+	p.Parsers.WasmTransfer = parser.NewParser[p_dex.ParsedTx](wasmTransferFinder, p_dex.NewWasmTransferMapper(dex.WasmTransferCw20AddrKey, pairs))
 
 	transferRule, err := phoenix.CreateSortedTransferRuleFinder(nil)
 	if err != nil {
 		return errors.Wrap(err, "updateParsers")
 	}
-	p.Parsers.Transfer = parser.NewParser[p_dex.ParsedTx](transferRule, &transferMapper{pairSet: pairs})
+	p.Parsers.Transfer = parser.NewParser[p_dex.ParsedTx](transferRule, p_dex.NewTransferMapper(pairs))
 	return nil
 }

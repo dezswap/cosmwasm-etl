@@ -35,7 +35,7 @@ type wasmTransferMapper struct {
 }
 
 // match implements mapper
-func (m *createPairMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) (*dex.ParsedTx, error) {
+func (m *createPairMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) ([]*dex.ParsedTx, error) {
 	if err := m.mapperMixin.checkResult(res, sf.CreatePairMatchedLen); err != nil {
 		return nil, errors.Wrap(err, "createPairMapper.MatchedToParsedTx")
 	}
@@ -46,7 +46,7 @@ func (m *createPairMapper) MatchedToParsedTx(res eventlog.MatchedResult, optiona
 		return nil, errors.New(msg)
 	}
 
-	return &dex.ParsedTx{
+	return []*dex.ParsedTx{{
 		Type:         dex.CreatePair,
 		Sender:       "",
 		ContractAddr: res[sf.FactoryPairAddrIdx].Value,
@@ -56,14 +56,14 @@ func (m *createPairMapper) MatchedToParsedTx(res eventlog.MatchedResult, optiona
 		},
 		LpAddr:   res[sf.FactoryLpAddrIdx].Value,
 		LpAmount: "",
-	}, nil
+	}}, nil
 }
 
-func (m *initialProvideMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) (*dex.ParsedTx, error) {
+func (m *initialProvideMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) ([]*dex.ParsedTx, error) {
 	if err := m.checkResult(res, sf.PairInitialProvideMatchedLen); err != nil {
 		return nil, errors.Wrap(err, "initialProvideMapper.MatchedToParsedTx")
 	}
-	return &dex.ParsedTx{
+	return []*dex.ParsedTx{{
 		Type:         dex.InitialProvide,
 		Sender:       "",
 		ContractAddr: res[sf.PairInitialProvideToIdx].Value,
@@ -71,11 +71,11 @@ func (m *initialProvideMapper) MatchedToParsedTx(res eventlog.MatchedResult, opt
 		LpAddr:       res[sf.PairInitialProvideAddrIdx].Value,
 		LpAmount:     res[sf.PairInitialProvideAmountIdx].Value,
 		Meta:         nil,
-	}, nil
+	}}, nil
 }
 
 // match implements mapper
-func (m *wasmTransferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) (*dex.ParsedTx, error) {
+func (m *wasmTransferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) ([]*dex.ParsedTx, error) {
 	sortResult(res)
 	action := res[sf.WasmCommonTransferActionIdx]
 
@@ -90,7 +90,7 @@ func (m *wasmTransferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optio
 	return nil, errors.New(msg)
 }
 
-func (m *wasmTransferMapper) v1MatchedToParsedTx(res eventlog.MatchedResult, _ ...interface{}) (*dex.ParsedTx, error) {
+func (m *wasmTransferMapper) v1MatchedToParsedTx(res eventlog.MatchedResult, _ ...interface{}) ([]*dex.ParsedTx, error) {
 	if err := m.mixin.checkResult(res, sf.WasmV1TransferMatchedLen); err != nil {
 		return nil, errors.Wrap(err, "wasmTransferMapper.v1MatchedToParsedTx")
 	}
@@ -111,7 +111,7 @@ func (m *wasmTransferMapper) v1MatchedToParsedTx(res eventlog.MatchedResult, _ .
 	)
 }
 
-func (m *wasmTransferMapper) v2MatchedToParsedTx(res eventlog.MatchedResult, _ ...interface{}) (*dex.ParsedTx, error) {
+func (m *wasmTransferMapper) v2MatchedToParsedTx(res eventlog.MatchedResult, _ ...interface{}) ([]*dex.ParsedTx, error) {
 	if err := m.mixin.checkResult(res, sf.WasmV2TransferMatchedLen); err != nil {
 		return nil, errors.Wrap(err, "wasmTransferMapper.v2MatchedToParsedTx")
 	}
@@ -133,7 +133,7 @@ func (m *wasmTransferMapper) v2MatchedToParsedTx(res eventlog.MatchedResult, _ .
 }
 
 // match implements mapper
-func (m *transferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) (*dex.ParsedTx, error) {
+func (m *transferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) ([]*dex.ParsedTx, error) {
 	if err := m.mixin.checkResult(res, sf.TransferMatchedLen); err != nil {
 		return nil, errors.Wrap(err, "transferMapper.MatchedToParsedTx")
 	}
@@ -173,7 +173,7 @@ func (m *transferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals
 		assets[idx] = asset
 	}
 
-	return &dex.ParsedTx{
+	return []*dex.ParsedTx{{
 		Type:         dex.Transfer,
 		Sender:       res[sf.TransferSenderIdx].Value,
 		ContractAddr: pair.ContractAddr,
@@ -183,7 +183,7 @@ func (m *transferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals
 		Meta: map[string]interface{}{
 			"recipient": to,
 		},
-	}, nil
+	}}, nil
 }
 
 func (*mapperMixin) checkResult(res eventlog.MatchedResult, expectedLen int) error {
@@ -194,7 +194,7 @@ func (*mapperMixin) checkResult(res eventlog.MatchedResult, expectedLen int) err
 	return nil
 }
 
-func (*wasmTransferMapper) matchedToParsedTx(pair *dex.Pair, from, to, targetToken, amount string, isFromPair bool) (*dex.ParsedTx, error) {
+func (*wasmTransferMapper) matchedToParsedTx(pair *dex.Pair, from, to, targetToken, amount string, isFromPair bool) ([]*dex.ParsedTx, error) {
 	assets := [2]dex.Asset{
 		{Addr: pair.Assets[0]},
 		{Addr: pair.Assets[1]},
@@ -210,7 +210,7 @@ func (*wasmTransferMapper) matchedToParsedTx(pair *dex.Pair, from, to, targetTok
 		assets[idx].Amount = amount
 	}
 
-	return &dex.ParsedTx{
+	return []*dex.ParsedTx{{
 		Type:         dex.Transfer,
 		Sender:       from,
 		ContractAddr: pair.ContractAddr,
@@ -220,7 +220,7 @@ func (*wasmTransferMapper) matchedToParsedTx(pair *dex.Pair, from, to, targetTok
 		Meta: map[string]interface{}{
 			"recipient": to,
 		},
-	}, nil
+	}}, nil
 }
 
 func (*transferMapperMixin) pairBy(pairSet map[string]dex.Pair, from, to string) (*dex.Pair, bool, error) {

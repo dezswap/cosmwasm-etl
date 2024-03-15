@@ -1,6 +1,7 @@
 package eventlog
 
 import (
+	"fmt"
 	"sort"
 
 	"github.com/pkg/errors"
@@ -29,4 +30,15 @@ func SortAttributes(attrs Attributes, filter map[string]bool) (*Attributes, erro
 	}
 
 	return &filtered, nil
+}
+
+func ResultToItemMap(res MatchedResult) (map[string]MatchedItem, error) {
+	m := make(map[string]MatchedItem)
+	for _, r := range res {
+		if _, ok := m[r.Key]; ok {
+			return nil, errors.New(fmt.Sprintf("duplicated key(%s)", r.Key))
+		}
+		m[r.Key] = r
+	}
+	return m, nil
 }
