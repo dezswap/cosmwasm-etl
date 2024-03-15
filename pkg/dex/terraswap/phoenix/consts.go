@@ -46,10 +46,11 @@ const (
 )
 
 const (
-	PairProvideAssetsKey   = "assets"
-	PairProvideSenderKey   = "sender"
-	PairProvideReceiverKey = "receiver"
-	PairProvideShareKey    = "share"
+	PairProvideAssetsKey      = "assets"
+	PairProvideSenderKey      = "sender"
+	PairProvideReceiverKey    = "receiver"
+	PairProvideShareKey       = "share"
+	PairProvideRefundAssetKey = "refund_assets"
 )
 
 const (

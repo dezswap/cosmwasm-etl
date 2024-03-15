@@ -8,13 +8,14 @@ import (
 
 	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/parser/dex"
+	"github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap/phoenix"
 	el "github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 	"github.com/stretchr/testify/assert"
 )
 
 func Test_PairMapper(t *testing.T) {
 
-	pair := dex.Pair{ContractAddr: "Pair", LpAddr: "LiquidityToken", Assets: []string{"Asset1", "Asset2"}}
+	pair := dex.Pair{ContractAddr: "Pair", LpAddr: "LiquidityToken", Assets: []string{"terra1Asset1", "terra1Asset2"}}
 	userAddr := "userAddr"
 	pairSet := map[string]dex.Pair{pair.ContractAddr: pair}
 	tcs := []struct {
@@ -67,6 +68,17 @@ func Test_PairMapper(t *testing.T) {
 				{Key: "share", Value: "998735"},
 			},
 			[]*dex.ParsedTx{{"", time.Time{}, dex.Provide, userAddr, pair.ContractAddr, [2]dex.Asset{{pair.Assets[0], "1000"}, {pair.Assets[1], "10000"}}, pair.LpAddr, "998735", "", nil}},
+			"",
+		},
+		{
+			&pairMapper{pairSet: pairSet},
+			el.MatchedResult{
+				{Key: "_contract_address", Value: pair.ContractAddr}, {Key: "action", Value: "provide_liquidity"},
+				{Key: "sender", Value: userAddr}, {Key: "receiver", Value: userAddr},
+				{Key: "assets", Value: fmt.Sprintf("%s%s, %s%s", "1000", pair.Assets[0], "10000", pair.Assets[1])},
+				{Key: "share", Value: "998735"}, {Key: phoenix.PairProvideRefundAssetKey, Value: fmt.Sprintf("%s%s, %s%s", "100", pair.Assets[0], "100", pair.Assets[1])},
+			},
+			[]*dex.ParsedTx{{"", time.Time{}, dex.Provide, userAddr, pair.ContractAddr, [2]dex.Asset{{pair.Assets[0], "900"}, {pair.Assets[1], "9900"}}, pair.LpAddr, "998735", "", nil}},
 			"",
 		},
 		{
