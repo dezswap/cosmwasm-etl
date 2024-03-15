@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/dezswap/cosmwasm-etl/parser"
+	"github.com/dezswap/cosmwasm-etl/pkg/dex"
 	el "github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 	"github.com/stretchr/testify/assert"
 )
@@ -106,9 +107,9 @@ func Test_TransferMapper(t *testing.T) {
 			[]*ParsedTx{{"", time.Time{}, Transfer, userAddr, pair.ContractAddr, [2]Asset{{pair.Assets[0], ""}, {pair.Assets[1], ""}}, "", "", "", map[string]interface{}{"WrongAsset1": "1000"}}},
 			"",
 		},
-		/// wasm transfer
+		// / wasm transfer
 		{
-			&wasmCommonTransferMapper{pairSet: pairSet},
+			&wasmCommonTransferMapper{cw20AddrKey: dex.WasmTransferCw20AddrKey, pairSet: pairSet},
 			el.MatchedResult{
 				{Key: "_contract_address", Value: pair.Assets[0]}, {Key: "action", Value: "transfer"}, {Key: "from", Value: userAddr}, {Key: "to", Value: pair.ContractAddr}, {Key: "amount", Value: "1000"},
 			},
@@ -116,7 +117,7 @@ func Test_TransferMapper(t *testing.T) {
 			"",
 		},
 		{
-			&wasmCommonTransferMapper{pairSet: pairSet},
+			&wasmCommonTransferMapper{cw20AddrKey: dex.WasmTransferCw20AddrKey, pairSet: pairSet},
 			el.MatchedResult{
 				{Key: "_contract_address", Value: pair.Assets[1]}, {Key: "action", Value: "transfer"},
 				{Key: "from", Value: userAddr}, {Key: "to", Value: pair.ContractAddr},
@@ -126,7 +127,7 @@ func Test_TransferMapper(t *testing.T) {
 			"",
 		},
 		{
-			&wasmCommonTransferMapper{pairSet: pairSet},
+			&wasmCommonTransferMapper{cw20AddrKey: dex.WasmTransferCw20AddrKey, pairSet: pairSet},
 			el.MatchedResult{
 				{Key: "_contract_address", Value: pair.Assets[0]}, {Key: "action", Value: "transfer"}, {Key: "from", Value: userAddr},
 				{Key: "to", Value: "WRONG_PAIR"}, {Key: "amount", Value: "1000"},
@@ -135,7 +136,7 @@ func Test_TransferMapper(t *testing.T) {
 			"",
 		},
 		{
-			&wasmCommonTransferMapper{pairSet: pairSet},
+			&wasmCommonTransferMapper{cw20AddrKey: dex.WasmTransferCw20AddrKey, pairSet: pairSet},
 			el.MatchedResult{
 				{Key: "_contract_address", Value: "WRONG_CW_20"}, {Key: "action", Value: "transfer"},
 				{Key: "from", Value: userAddr}, {Key: "to", Value: pair.ContractAddr}, {Key: "amount", Value: "1000"},

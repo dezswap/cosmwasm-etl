@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/dezswap/cosmwasm-etl/pkg/dex"
 	dts "github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap"
+
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 
 	"github.com/stretchr/testify/assert"
@@ -48,7 +50,7 @@ func Test_CreateCreateLogFinder(t *testing.T) {
 		matchedResults := logFinder.FindFromLogs(eventLogs)
 		assert.Len(matchedResults, tc.expectedResultLen, errMsg)
 		if tc.expectedResultLen > 0 {
-			assert.Len(matchedResults[0], CreatePairMatchedLen, "must return all matched value")
+			assert.Len(matchedResults[0], dex.CreatePairMatchedLen, "must return all matched value")
 		}
 	}
 }

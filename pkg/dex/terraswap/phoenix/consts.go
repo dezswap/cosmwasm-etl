@@ -7,22 +7,9 @@ const (
 	ProvideAction  = PairAction("provide_liquidity")
 	WithdrawAction = PairAction("withdraw_liquidity")
 )
-const (
-	WasmTransferAction     = "transfer"
-	WasmTransferFromAction = "transfer_from"
-)
 
 const (
-	CreatePairMatchedLen     = FactoryLpAddrIdx + 1
 	SortedTransferMatchedLen = SortedTransferSenderIdx + 1
-)
-
-const (
-	FactoryAddrIdx = iota
-	FactoryActionIdx
-	FactoryPairIdx
-	FactoryPairAddrIdx
-	FactoryLpAddrIdx
 )
 
 const (
