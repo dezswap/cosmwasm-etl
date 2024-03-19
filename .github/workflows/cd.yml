@@ -21,11 +21,18 @@ on:
           - "collector"
           - "parser"
           - "aggregator"
-
+      region:
+        description: 'Region to be deployed'
+        required: false
+        type: choice
+        default: "ap-northeast-2"
+        options:
+          - "ap-northeast-2"
+          - "us-west-2"
 
 env:
   # AWS
-  AWS_REGION: ${{ secrets.AWS_REGION }}
+  AWS_REGION: ${{ inputs.region }}
   ECR_REPOSITORY: cosmwasm-etl
   ECS_CLUSTER: cosmwasm-etl
 
@@ -65,14 +72,15 @@ jobs:
         working-directory: .
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_DEPS_REGISTRY: ${{ secrets.AWS_ECR_DEPS_REGISTRY }}
           CONFIG: ${{ secrets[env.CONFIG_NAME] }}
         run: |
-          IMAGE_TAG=${{env.TARGET}}-${{env.GIT_COMMIT}}
+          IMAGE_TAG=${{inputs.app_type}}-${{env.GIT_COMMIT}}
           echo "${CONFIG}" > config.yaml
 
-          docker pull $ECR_REGISTRY/$ECR_REPOSITORY:deps-${{env.GIT_COMMIT}}
+          docker pull ${ECR_DEPS_REGISTRY}/$ECR_REPOSITORY:deps-${{env.GIT_COMMIT}}
           docker build \
-            --build-arg BUILD_BASE_IMAGE="${ECR_REGISTRY}/${{env.ECR_REPOSITORY}}:deps-${{env.GIT_COMMIT}}" \
+            --build-arg BUILD_BASE_IMAGE="${ECR_DEPS_REGISTRY}/$ECR_REPOSITORY:deps-${{env.GIT_COMMIT}}" \
             --build-arg APP_TYPE=${{inputs.app_type}} \
             --no-cache -t $ECR_REGISTRY/$ECR_REPOSITORY:${{env.TARGET}} -t $ECR_REGISTRY/$ECR_REPOSITORY:${IMAGE_TAG} .
 

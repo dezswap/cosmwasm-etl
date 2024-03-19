@@ -80,7 +80,7 @@ jobs:
         working-directory: .
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: cosmwasm-etl-test
+          ECR_REPOSITORY: cosmwasm-etl
         run: |
           GIT_SHORT_COMMIT=`git rev-parse --short HEAD`
           docker build --no-cache --target=deps -t $ECR_REGISTRY/$ECR_REPOSITORY:deps-${GIT_SHORT_COMMIT} .
