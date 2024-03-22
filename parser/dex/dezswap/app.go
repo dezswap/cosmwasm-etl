@@ -20,7 +20,7 @@ type dezswapApp struct {
 
 var _ dex.TargetApp = &dezswapApp{}
 
-func New(repo dex.PairRepo, logger logging.Logger, c configs.ParserConfig, chainId string) (dex.TargetApp, error) {
+func New(repo dex.PairRepo, logger logging.Logger, c configs.ParserDexConfig, chainId string) (dex.TargetApp, error) {
 	finder, err := ds.CreateCreatePairRuleFinder(c.ChainId)
 	if err != nil {
 		return nil, errors.Wrap(err, "NewApp")

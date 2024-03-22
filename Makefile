@@ -2,7 +2,7 @@ UNAME_S = $(shell uname -s)
 
 
 .PHONY: all
-all: test aggregator collector parser
+all: test aggregator collector parser-dex
 
 # Start the minimum requirements for the service, i.e. db
 .PHONY: up
@@ -19,22 +19,22 @@ down:
 deps:
 	go mod download
 
-.PHONY: build-all aggregator collector parser
-build-all: aggregator collector parser
+.PHONY: build-all aggregator collector parser-dex
+build-all: aggregator collector parser-dex
 
 aggregator:
-	go  build -mod=readonly -o ./build/aggregator ./cmd/aggregator 
+	go  build -mod=readonly -o ./build/aggregator ./cmd/aggregator
 
 # Build the main executable
 collector:
-	go  build -mod=readonly -o ./build/collector ./cmd/collector 
+	go  build -mod=readonly -o ./build/collector ./cmd/collector
 
 # Build the main executable
-parser:
-	go  build -mod=readonly -o ./build/parser ./cmd/parser 
+parser-dex:
+	go  build -mod=readonly -o ./build/parser-dex ./cmd/parser/dex
 
-.PHONY: install-all install-aggregator install-collector install-parser
-install-all: install-aggregator install-collector install-parser
+.PHONY: install-all install-aggregator install-collector install-parser-dex
+install-all: install-aggregator install-collector install-parser-dex
 
 install-aggregator:
 	go install -mod=readonly ./cmd/aggregator
@@ -44,17 +44,17 @@ install-collector:
 	go install -mod=readonly ./cmd/collector
 
 # Build the main executable
-install-parser:
-	go install -mod=readonly ./cmd/parser
+install-parser-dex:
+	go install -mod=readonly ./cmd/parser/dex
 
 
 # This is a specialized build for running the executable inside a minimal scratch container
 .PHONY: build-app
 build-app:
-ifeq (,$(APP_TYPE))
-	@echo "provide APP_TYPE"
+ifeq (,$(APP_PATH))
+	@echo "provide APP_PATH"
 else
-	go build -ldflags="-w -s" -a -o ./main ./cmd/${APP_TYPE}
+	go build -ldflags="-w -s" -a -o ./main ./cmd/${APP_PATH}
 endif
 
 # Watch for source code changes to recompile + test

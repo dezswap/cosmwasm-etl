@@ -20,7 +20,7 @@ type terraswapApp struct {
 
 var _ p_dex.TargetApp = &terraswapApp{}
 
-func New(repo p_dex.PairRepo, logger logging.Logger, c configs.ParserConfig) (p_dex.TargetApp, error) {
+func New(repo p_dex.PairRepo, logger logging.Logger, c configs.ParserDexConfig) (p_dex.TargetApp, error) {
 	finder, err := phoenix.CreateCreatePairRuleFinder(c.FactoryAddress)
 	if err != nil {
 		return nil, errors.Wrap(err, "NewApp")

@@ -39,7 +39,7 @@ type DexMixin struct{}
 var _ parser.ParserApp[ParsedTx] = &dexApp{}
 var _ DexParserApp = &dexApp{}
 
-func NewDexApp(app TargetApp, srcStore SourceDataStore, repo Repo, logger logging.Logger, c configs.ParserConfig) parser.ParserApp[ParsedTx] {
+func NewDexApp(app TargetApp, srcStore SourceDataStore, repo Repo, logger logging.Logger, c configs.ParserDexConfig) parser.ParserApp[ParsedTx] {
 	return &dexApp{
 		TargetApp:            app,
 		SourceDataStore:      srcStore,
