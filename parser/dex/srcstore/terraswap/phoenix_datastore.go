@@ -8,7 +8,7 @@ import (
 	"github.com/dezswap/cosmwasm-etl/pkg/dex"
 	"github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
-	"github.com/dezswap/cosmwasm-etl/pkg/terra/phoenix"
+	"github.com/dezswap/cosmwasm-etl/pkg/terra/cosmos45"
 	"github.com/dezswap/cosmwasm-etl/pkg/terra/rpc"
 	"github.com/pkg/errors"
 )
@@ -17,13 +17,13 @@ type phoenixRawDataStoreImpl struct {
 	factoryAddress string
 	mapper
 	rpc rpc.Rpc
-	lcd phoenix.Lcd
+	lcd cosmos45.Lcd
 	terraswap.QueryClient
 }
 
 var _ p_dex.SourceDataStore = &phoenixRawDataStoreImpl{}
 
-func NewPhoenixStore(factoryAddress string, rpc rpc.Rpc, lcd phoenix.Lcd, client terraswap.QueryClient) p_dex.SourceDataStore {
+func NewPhoenixStore(factoryAddress string, rpc rpc.Rpc, lcd cosmos45.Lcd, client terraswap.QueryClient) p_dex.SourceDataStore {
 	return &phoenixRawDataStoreImpl{factoryAddress, &mapperImpl{}, rpc, lcd, client}
 }
 

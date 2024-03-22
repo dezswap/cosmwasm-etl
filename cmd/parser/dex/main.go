@@ -30,7 +30,7 @@ import (
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 	"github.com/dezswap/cosmwasm-etl/pkg/s3client"
 	"github.com/dezswap/cosmwasm-etl/pkg/terra/col4"
-	terra_phoenix "github.com/dezswap/cosmwasm-etl/pkg/terra/phoenix"
+	terra_cosmos45 "github.com/dezswap/cosmwasm-etl/pkg/terra/cosmos45"
 	"github.com/dezswap/cosmwasm-etl/pkg/terra/rpc"
 )
 
@@ -110,7 +110,7 @@ func dex_main(c configs.ParserDexConfig, logc configs.LogConfig, sentryc configs
 
 		switch dts.TerraswapFactory(c.FactoryAddress) {
 		case dts.MAINNET_FACTORY:
-			lcd := terra_phoenix.NewLcd(c.NodeConfig.RestClientConfig.LcdHost, &http.Client{
+			lcd := terra_cosmos45.NewLcd(c.NodeConfig.RestClientConfig.LcdHost, &http.Client{
 				Transport: &http.Transport{
 					MaxIdleConns:      10,               // Maximum idle connections to keep open
 					IdleConnTimeout:   30 * time.Second, // Time to keep idle connections open

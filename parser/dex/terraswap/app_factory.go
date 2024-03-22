@@ -12,10 +12,8 @@ import (
 
 func New(repo dex.PairRepo, logger logging.Logger, c configs.ParserDexConfig) (dex.TargetApp, error) {
 	switch ts.TerraswapFactory(c.FactoryAddress) {
-	case ts.MAINNET_FACTORY:
+	case ts.MAINNET_FACTORY, ts.CLASSIC_V2_FACTORY, ts.PISCO_FACTORY:
 		return phoenix.New(repo, logger, c)
-	case ts.CLASSIC_V2_FACTORY, ts.PISCO_FACTORY:
-		return nil, errors.New("not implemented yet")
 	case ts.CLASSIC_V1_FACTORY:
 		return columbus_v1.New(repo, logger, c)
 	default:

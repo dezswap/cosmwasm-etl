@@ -3,21 +3,21 @@ package phoenix
 import (
 	"github.com/dezswap/cosmwasm-etl/pkg/dex"
 	"github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap"
-	"github.com/dezswap/cosmwasm-etl/pkg/terra/phoenix"
+	"github.com/dezswap/cosmwasm-etl/pkg/terra/cosmos45"
 	"github.com/pkg/errors"
 )
 
 type phoenixQueryClient struct {
-	lcd phoenix.Lcd
+	lcd cosmos45.Lcd
 }
 
-func NewPhoenixClient(lcd phoenix.Lcd) terraswap.QueryClient {
+func NewPhoenixClient(lcd cosmos45.Lcd) terraswap.QueryClient {
 	return &phoenixQueryClient{lcd}
 }
 
 // QueryPool implements Col4QueryClient.
 func (c *phoenixQueryClient) QueryPool(pairAddr string, height ...uint64) (*dex.PoolInfoRes, error) {
-	res, err := phoenix.QueryContractState[dex.PoolInfoRes](c.lcd, pairAddr, dex.PAIR_QUERY_POOL_BASE64_STRING, height...)
+	res, err := cosmos45.QueryContractState[dex.PoolInfoRes](c.lcd, pairAddr, dex.PAIR_QUERY_POOL_BASE64_STRING, height...)
 	if err != nil {
 		return nil, errors.Wrap(err, "phoenixQueryClient.QueryPool")
 	}
@@ -37,7 +37,7 @@ func (c *phoenixQueryClient) QueryPairs(factoryAddr string, startAfter []dex.Ass
 		return nil, errors.Wrap(err, "phoenixQueryClient.QueryPairs")
 	}
 
-	res, err := phoenix.QueryContractState[dex.FactoryPairsRes](c.lcd, factoryAddr, req, height...)
+	res, err := cosmos45.QueryContractState[dex.FactoryPairsRes](c.lcd, factoryAddr, req, height...)
 	if err != nil {
 		return nil, errors.Wrap(err, "phoenixQueryClient.QueryPairs")
 	}
