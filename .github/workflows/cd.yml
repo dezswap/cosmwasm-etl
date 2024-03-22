@@ -19,7 +19,7 @@ on:
         type: choice
         options:
           - "collector"
-          - "parser"
+          - "parser-dex"
           - "aggregator"
       region:
         description: 'Region to be deployed'
@@ -51,7 +51,7 @@ jobs:
         run: |
           echo "GIT_COMMIT=${GIT_COMMIT::7}" >> $GITHUB_ENV
           # to Upper case
-          echo "CONFIG_NAME=$(echo "$CONFIG_NAME"  | tr '[:lower:]' '[:upper:]')" >> $GITHUB_ENV
+          echo "CONFIG_NAME=$(echo "$CONFIG_NAME" | tr '-' '_' | tr '[:lower:]' '[:upper:]')" >> $GITHUB_ENV
 
       - name: checkout
         uses: actions/checkout@v3
@@ -79,9 +79,10 @@ jobs:
           echo "${CONFIG}" > config.yaml
 
           docker pull ${ECR_DEPS_REGISTRY}/$ECR_REPOSITORY:deps-${{env.GIT_COMMIT}}
+          APP_PATH=$(echo ${{inputs.app_type}} | tr '-' '/')
           docker build \
             --build-arg BUILD_BASE_IMAGE="${ECR_DEPS_REGISTRY}/$ECR_REPOSITORY:deps-${{env.GIT_COMMIT}}" \
-            --build-arg APP_TYPE=${{inputs.app_type}} \
+            --build-arg APP_PATH=$APP_PATH \
             --no-cache -t $ECR_REGISTRY/$ECR_REPOSITORY:${{env.TARGET}} -t $ECR_REGISTRY/$ECR_REPOSITORY:${IMAGE_TAG} .
 
            docker image push -a $ECR_REGISTRY/$ECR_REPOSITORY

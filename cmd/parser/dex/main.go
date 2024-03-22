@@ -158,16 +158,18 @@ func main() {
 	c := configs.New()
 	logger := logging.New("parser", c.Log)
 	defer catch(logger)
-	if c.Parser.DexConfig != nil {
-		dc := *c.Parser.DexConfig
-		var readstore collector_store.ReadStore
-		switch dc.TargetApp {
-		case dex.Terraswap:
-		case dex.Dezswap, dex.Starfleit:
-			readstore = getDexCollectorReadStore(c, dc)
-		}
-		dex_main(dc, c.Log, c.Sentry, c.Rdb, readstore)
+	if c.Parser.DexConfig == nil {
+		panic("dex config is nil")
 	}
+
+	dc := *c.Parser.DexConfig
+	var readstore collector_store.ReadStore
+	switch dc.TargetApp {
+	case dex.Terraswap:
+	case dex.Dezswap, dex.Starfleit:
+		readstore = getDexCollectorReadStore(c, dc)
+	}
+	dex_main(dc, c.Log, c.Sentry, c.Rdb, readstore)
 
 }
 

@@ -36,10 +36,6 @@ type ParserDexConfig struct {
 }
 
 func parserDexConfig(v *viper.Viper) *ParserDexConfig {
-	if v.Get("parser.dex") == nil {
-		return nil
-	}
-
 	v.SetDefault("parser.dex.sameHeightTolerance", PARSER_SAME_HEIGHT_TOLERANCE)
 	v.SetDefault("parser.dex.poolSnapshotInterval", PARSER_POOL_SNAPSHOT_INTERVAL)
 	v.SetDefault("parser.dex.validationInterval", PARSER_VALIDATION_INTERVAL)

@@ -33,14 +33,14 @@ RUN cp /lib/libwasmvm_muslc.`uname -m`.a /lib/libwasmvm_muslc.a
 # Build the app
 FROM ${BUILD_BASE_IMAGE} AS build
 # required argument: one of("aggregator", "collector", "parser")
-ARG APP_TYPE
-ENV APP_TYPE ${APP_TYPE}
+ARG APP_PATH
+ENV APP_PATH ${APP_PATH}
 COPY ./config.yaml /app/config.yaml
 
 RUN go build -mod=readonly -tags "netgo muslc" \
             -ldflags "-X github.com/cosmos/cosmos-sdk/version.BuildTags='netgo,muslc' \
             -w -s -linkmode=external -extldflags '-Wl,-z,muldefs -static'" \
-            -trimpath -o ./main ./cmd/${APP_TYPE}
+            -trimpath -o ./main ./cmd/${APP_PATH}
 
 ### RELEASE
 FROM alpine:latest AS release
