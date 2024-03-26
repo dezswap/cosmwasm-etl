@@ -9,7 +9,7 @@ on:
         type: choice
         options:
           - "phoenix"
-          - "columbus"
+          - "columbus-v2"
           - "cube"
           - "dimension"
           - "fetchhub"
