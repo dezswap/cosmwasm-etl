@@ -1,11 +1,11 @@
-package columbus_v1
+package columbusv1
 
 import (
 	"fmt"
 
 	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/parser/dex"
-	"github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap/columbus_v1"
+	cv1 "github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap/columbusv1"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 
 	"github.com/pkg/errors"
@@ -24,33 +24,33 @@ type pairMapper struct {
 
 // match implements mapper
 func (m *pairMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) ([]*dex.ParsedTx, error) {
-	pair, ok := m.pairSet[res[columbus_v1.PairAddrIdx].Value]
+	pair, ok := m.pairSet[res[cv1.PairAddrIdx].Value]
 	if !ok {
-		msg := fmt.Sprintf("pairMapper.MatchedToParsedTx no pair(%s)", res[columbus_v1.PairAddrIdx].Value)
+		msg := fmt.Sprintf("pairMapper.MatchedToParsedTx no pair(%s)", res[cv1.PairAddrIdx].Value)
 		return nil, errors.New(msg)
 	}
 
-	action := columbus_v1.PairAction(res[columbus_v1.PairActionIdx].Value)
+	action := cv1.PairAction(res[cv1.PairActionIdx].Value)
 	switch action {
-	case columbus_v1.SwapAction:
+	case cv1.SwapAction:
 		return m.swapMatchedToParsedTx(res, pair)
-	case columbus_v1.ProvideAction:
+	case cv1.ProvideAction:
 		return m.provideMatchedToParsedTx(res, pair)
-	case columbus_v1.WithdrawAction:
+	case cv1.WithdrawAction:
 		return m.withdrawMatchedToParsedTx(res, pair)
 	}
 
-	msg := fmt.Sprintf("action must be (%s, %s, %s)", columbus_v1.SwapAction, columbus_v1.ProvideAction, columbus_v1.WithdrawAction)
+	msg := fmt.Sprintf("action must be (%s, %s, %s)", cv1.SwapAction, cv1.ProvideAction, cv1.WithdrawAction)
 	return nil, errors.New(msg)
 }
 
 func (m *pairMapper) swapMatchedToParsedTx(res eventlog.MatchedResult, pair dex.Pair) ([]*dex.ParsedTx, error) {
 	var err error
-	if err = m.mixin.checkResult(res, columbus_v1.PairSwapMatchedLen); err != nil {
+	if err = m.mixin.checkResult(res, cv1.PairSwapMatchedLen); err != nil {
 		return nil, errors.Wrap(err, "pairMapper.swapMatchedToParsedTx")
 	}
 
-	offerAsset := res[columbus_v1.PairSwapOfferAssetIdx].Value
+	offerAsset := res[cv1.PairSwapOfferAssetIdx].Value
 	offerIdx := 0
 	if pair.Assets[1] == offerAsset {
 		offerIdx = 1
@@ -62,33 +62,33 @@ func (m *pairMapper) swapMatchedToParsedTx(res eventlog.MatchedResult, pair dex.
 		{Addr: pair.Assets[1]},
 	}
 
-	assets[offerIdx].Amount = res[columbus_v1.PairSwapOfferAmountIdx].Value
-	assets[returnIdx].Amount = fmt.Sprintf("-%s", res[columbus_v1.PairSwapReturnAmountIdx].Value)
+	assets[offerIdx].Amount = res[cv1.PairSwapOfferAmountIdx].Value
+	assets[returnIdx].Amount = fmt.Sprintf("-%s", res[cv1.PairSwapReturnAmountIdx].Value)
 
-	if assets[returnIdx].Amount, err = dex.AmountAdd(assets[returnIdx].Amount, res[columbus_v1.PairSwapTaxAmountIdx].Value); err != nil {
+	if assets[returnIdx].Amount, err = dex.AmountAdd(assets[returnIdx].Amount, res[cv1.PairSwapTaxAmountIdx].Value); err != nil {
 		return nil, errors.Wrap(err, "pairMapper.swapMatchedToParsedTx")
 	}
 
 	return []*dex.ParsedTx{{
 		Type:             dex.Swap,
-		ContractAddr:     res[columbus_v1.PairAddrIdx].Value,
+		ContractAddr:     res[cv1.PairAddrIdx].Value,
 		Assets:           assets,
-		CommissionAmount: res[columbus_v1.PairSwapCommissionAmountIdx].Value,
+		CommissionAmount: res[cv1.PairSwapCommissionAmountIdx].Value,
 		Meta: map[string]interface{}{
-			res[columbus_v1.PairSwapTaxAmountIdx].Key: dex.Asset{
+			res[cv1.PairSwapTaxAmountIdx].Key: dex.Asset{
 				Addr:   assets[returnIdx].Addr,
-				Amount: res[columbus_v1.PairSwapTaxAmountIdx].Value,
+				Amount: res[cv1.PairSwapTaxAmountIdx].Value,
 			},
 		},
 	}}, nil
 }
 
 func (m *pairMapper) provideMatchedToParsedTx(res eventlog.MatchedResult, pair dex.Pair) ([]*dex.ParsedTx, error) {
-	if err := m.mixin.checkResult(res, columbus_v1.PairProvideMatchedLen); err != nil {
+	if err := m.mixin.checkResult(res, cv1.PairProvideMatchedLen); err != nil {
 		return nil, errors.Wrap(err, "pairMapper.PairProvideMatchedLen")
 	}
 
-	assets, err := dex.GetAssetsFromAssetsString(res[columbus_v1.PairProvideAssetsIdx].Value)
+	assets, err := dex.GetAssetsFromAssetsString(res[cv1.PairProvideAssetsIdx].Value)
 	if err != nil {
 		return nil, errors.Wrap(err, "pairMapper.provideMatchedToParsedTx")
 	}
@@ -99,19 +99,19 @@ func (m *pairMapper) provideMatchedToParsedTx(res eventlog.MatchedResult, pair d
 
 	return []*dex.ParsedTx{{
 		Type:         dex.Provide,
-		ContractAddr: res[columbus_v1.PairAddrIdx].Value,
+		ContractAddr: res[cv1.PairAddrIdx].Value,
 		Assets:       [2]dex.Asset{assets[0], assets[1]},
 		LpAddr:       pair.LpAddr,
-		LpAmount:     res[columbus_v1.PairProvideShareIdx].Value,
+		LpAmount:     res[cv1.PairProvideShareIdx].Value,
 	}}, nil
 }
 
 func (m *pairMapper) withdrawMatchedToParsedTx(res eventlog.MatchedResult, pair dex.Pair) ([]*dex.ParsedTx, error) {
-	if err := m.mixin.checkResult(res, columbus_v1.PairWithdrawMatchedLen); err != nil {
+	if err := m.mixin.checkResult(res, cv1.PairWithdrawMatchedLen); err != nil {
 		return nil, errors.Wrap(err, "pairMapper.withdrawMatchedToParsedTx")
 	}
 
-	assets, err := dex.GetAssetsFromAssetsString(res[columbus_v1.PairWithdrawRefundAssetsIdx].Value)
+	assets, err := dex.GetAssetsFromAssetsString(res[cv1.PairWithdrawRefundAssetsIdx].Value)
 	if err != nil {
 		return nil, errors.Wrap(err, "pairMapper.withdrawMatchedToParsedTx")
 	}
@@ -125,10 +125,10 @@ func (m *pairMapper) withdrawMatchedToParsedTx(res eventlog.MatchedResult, pair 
 
 	return []*dex.ParsedTx{{
 		Type:         dex.Withdraw,
-		ContractAddr: res[columbus_v1.PairAddrIdx].Value,
+		ContractAddr: res[cv1.PairAddrIdx].Value,
 		Assets:       [2]dex.Asset{{Addr: assets[0].Addr, Amount: "0"}, {Addr: assets[1].Addr, Amount: "0"}},
 		LpAddr:       pair.LpAddr,
-		LpAmount:     res[columbus_v1.PairWithdrawWithdrawShareIdx].Value,
+		LpAmount:     res[cv1.PairWithdrawWithdrawShareIdx].Value,
 		Meta: map[string]interface{}{
 			"withdraw_assets": assets,
 		},

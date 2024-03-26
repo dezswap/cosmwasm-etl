@@ -1,4 +1,4 @@
-package columbus_v2
+package columbusv2
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 
 	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/parser/dex"
-	"github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap/phoenix"
+	"github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap/columbusv2"
 	el "github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 	"github.com/stretchr/testify/assert"
 )
@@ -76,7 +76,7 @@ func Test_PairMapper(t *testing.T) {
 				{Key: "_contract_address", Value: pair.ContractAddr}, {Key: "action", Value: "provide_liquidity"},
 				{Key: "sender", Value: userAddr}, {Key: "receiver", Value: userAddr},
 				{Key: "assets", Value: fmt.Sprintf("%s%s, %s%s", "1000", pair.Assets[0], "10000", pair.Assets[1])},
-				{Key: "share", Value: "998735"}, {Key: phoenix.PairProvideRefundAssetKey, Value: fmt.Sprintf("%s%s, %s%s", "100", pair.Assets[0], "100", pair.Assets[1])},
+				{Key: "share", Value: "998735"}, {Key: columbusv2.PairProvideRefundAssetKey, Value: fmt.Sprintf("%s%s, %s%s", "100", pair.Assets[0], "100", pair.Assets[1])},
 			},
 			[]*dex.ParsedTx{{"", time.Time{}, dex.Provide, userAddr, pair.ContractAddr, [2]dex.Asset{{pair.Assets[0], "900"}, {pair.Assets[1], "9900"}}, pair.LpAddr, "998735", "", nil}},
 			"",

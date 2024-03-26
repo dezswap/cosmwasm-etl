@@ -1,11 +1,12 @@
-package columbus_v2
+package columbusv1
 
 import (
-	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/parser"
 	p_dex "github.com/dezswap/cosmwasm-etl/parser/dex"
+
+	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/pkg/dex"
-	"github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap/phoenix"
+	cv1 "github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap/columbusv1"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 	"github.com/pkg/errors"
@@ -21,13 +22,13 @@ type terraswapApp struct {
 var _ p_dex.TargetApp = &terraswapApp{}
 
 func New(repo p_dex.PairRepo, logger logging.Logger, c configs.ParserDexConfig) (p_dex.TargetApp, error) {
-	finder, err := phoenix.CreateCreatePairRuleFinder(c.FactoryAddress)
+	finder, err := cv1.CreateCreatePairRuleFinder(c.FactoryAddress)
 	if err != nil {
 		return nil, errors.Wrap(err, "NewApp")
 	}
 
 	parsers := p_dex.PairParsers{
-		CreatePairParser: parser.NewParser(finder, p_dex.NewFactoryMapper()),
+		CreatePairParser: parser.NewParser[p_dex.ParsedTx](finder, p_dex.NewFactoryMapper()),
 		PairActionParser: nil,
 		InitialProvide:   nil,
 		WasmTransfer:     nil,
@@ -40,13 +41,13 @@ func New(repo p_dex.PairRepo, logger logging.Logger, c configs.ParserDexConfig) 
 func (p *terraswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]p_dex.ParsedTx, error) {
 	pairs, err := p.GetPairs()
 	if err != nil {
-		return nil, errors.Wrap(err, "phoenix.terraswapApp.ParseTxs")
+		return nil, errors.Wrap(err, "parseTxs")
 	}
 
 	txDtos := []p_dex.ParsedTx{}
 	createPairTxs, err := p.Parsers.CreatePairParser.Parse(tx.LogResults, p_dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp}, nil)
 	if err != nil {
-		return nil, errors.Wrap(err, "phoenix.terraswapApp.ParseTxs")
+		return nil, errors.Wrap(err, "parseTxs")
 	}
 	for _, ctx := range createPairTxs {
 		pairs[ctx.ContractAddr] = p_dex.Pair{
@@ -59,7 +60,7 @@ func (p *terraswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]p_dex.ParsedT
 	}
 
 	if err := p.updateParsers(pairs); err != nil {
-		return nil, errors.Wrap(err, "phoenix.terraswapApp.ParseTxs")
+		return nil, errors.Wrap(err, "parseTxs")
 	}
 
 	pairTxs := []*p_dex.ParsedTx{}
@@ -71,31 +72,19 @@ func (p *terraswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]p_dex.ParsedT
 		}
 		ptxs, err := p.Parsers.PairActionParser.Parse(eventlog.LogResults{raw}, p_dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
 		if err != nil {
-			return nil, errors.Wrap(err, "phoenix.terraswapApp.ParseTxs")
+			return nil, errors.Wrap(err, "parseTxs")
 		}
 		pairTxs = append(pairTxs, ptxs...)
 
 		wtxs, err := p.Parsers.WasmTransfer.Parse(eventlog.LogResults{raw}, p_dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
 		if err != nil {
-			return nil, errors.Wrap(err, "phoenix.terraswapApp.ParseTxs")
+			return nil, errors.Wrap(err, "parseTxs")
 		}
 		wasmTxs = append(wasmTxs, wtxs...)
 
-		if raw.Type == eventlog.TransferType {
-			// event log messages are not sorted well
-			// bug tx: C51473267BEF98BAE991C19AD8A5EFF6370BC64B63ACB68190170095C1AE0ABE
-			filter := map[string]bool{
-				phoenix.SortedTransferAmountKey: true, phoenix.SortedTransferRecipientKey: true, phoenix.SortedTransferSenderKey: true,
-			}
-			attrs, err := eventlog.SortAttributes(raw.Attributes, filter)
-			if err != nil {
-				return nil, errors.Wrap(err, "phoenix.terraswapApp.ParseTxs")
-			}
-			raw.Attributes = *attrs
-		}
 		transfers, err := p.Parsers.Transfer.Parse(eventlog.LogResults{raw}, p_dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
 		if err != nil {
-			return nil, errors.Wrap(err, "phoenix.terraswapApp.ParseTxs")
+			return nil, errors.Wrap(err, "parseTxs")
 		}
 		transferTxs = append(transferTxs, transfers...)
 	}
@@ -116,21 +105,21 @@ func (p *terraswapApp) updateParsers(pairs map[string]p_dex.Pair) error {
 		pairFilter[k] = true
 	}
 
-	pairFinder, err := phoenix.CreatePairCommonRulesFinder(pairFilter)
+	pairFinder, err := cv1.CreatePairCommonRulesFinder(pairFilter)
 	if err != nil {
-		return errors.Wrap(err, "updateParsers")
+		return errors.Wrap(err, "createParsers")
 	}
 	p.Parsers.PairActionParser = parser.NewParser[p_dex.ParsedTx](pairFinder, &pairMapper{pairSet: pairs})
 
-	wasmTransferFinder, err := phoenix.CreateWasmCommonTransferRuleFinder(pairFilter)
+	wasmTransferFinder, err := cv1.CreateWasmCommonTransferRuleFinder(pairFilter)
 	if err != nil {
-		return errors.Wrap(err, "updateParsers")
+		return errors.Wrap(err, "createParsers")
 	}
-	p.Parsers.WasmTransfer = parser.NewParser[p_dex.ParsedTx](wasmTransferFinder, p_dex.NewWasmTransferMapper(dex.WasmTransferCw20AddrKey, pairs))
+	p.Parsers.WasmTransfer = parser.NewParser[p_dex.ParsedTx](wasmTransferFinder, p_dex.NewWasmTransferMapper(dex.WasmTransferLegacyCw20AddrKey, pairs))
 
-	transferRule, err := phoenix.CreateSortedTransferRuleFinder(nil)
+	transferRule, err := cv1.CreateTransferRuleFinder(nil)
 	if err != nil {
-		return errors.Wrap(err, "updateParsers")
+		return errors.Wrap(err, "createParsers")
 	}
 	p.Parsers.Transfer = parser.NewParser[p_dex.ParsedTx](transferRule, p_dex.NewTransferMapper(pairs))
 	return nil
