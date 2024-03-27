@@ -56,32 +56,49 @@ jobs:
       - name: checkout
         uses: actions/checkout@v3
 
+      - name: Configure AWS credentials for dependency image
+        uses: aws-actions/configure-aws-credentials@v4.0.2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_DEPS_REGION }}
+          mask-aws-account-id: 'true'
+
+      - name: Login to Amazon ECR
+        id: login-ecr-deps
+        uses: aws-actions/amazon-ecr-login@v2.0.1
+
+      - name: Pull dependency image
+        id: pull
+        working-directory: .
+        run: |
+          docker pull  ${{ steps.login-ecr-deps.outputs.registry }}/$ECR_REPOSITORY:deps-${{env.GIT_COMMIT}}
+
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1.7.0
+        uses: aws-actions/configure-aws-credentials@v4.0.2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
+          mask-aws-account-id: 'true'
 
       - name: Login to Amazon ECR
         id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v1.5.1
+        uses: aws-actions/amazon-ecr-login@v2.0.1
 
       - name: Build the app, tag and push image
         id: build
         working-directory: .
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_DEPS_REGISTRY: ${{ secrets.AWS_ECR_DEPS_REGISTRY }}
           CONFIG: ${{ secrets[env.CONFIG_NAME] }}
         run: |
           IMAGE_TAG=${{inputs.app_type}}-${{env.GIT_COMMIT}}
           echo "${CONFIG}" > config.yaml
 
-          docker pull ${ECR_DEPS_REGISTRY}/$ECR_REPOSITORY:deps-${{env.GIT_COMMIT}}
           APP_PATH=$(echo ${{inputs.app_type}} | tr '-' '/')
           docker build \
-            --build-arg BUILD_BASE_IMAGE="${ECR_DEPS_REGISTRY}/$ECR_REPOSITORY:deps-${{env.GIT_COMMIT}}" \
+            --build-arg BUILD_BASE_IMAGE="${{ steps.login-ecr-deps.outputs.registry }}/$ECR_REPOSITORY:deps-${{env.GIT_COMMIT}}" \
             --build-arg APP_PATH=$APP_PATH \
             --no-cache -t $ECR_REGISTRY/$ECR_REPOSITORY:${{env.TARGET}} -t $ECR_REGISTRY/$ECR_REPOSITORY:${IMAGE_TAG} .
 
@@ -95,7 +112,7 @@ jobs:
 
       - name: Fill in the new image ID in the Amazon ECS task definition
         id: task-def
-        uses: aws-actions/amazon-ecs-render-task-definition@v1.1.1
+        uses: aws-actions/amazon-ecs-render-task-definition@v1.2.0
         with:
           task-definition: ./${{ env.TARGET }}.json
           container-name: ${{ env.TARGET }}
