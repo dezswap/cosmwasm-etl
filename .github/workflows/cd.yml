@@ -32,7 +32,6 @@ on:
 
 env:
   # AWS
-  AWS_REGION: ${{ inputs.region }}
   ECR_REPOSITORY: cosmwasm-etl
   ECS_CLUSTER: cosmwasm-etl
 
@@ -79,7 +78,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
+          aws-region:  ${{ inputs.region }}
           mask-aws-account-id: 'true'
 
       - name: Login to Amazon ECR
@@ -103,6 +102,8 @@ jobs:
             --no-cache -t $ECR_REGISTRY/$ECR_REPOSITORY:${{env.TARGET}} -t $ECR_REGISTRY/$ECR_REPOSITORY:${IMAGE_TAG} .
 
            docker image push -a $ECR_REGISTRY/$ECR_REPOSITORY
+
+           echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
 
       - name: Download Task Definition
         id: download-task-definition
