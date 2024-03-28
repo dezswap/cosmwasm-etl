@@ -389,7 +389,7 @@ func (p *priceImpl) calculateRoutePrice(height uint64, route []string, token str
 				"priceImpl.calculateRoutePrice: (Height: ", strconv.FormatUint(height, 10), ")"}, ""))
 		}
 
-		if liquidity0D.IsZero() || liquidity1D.IsZero() {
+		if liquidity0D.LT(liquidityLowerThreshold) || liquidity1D.LT(liquidityLowerThreshold) {
 			return types.ZeroDec(), nil, nil
 		}
 
