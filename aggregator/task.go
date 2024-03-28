@@ -165,11 +165,11 @@ func (t lpHistoryTask) generateHistory(latestLpMap map[uint64][]string, txs []sc
 
 		volume0, err := types.NewDecFromStr(tx.Asset0Amount)
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, "lpHistoryTask.generateHistory")
 		}
 		volume1, err := types.NewDecFromStr(tx.Asset1Amount)
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, "lpHistoryTask.generateHistory")
 		}
 
 		lp, ok := pairIdLpHistoryMap[tx.PairId]
@@ -178,11 +178,11 @@ func (t lpHistoryTask) generateHistory(latestLpMap map[uint64][]string, txs []sc
 			if latestLp, ok := latestLpMap[tx.PairId]; ok {
 				lp[repo.Liquidity0], err = types.NewDecFromStr(latestLp[repo.Liquidity0])
 				if err != nil {
-					return nil, err
+					return nil, errors.Wrap(err, "lpHistoryTask.generateHistory")
 				}
 				lp[repo.Liquidity1], err = types.NewDecFromStr(latestLp[repo.Liquidity1])
 				if err != nil {
-					return nil, err
+					return nil, errors.Wrap(err, "lpHistoryTask.generateHistory")
 				}
 			} else {
 				lp[repo.Liquidity0] = types.ZeroDec()
@@ -408,12 +408,12 @@ func (t pairStatsRecentUpdateTask) generateStats(txs []schemas.ParsedTxWithPrice
 	for _, tx := range txs {
 		price0, err := t.searchPrice(tx.Price0, tx.Height, priceMap)
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, "pairStatsRecentUpdateTask.generateStats")
 		}
 
 		price1, err := t.searchPrice(tx.Price1, tx.Height, priceMap)
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, "pairStatsRecentUpdateTask.generateStats")
 		}
 
 		decimal0 := types.NewDec(10).Power(uint64(tx.Decimals0))
@@ -421,35 +421,35 @@ func (t pairStatsRecentUpdateTask) generateStats(txs []schemas.ParsedTxWithPrice
 
 		volume0, err := types.NewDecFromStr(tx.Asset0Amount)
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, "pairStatsRecentUpdateTask.generateStats")
 		}
 		volume0InPrice := volume0.Quo(decimal0).Mul(price0)
 
 		volume1, err := types.NewDecFromStr(tx.Asset1Amount)
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, "pairStatsRecentUpdateTask.generateStats")
 		}
 		volume1InPrice := volume1.Quo(decimal1).Mul(price1)
 
 		liquidity0, err := types.NewDecFromStr(tx.Asset0Liquidity)
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, "pairStatsRecentUpdateTask.generateStats")
 		}
 
 		liquidity1, err := types.NewDecFromStr(tx.Asset1Liquidity)
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, "pairStatsRecentUpdateTask.generateStats")
 		}
 
 		commission0, err := types.NewDecFromStr(tx.Commission0Amount)
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, "pairStatsRecentUpdateTask.generateStats")
 		}
 		commission0InPrice := commission0.Quo(decimal0).Mul(price0)
 
 		commission1, err := types.NewDecFromStr(tx.Commission1Amount)
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, "pairStatsRecentUpdateTask.generateStats")
 		}
 		commission1InPrice := commission1.Quo(decimal1).Mul(price1)
 
@@ -561,7 +561,7 @@ func (t pairStatsRecentUpdateTask) searchPrice(tokenIdStr string, targetHeight u
 	}
 	price, err := types.NewDecFromStr(priceStr)
 	if err != nil {
-		return types.ZeroDec(), err
+		return types.ZeroDec(), errors.Wrap(err, "pairStatsRecentUpdateTask.searchPrice")
 	}
 
 	return price, nil

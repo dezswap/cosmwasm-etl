@@ -331,7 +331,7 @@ group by pair_id
 `
 	res0 := []schemas.PairStats30m{}
 	if tx := r.db.Raw(query, priceToken, r.chainId, startTs, endTs).Scan(&res0); tx.Error != nil {
-		return nil, errors.Wrap(tx.Error, "repo.PairStats")
+		return nil, errors.Wrap(tx.Error, "readRepoImpl.PairStats")
 	}
 
 	query = `
@@ -375,7 +375,7 @@ group by pair_id
 `
 	res1 := []schemas.PairStats30m{}
 	if tx := r.db.Raw(query, priceToken, r.chainId, startTs, endTs).Scan(&res1); tx.Error != nil {
-		return nil, errors.Wrap(tx.Error, "repo.PairStats")
+		return nil, errors.Wrap(tx.Error, "readRepoImpl.PairStats")
 	}
 
 	for i, r0 := range res0 {
@@ -400,11 +400,11 @@ group by pair_id
 
 				lastVolume0, err := types.NewDecFromStr(s.LastSwapPrice)
 				if err != nil {
-					return nil, err
+					return nil, errors.Wrap(err, "readRepoImpl.PairStats")
 				}
 				lastVolume1, err := types.NewDecFromStr(r1.LastSwapPrice)
 				if err != nil {
-					return nil, err
+					return nil, errors.Wrap(err, "readRepoImpl.PairStats")
 				}
 				s.LastSwapPrice = lastVolume1.Quo(lastVolume0).Abs().String()
 
