@@ -266,7 +266,7 @@ func (t *priceTask) Execute(_ time.Time, _ time.Time) error {
 		if err != nil {
 			return err
 		}
-		if nextHeight == price.NA_VALUE {
+		if nextHeight == price.NaValue {
 			currHeight, err := t.priceTracker.CurrHeight()
 			if err != nil {
 				return err

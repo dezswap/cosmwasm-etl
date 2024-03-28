@@ -54,7 +54,7 @@ func New(repo SrcRepo, priceToken string, logger logging.Logger) (Price, error) 
 func (p *priceImpl) CurrHeight() (int64, error) {
 	height, err := p.repo.CurrHeight()
 	if err != nil {
-		return NA_VALUE, err
+		return NaValue, err
 	}
 
 	return height, nil
@@ -63,14 +63,14 @@ func (p *priceImpl) CurrHeight() (int64, error) {
 func (p *priceImpl) NextHeight(minHeight uint64) (int64, error) {
 	if minHeight == 0 {
 		if firstHeight, err := p.repo.FirstHeight(p.priceToken); err != nil {
-			return NA_VALUE, err
+			return NaValue, err
 		} else if firstHeight > 0 {
 			minHeight = uint64(firstHeight) - 1
 		}
 	}
 	height, err := p.repo.NextHeight(minHeight)
 	if err != nil {
-		return NA_VALUE, err
+		return NaValue, err
 	}
 
 	return height, nil
@@ -179,7 +179,7 @@ func (p *priceImpl) decimals(token string) (int64, error) {
 	} else {
 		decimals, err = p.repo.Decimals(token)
 		if err != nil {
-			return NA_VALUE, err
+			return NaValue, err
 		}
 		p.tokenDecimals[token] = decimals
 	}
@@ -211,7 +211,7 @@ func (p *priceImpl) updateIndirectSwapPrice(tx schemas.ParsedTx) error {
 	}
 
 	if len(route0) == 0 && len(route1) == 0 {
-		// no route for price detection
+		p.logger.Warnf("no price route found for a transaction(hash: %s)", tx.Hash)
 		return nil
 	}
 
@@ -290,7 +290,7 @@ func (p *priceImpl) updateIndirectSwapPrice(tx schemas.ParsedTx) error {
 }
 
 func (p *priceImpl) optimalRoutePrice(height uint64, token string, decimals int64) ([]string, types.Dec, types.Dec, error) {
-	optimalRoute := []string{}
+	var optimalRoute []string
 	optimalPrice := types.ZeroDec()
 	optimalRouteLiquidity := types.ZeroDec()
 
