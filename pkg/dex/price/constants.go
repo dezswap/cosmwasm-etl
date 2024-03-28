@@ -1,4 +1,7 @@
 package price
 
-const BLOCK_INTERVAL_SEC = 5
-const NA_VALUE = int64(-1)
+import "github.com/cosmos/cosmos-sdk/types"
+
+const NaValue = int64(-1)
+
+var liquidityLowerThreshold = types.NewDec(10)
