@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cosmos/cosmos-sdk/types"
 	"github.com/dezswap/cosmwasm-etl/pkg/util"
 
 	"github.com/dezswap/cosmwasm-etl/configs"
@@ -398,11 +397,11 @@ group by pair_id
 				s.Commission1 = r1.Commission1
 				s.Commission1InPrice = r1.Commission1InPrice
 
-				lastVolume0, err := types.NewDecFromStr(s.LastSwapPrice)
+				lastVolume0, err := util.ExponentToDecimal(r0.LastSwapPrice)
 				if err != nil {
 					return nil, errors.Wrap(err, "readRepoImpl.PairStats")
 				}
-				lastVolume1, err := types.NewDecFromStr(r1.LastSwapPrice)
+				lastVolume1, err := util.ExponentToDecimal(r1.LastSwapPrice)
 				if err != nil {
 					return nil, errors.Wrap(err, "readRepoImpl.PairStats")
 				}
