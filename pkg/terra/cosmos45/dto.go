@@ -1,4 +1,4 @@
-package phoenix
+package cosmos45
 
 type LcdContractStateRes[T any] struct {
 	Data T `json:"data"`

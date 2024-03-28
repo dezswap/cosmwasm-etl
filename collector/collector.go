@@ -29,7 +29,7 @@ func DoCollect(store datastore.DataStore, logger logging.Logger) error {
 			return
 		}
 
-		logger.Infof("Start colleting from block %d ...", latestBlock+1)
+		logger.Infof("Start collecting from the block %d ...", latestBlock+1)
 
 		for {
 			block, err := store.GetBlockByHeight(latestBlock + 1)

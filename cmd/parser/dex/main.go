@@ -23,14 +23,15 @@ import (
 	pts "github.com/dezswap/cosmwasm-etl/parser/dex/terraswap"
 	"github.com/dezswap/cosmwasm-etl/pkg/dex"
 	dts "github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap"
-	dts_colv1 "github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap/columbus_v1"
+	dts_colv1 "github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap/columbusv1"
+	dts_colv2 "github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap/columbusv2"
 	dts_phoenix "github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap/phoenix"
 
 	"github.com/dezswap/cosmwasm-etl/pkg/grpc"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 	"github.com/dezswap/cosmwasm-etl/pkg/s3client"
 	"github.com/dezswap/cosmwasm-etl/pkg/terra/col4"
-	terra_phoenix "github.com/dezswap/cosmwasm-etl/pkg/terra/phoenix"
+	terra_cosmos45 "github.com/dezswap/cosmwasm-etl/pkg/terra/cosmos45"
 	"github.com/dezswap/cosmwasm-etl/pkg/terra/rpc"
 )
 
@@ -110,7 +111,7 @@ func dex_main(c configs.ParserDexConfig, logc configs.LogConfig, sentryc configs
 
 		switch dts.TerraswapFactory(c.FactoryAddress) {
 		case dts.MAINNET_FACTORY:
-			lcd := terra_phoenix.NewLcd(c.NodeConfig.RestClientConfig.LcdHost, &http.Client{
+			lcd := terra_cosmos45.NewLcd(c.NodeConfig.RestClientConfig.LcdHost, &http.Client{
 				Transport: &http.Transport{
 					MaxIdleConns:      10,               // Maximum idle connections to keep open
 					IdleConnTimeout:   30 * time.Second, // Time to keep idle connections open
@@ -118,8 +119,19 @@ func dex_main(c configs.ParserDexConfig, logc configs.LogConfig, sentryc configs
 				},
 			})
 			terraswapQueryClient := dts_phoenix.NewPhoenixClient(lcd)
-			rawDataStore = ts_srcstore.NewPhoenixStore(c.FactoryAddress, r, lcd, terraswapQueryClient)
-		case dts.CLASSIC_V2_FACTORY, dts.PISCO_FACTORY:
+			rawDataStore = ts_srcstore.NewBaseStore(c.FactoryAddress, r, lcd, terraswapQueryClient)
+		case dts.CLASSIC_V2_FACTORY:
+			lcd := terra_cosmos45.NewLcd(c.NodeConfig.RestClientConfig.LcdHost, &http.Client{
+				Transport: &http.Transport{
+					MaxIdleConns:      10,               // Maximum idle connections to keep open
+					IdleConnTimeout:   30 * time.Second, // Time to keep idle connections open
+					DisableKeepAlives: false,            // Use HTTP Keep-Alive
+				},
+			})
+			terraswapQueryClient := dts_colv2.NewColumbusV2Client(lcd)
+			rawDataStore = ts_srcstore.NewBaseStore(c.FactoryAddress, r, lcd, terraswapQueryClient)
+
+		case dts.PISCO_FACTORY:
 			panic(errors.New("not implemented yet"))
 		case dts.CLASSIC_V1_FACTORY:
 			lcd := col4.NewLcd(c.NodeConfig.RestClientConfig.LcdHost, &http.Client{
