@@ -1,14 +1,9 @@
-#
-# cosmwasm-etl-service
-#
-# build:
-#   docker build --force-rm -t dezswap/cosmwasm-etl-service .
-# run:
-#   docker run --rm -it --env-file=path/to/.env --name cosmwasm-etl-app dezswap/cosmwasm-etl-service
+ARG GO_VERSION="1.20.10"
+ARG BASE_IMAGE="golang:${GO_VERSION}-alpine"
+ARG BUILD_BASE_IMAGE="deps"
 
 ### BUILD
-FROM golang:1.20.10-alpine AS build
-ARG APP_TYPE=collector
+FROM ${BASE_IMAGE} AS deps
 ARG LIBWASMVM_VERSION=v1.0.0
 
 WORKDIR /app
@@ -35,7 +30,13 @@ RUN sha256sum /lib/libwasmvm_muslc.aarch64.a | grep 7d2239e9f25e96d0d4daba982ce9
 RUN sha256sum /lib/libwasmvm_muslc.x86_64.a | grep f6282df732a13dec836cda1f399dd874b1e3163504dbd9607c6af915b2740479
 RUN cp /lib/libwasmvm_muslc.`uname -m`.a /lib/libwasmvm_muslc.a
 
-# install simapp, remove packages
+# Build the app
+FROM ${BUILD_BASE_IMAGE} AS build
+# required argument: one of("aggregator", "collector", "parser")
+ARG APP_TYPE
+ENV APP_TYPE ${APP_TYPE}
+COPY ./config.yaml /app/config.yaml
+
 RUN go build -mod=readonly -tags "netgo muslc" \
             -ldflags "-X github.com/cosmos/cosmos-sdk/version.BuildTags='netgo,muslc' \
             -w -s -linkmode=external -extldflags '-Wl,-z,muldefs -static'" \
@@ -44,10 +45,9 @@ RUN go build -mod=readonly -tags "netgo muslc" \
 ### RELEASE
 FROM alpine:latest AS release
 WORKDIR /app
+
 # Import the user and group files to run the app as an unpriviledged user
 COPY --from=build /etc/passwd /etc/passwd
-
-# TODO: change tests not to use config.yaml and fix configs.New to use CWD folder
 COPY --from=build /app/config.yaml /app/config.yaml
 
 # Use an unprivileged user
