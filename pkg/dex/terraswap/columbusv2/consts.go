@@ -35,6 +35,7 @@ const (
 	PairSwapOfferAssetKey       = "offer_asset"
 	PairSwapReceiverKey         = "receiver"
 	PairSwapReturnAmountKey     = "return_amount"
+	PairSwapTaxAmountKey        = "tax_amount"
 	PairSwapSenderKey           = "sender"
 	PairSwapSpreadAmountKey     = "spread_amount"
 )

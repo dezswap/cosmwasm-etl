@@ -62,6 +62,13 @@ func (m *pairMapper) swapMatchedToParsedTx(res eventlog.MatchedResult, pair dex.
 	assets[offerIdx].Amount = matchMap[columbusv2.PairSwapOfferAmountKey].Value
 	assets[returnIdx].Amount = fmt.Sprintf("-%s", matchMap[columbusv2.PairSwapReturnAmountKey].Value)
 
+	tax, ok := matchMap[columbusv2.PairSwapTaxAmountKey]
+	if ok {
+		if assets[returnIdx].Amount, err = dex.AmountAdd(assets[returnIdx].Amount, tax.Value); err != nil {
+			return nil, errors.Wrap(err, "pairMapper.swapMatchedToParsedTx")
+		}
+	}
+
 	return []*dex.ParsedTx{{
 		Type:             dex.Swap,
 		ContractAddr:     matchMap[columbusv2.PairAddrKey].Value,

@@ -52,6 +52,18 @@ func Test_PairMapper(t *testing.T) {
 		{
 			&pairMapper{pairSet: pairSet},
 			el.MatchedResult{
+				{Key: "_contract_address", Value: pair.ContractAddr}, {Key: "action", Value: "swap"},
+				{Key: "sender", Value: userAddr}, {Key: "receiver", Value: userAddr},
+				{Key: "offer_asset", Value: pair.Assets[1]}, {Key: "ask_asset", Value: pair.Assets[0]},
+				{Key: "offer_amount", Value: "100000"}, {Key: "return_amount", Value: "100583"}, {Key: "tax_amount", Value: "583"},
+				{Key: "spread_amount", Value: "2"}, {Key: "commission_amount", Value: "300"},
+			},
+			[]*dex.ParsedTx{{"", time.Time{}, dex.Swap, userAddr, pair.ContractAddr, [2]dex.Asset{{pair.Assets[0], "-100000"}, {pair.Assets[1], "100000"}}, "", "", "300", nil}},
+			"",
+		},
+		{
+			&pairMapper{pairSet: pairSet},
+			el.MatchedResult{
 				{Key: "_contract_address", Value: "IT REQUIRED MORE MATCHED"}, {Key: "action", Value: "create_pair"},
 			},
 			nil,
