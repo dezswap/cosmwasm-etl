@@ -17,6 +17,7 @@ type Repo interface {
 	parser.Repo[ParsedTx]
 	PairRepo
 	ParsedPoolsInfo(from, to uint64) ([]PoolInfo, error)
+	ValidationExceptionList() ([]string, error)
 }
 
 type SourceDataStore interface {

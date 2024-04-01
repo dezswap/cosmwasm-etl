@@ -51,3 +51,8 @@ type SyncedHeight struct {
 	ChainId string `json:"chainId"`
 	Height  uint64 `json:"height"`
 }
+
+type PairValidationException struct {
+	ChainId  string `json:"chainId"`
+	Contract string `json:"contract"`
+}

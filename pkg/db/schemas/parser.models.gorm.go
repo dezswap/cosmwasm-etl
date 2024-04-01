@@ -19,6 +19,9 @@ func (Pair) TableName() string {
 func (SyncedHeight) TableName() string {
 	return "synced_height"
 }
+func (PairValidationException) TableName() string {
+	return "pair_validation_exception"
+}
 
 func (Meta) GormDataType() string {
 	return "json"

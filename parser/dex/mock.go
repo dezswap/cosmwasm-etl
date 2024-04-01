@@ -11,6 +11,7 @@ import (
 
 type ParserMock struct{ mock.Mock }
 type RepoMock struct{ mock.Mock }
+
 type RawStoreMock struct{ mock.Mock }
 
 var _ Repo = &RepoMock{}
@@ -83,6 +84,12 @@ func (m *RepoMock) Insert(height uint64, txs []ParsedTx, arg ...interface{}) err
 
 // ParsedPoolInfo implements Repo.
 func (m *RepoMock) ParsedPoolsInfo(from, to uint64) ([]PoolInfo, error) {
-	args := m.Mock.MethodCalled("ParsedPoolInfo", from, to)
+	args := m.Mock.MethodCalled("ParsedPoolsInfo", from, to)
 	return args.Get(0).([]PoolInfo), args.Error(1)
+}
+
+// ValidationExceptionList implements Repo.
+func (m *RepoMock) ValidationExceptionList() ([]string, error) {
+	args := m.Mock.MethodCalled("ValidationExceptionList")
+	return args.Get(0).([]string), args.Error(1)
 }

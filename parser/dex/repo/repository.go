@@ -148,3 +148,13 @@ func (r *repoImpl) ParsedPoolsInfo(from, to uint64) ([]dex.PoolInfo, error) {
 
 	return results, nil
 }
+
+// ValidationExceptionList implements dex.Repo.
+func (r *repoImpl) ValidationExceptionList() ([]string, error) {
+	exceptions := []string{}
+	tx := r.db.Model(&schemas.PairValidationException{}).Where("chain_id = ?", r.chainId).Select("contract").Scan(&exceptions)
+	if tx.Error != nil {
+		return nil, errors.Wrap(tx.Error, "repoImpl.ValidationExceptionList")
+	}
+	return exceptions, nil
+}
