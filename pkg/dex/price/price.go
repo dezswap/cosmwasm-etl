@@ -1,6 +1,9 @@
 package price
 
 import (
+	"github.com/pkg/errors"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -51,7 +54,7 @@ func New(repo SrcRepo, priceToken string, logger logging.Logger) (Price, error) 
 func (p *priceImpl) CurrHeight() (int64, error) {
 	height, err := p.repo.CurrHeight()
 	if err != nil {
-		return NA_VALUE, err
+		return NaValue, err
 	}
 
 	return height, nil
@@ -60,14 +63,14 @@ func (p *priceImpl) CurrHeight() (int64, error) {
 func (p *priceImpl) NextHeight(minHeight uint64) (int64, error) {
 	if minHeight == 0 {
 		if firstHeight, err := p.repo.FirstHeight(p.priceToken); err != nil {
-			return NA_VALUE, err
+			return NaValue, err
 		} else if firstHeight > 0 {
 			minHeight = uint64(firstHeight) - 1
 		}
 	}
 	height, err := p.repo.NextHeight(minHeight)
 	if err != nil {
-		return NA_VALUE, err
+		return NaValue, err
 	}
 
 	return height, nil
@@ -140,7 +143,8 @@ func (p *priceImpl) updateDirectSwapPrice(tx schemas.ParsedTx) error {
 
 	price, err := p.calculatePrice(tx.Asset0Amount, decimals0, tx.Asset1Amount, decimals1, isReverse)
 	if err != nil {
-		return err
+		return errors.Wrap(err, strings.Join([]string{
+			"priceImpl.updateDirectSwapPrice: (Tx Hash: ", tx.Hash, ")"}, ""))
 	}
 
 	if err := p.repo.UpdateDirectPrice(tx.Height, tx.Id, targetToken, price.String(), p.priceToken, isReverse); err != nil {
@@ -175,7 +179,7 @@ func (p *priceImpl) decimals(token string) (int64, error) {
 	} else {
 		decimals, err = p.repo.Decimals(token)
 		if err != nil {
-			return NA_VALUE, err
+			return NaValue, err
 		}
 		p.tokenDecimals[token] = decimals
 	}
@@ -186,34 +190,40 @@ func (p *priceImpl) decimals(token string) (int64, error) {
 func (p *priceImpl) updateIndirectSwapPrice(tx schemas.ParsedTx) error {
 	decimals0, err := p.decimals(tx.Asset0)
 	if err != nil {
-		return err
+		return errors.Wrap(err,
+			strings.Join([]string{"priceImpl.updateIndirectSwapPrice: (Tx hash:", tx.Hash, ")"}, ""))
 	}
 	decimals1, err := p.decimals(tx.Asset1)
 	if err != nil {
-		return err
+		return errors.Wrap(err,
+			strings.Join([]string{"priceImpl.updateIndirectSwapPrice: (Tx hash:", tx.Hash, ")"}, ""))
 	}
 
 	route0, price0, liquidity0, err := p.optimalRoutePrice(tx.Height, tx.Asset0, decimals0)
 	if err != nil {
-		return err
+		return errors.Wrap(err,
+			strings.Join([]string{"priceImpl.updateIndirectSwapPrice: (Tx hash:", tx.Hash, ")"}, ""))
 	}
 	route1, price1, liquidity1, err := p.optimalRoutePrice(tx.Height, tx.Asset1, decimals1)
 	if err != nil {
-		return err
+		return errors.Wrap(err,
+			strings.Join([]string{"priceImpl.updateIndirectSwapPrice: (Tx hash:", tx.Hash, ")"}, ""))
 	}
 
 	if len(route0) == 0 && len(route1) == 0 {
-		// no route for price detection
+		p.logger.Warnf("no price route found for a transaction(hash: %s)", tx.Hash)
 		return nil
 	}
 
 	asset0AmountD, err := util.StringAmountToDecimal(tx.Asset0Amount, decimals0)
 	if err != nil {
-		return err
+		return errors.Wrap(err,
+			strings.Join([]string{"priceImpl.updateIndirectSwapPrice: (Tx hash:", tx.Hash, ")"}, ""))
 	}
 	asset1AmountD, err := util.StringAmountToDecimal(tx.Asset1Amount, decimals1)
 	if err != nil {
-		return err
+		return errors.Wrap(err,
+			strings.Join([]string{"priceImpl.updateIndirectSwapPrice: (Tx hash:", tx.Hash, ")"}, ""))
 	}
 
 	isPriceFixed := false
@@ -280,7 +290,7 @@ func (p *priceImpl) updateIndirectSwapPrice(tx schemas.ParsedTx) error {
 }
 
 func (p *priceImpl) optimalRoutePrice(height uint64, token string, decimals int64) ([]string, types.Dec, types.Dec, error) {
-	optimalRoute := []string{}
+	var optimalRoute []string
 	optimalPrice := types.ZeroDec()
 	optimalRouteLiquidity := types.ZeroDec()
 
@@ -358,24 +368,28 @@ func (p *priceImpl) calculateRoutePrice(height uint64, route []string, token str
 			var err error
 			decimals0, err = p.decimals(asset0)
 			if err != nil {
-				return types.Dec{}, nil, err
+				return types.Dec{}, nil, errors.Wrap(err, strings.Join([]string{
+					"priceImpl.calculateRoutePrice: (Height: ", strconv.FormatUint(height, 10), ")"}, ""))
 			}
 		}
 
 		liquidity0, liquidity1, err := p.repo.Liquidity(height, asset0, asset1)
 		if err != nil {
-			return types.Dec{}, nil, err
+			return types.Dec{}, nil, errors.Wrap(err, strings.Join([]string{
+				"priceImpl.calculateRoutePrice: (Height: ", strconv.FormatUint(height, 10), ")"}, ""))
 		}
 		liquidity0D, err := util.StringAmountToDecimal(liquidity0, decimals0)
 		if err != nil {
-			return types.Dec{}, nil, err
+			return types.Dec{}, nil, errors.Wrap(err, strings.Join([]string{
+				"priceImpl.calculateRoutePrice: (Height: ", strconv.FormatUint(height, 10), ")"}, ""))
 		}
 		liquidity1D, err := util.StringAmountToDecimal(liquidity1, decimals1)
 		if err != nil {
-			return types.Dec{}, nil, err
+			return types.Dec{}, nil, errors.Wrap(err, strings.Join([]string{
+				"priceImpl.calculateRoutePrice: (Height: ", strconv.FormatUint(height, 10), ")"}, ""))
 		}
 
-		if liquidity0D.IsZero() || liquidity1D.IsZero() {
+		if liquidity0D.LT(liquidityLowerThreshold) || liquidity1D.LT(liquidityLowerThreshold) {
 			return types.ZeroDec(), nil, nil
 		}
 

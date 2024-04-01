@@ -68,12 +68,12 @@ func NewRepo(chainId string, dbConfig configs.RdbConfig) SrcRepo {
 }
 
 func (r *srcRepoImpl) FirstHeight(priceToken string) (int64, error) {
-	height := NA_VALUE
+	height := NaValue
 	tx := r.db.Model(schemas.ParsedTx{}).Where(
 		"chain_id = ? and (asset0 = ? or asset1 = ?)", r.chainId, priceToken, priceToken).Select(
-		"coalesce(min(height), ?)", NA_VALUE).Find(&height)
+		"coalesce(min(height), ?)", NaValue).Find(&height)
 	if tx.Error != nil {
-		return 0, errors.Wrap(tx.Error, "repo.FirstHeight")
+		return 0, errors.Wrap(tx.Error, "srcRepoImpl.FirstHeight")
 	}
 
 	return height, nil
@@ -83,10 +83,10 @@ func (r *srcRepoImpl) CurrHeight() (int64, error) {
 	query := `
 select coalesce(max(height), 0) from price where chain_id = ?
 `
-	height := NA_VALUE
+	height := NaValue
 	tx := r.db.Raw(query, r.chainId).Find(&height)
 	if tx.Error != nil {
-		return 0, errors.Wrap(tx.Error, "repo.NextHeight")
+		return 0, errors.Wrap(tx.Error, "srcRepoImpl.NextHeight")
 	}
 
 	return height, nil
@@ -106,10 +106,10 @@ where pt.chain_id = ?
 	and pt.height > (select coalesce(max(height), 0) from price where chain_id = ?)
 	and pt.height > ?
 `
-	height := NA_VALUE
-	tx := r.db.Raw(query, NA_VALUE, r.chainId, r.chainId, minHeight).Find(&height)
+	height := NaValue
+	tx := r.db.Raw(query, NaValue, r.chainId, r.chainId, minHeight).Find(&height)
 	if tx.Error != nil {
-		return 0, errors.Wrap(tx.Error, "repo.NextHeight")
+		return 0, errors.Wrap(tx.Error, "srcRepoImpl.NextHeight")
 	}
 
 	return height, nil
@@ -124,7 +124,7 @@ func (r *srcRepoImpl) Txs(height uint64) ([]schemas.ParsedTx, error) {
 		"parsed_tx.chain_id = ? and parsed_tx.height = ? and (type = 'swap' or t.height is not null)",
 		r.chainId, height).Order("parsed_tx.id asc").Find(&res)
 	if tx.Error != nil {
-		return nil, errors.Wrap(tx.Error, "repo.Txs")
+		return nil, errors.Wrap(tx.Error, "srcRepoImpl.Txs")
 	}
 
 	return res, nil
@@ -136,7 +136,7 @@ func (r *srcRepoImpl) Decimals(asset string) (int64, error) {
 		"decimals").Where(
 		"chain_id = ? and address = ?", r.chainId, asset).Find(&res)
 	if tx.Error != nil {
-		return 0, errors.Wrap(tx.Error, "repo.Decimals")
+		return 0, errors.Wrap(tx.Error, "srcRepoImpl.Decimals")
 	}
 
 	return res, nil
@@ -147,7 +147,7 @@ func (r *srcRepoImpl) LatestRouteUpdateTimestamp() (float64, error) {
 	if tx := r.db.Model(schemas.Route{}).Where(
 		"chain_id = ?", r.chainId).Select(
 		"coalesce(min(created_at), 0)").Find(&ts); tx.Error != nil {
-		return 0, errors.Wrap(tx.Error, "repo.LatestRouteUpdateTimestamp")
+		return 0, errors.Wrap(tx.Error, "srcRepoImpl.LatestRouteUpdateTimestamp")
 	}
 
 	return ts, nil
@@ -165,7 +165,7 @@ func (r *srcRepoImpl) Route(endToken string) (map[string][][]string, error) {
 		"hop_count asc").Find( // hop_count ordering is essential for routes comparison, refer to priceImpl.selectRoute(...)
 		&res)
 	if tx.Error != nil {
-		return nil, errors.Wrap(tx.Error, "repo.Route")
+		return nil, errors.Wrap(tx.Error, "srcRepoImpl.Route")
 	}
 
 	convertedRes := make(map[string][][]string)
@@ -195,7 +195,7 @@ func (r *srcRepoImpl) Liquidity(height uint64, token string, priceToken string) 
 			"on lp_history.height = t.height and lp_history.pair_id = t.pair_id",
 		r.chainId, height, token, priceToken, priceToken, token).Select("asset0, liquidity0, asset1, liquidity1").Find(&res)
 	if tx.Error != nil {
-		return "", "", errors.Wrap(tx.Error, "repo.Liquidity")
+		return "", "", errors.Wrap(tx.Error, "srcRepoImpl.Liquidity")
 	}
 	if res.Asset0 == token {
 		return res.Liquidity0, res.Liquidity1, nil
@@ -235,7 +235,7 @@ func (r *srcRepoImpl) UpdateDirectPrice(height uint64, txId uint64, token string
 			"tokens.address = ?", priceToken).Find(&res)
 	}
 	if tx.Error != nil {
-		return errors.Wrap(tx.Error, "repo.UpdateDirectPrice")
+		return errors.Wrap(tx.Error, "srcRepoImpl.UpdateDirectPrice")
 	}
 
 	tx = r.db.Model(schemas.Price{}).Create(
@@ -248,7 +248,7 @@ func (r *srcRepoImpl) UpdateDirectPrice(height uint64, txId uint64, token string
 			RouteId:      res.RouteId,
 			TxId:         txId})
 	if tx.Error != nil {
-		return errors.Wrap(tx.Error, "repo.UpdateDirectPrice")
+		return errors.Wrap(tx.Error, "srcRepoImpl.UpdateDirectPrice")
 	}
 
 	return nil
@@ -273,7 +273,7 @@ func (r *srcRepoImpl) UpdateRoutePrice(height uint64, txId uint64, token string,
 		"tokens.address = ?", priceToken).Find(&res)
 
 	if tx.Error != nil {
-		return errors.Wrap(tx.Error, "repo.UpdateRoutePrice")
+		return errors.Wrap(tx.Error, "srcRepoImpl.UpdateRoutePrice")
 	}
 
 	tx = r.db.Model(schemas.Price{}).Create(
@@ -286,7 +286,7 @@ func (r *srcRepoImpl) UpdateRoutePrice(height uint64, txId uint64, token string,
 			RouteId:      res.RouteId,
 			TxId:         txId})
 	if tx.Error != nil {
-		return errors.Wrap(tx.Error, "repo.UpdateRoutePrice")
+		return errors.Wrap(tx.Error, "srcRepoImpl.UpdateRoutePrice")
 	}
 
 	return nil
