@@ -12,6 +12,17 @@ const (
 )
 
 type ParserConfig struct {
+	DexConfig *ParserDexConfig
+}
+
+func parserConfig(v *viper.Viper) ParserConfig {
+	dex := parserDexConfig(v)
+	return ParserConfig{
+		DexConfig: dex,
+	}
+}
+
+type ParserDexConfig struct {
 	ChainId             string
 	FactoryAddress      string
 	TargetApp           dex.DexType
@@ -24,28 +35,27 @@ type ParserConfig struct {
 	NodeConfig NodeConfig
 }
 
-func parserConfig(v *viper.Viper) ParserConfig {
+func parserDexConfig(v *viper.Viper) *ParserDexConfig {
+	v.SetDefault("parser.dex.sameHeightTolerance", PARSER_SAME_HEIGHT_TOLERANCE)
+	v.SetDefault("parser.dex.poolSnapshotInterval", PARSER_POOL_SNAPSHOT_INTERVAL)
+	v.SetDefault("parser.dex.validationInterval", PARSER_VALIDATION_INTERVAL)
+	return &ParserDexConfig{
+		ChainId:             v.GetString("parser.dex.chainId"),
+		FactoryAddress:      v.GetString("parser.dex.factoryAddress"),
+		TargetApp:           dex.ToDexType(v.GetString("parser.dex.targetApp")),
+		SameHeightTolerance: v.GetUint("parser.dex.sameHeightTolerance"),
+		ErrTolerance:        v.GetUint("parser.dex.errTolerance"),
 
-	v.SetDefault("parser.sameHeightTolerance", PARSER_SAME_HEIGHT_TOLERANCE)
-	v.SetDefault("parser.poolSnapshotInterval", PARSER_POOL_SNAPSHOT_INTERVAL)
-	v.SetDefault("parser.validationInterval", PARSER_VALIDATION_INTERVAL)
-	return ParserConfig{
-		ChainId:             v.GetString("parser.chainId"),
-		FactoryAddress:      v.GetString("parser.factoryAddress"),
-		TargetApp:           dex.ToDexType(v.GetString("parser.targetApp")),
-		SameHeightTolerance: v.GetUint("parser.sameHeightTolerance"),
-		ErrTolerance:        v.GetUint("parser.errTolerance"),
-
-		PoolSnapshotInterval: v.GetUint("parser.poolSnapshotInterval"),
-		ValidationInterval:   v.GetUint("parser.validationInterval"),
+		PoolSnapshotInterval: v.GetUint("parser.dex.poolSnapshotInterval"),
+		ValidationInterval:   v.GetUint("parser.dex.validationInterval"),
 
 		NodeConfig: NodeConfig{
-			GrpcConfig:      grpcConfig(v, "parser.node"),
-			FailoverLcdHost: v.GetString("parser.node.failover_lcd_host"),
+			GrpcConfig:      grpcConfig(v, "parser.dex.node"),
+			FailoverLcdHost: v.GetString("parser.dex.node.failover_lcd_host"),
 
 			RestClientConfig: RestClientConfig{
-				LcdHost: v.GetString("parser.node.rest.lcd"),
-				RpcHost: v.GetString("parser.node.rest.rpc"),
+				LcdHost: v.GetString("parser.dex.node.rest.lcd"),
+				RpcHost: v.GetString("parser.dex.node.rest.rpc"),
 			},
 		},
 	}

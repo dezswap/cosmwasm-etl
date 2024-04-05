@@ -10,7 +10,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func New(repo dex.PairRepo, logger logging.Logger, c configs.ParserConfig) (dex.TargetApp, error) {
+func New(repo dex.PairRepo, logger logging.Logger, c configs.ParserDexConfig) (dex.TargetApp, error) {
 	switch ts.TerraswapFactory(c.FactoryAddress) {
 	case ts.MAINNET_FACTORY:
 		return phoenix.New(repo, logger, c)

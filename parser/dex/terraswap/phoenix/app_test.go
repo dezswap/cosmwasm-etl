@@ -52,7 +52,7 @@ func Test_parseTxs(t *testing.T) {
 		rawStore := dex.RawStoreMock{}
 		app := terraswapApp{&repo, &dex.PairParsers{CreatePairParser: &createPairParser}, dex.DexMixin{}}
 
-		dexApp := dex.NewDexApp(&app, &rawStore, &repo, logging.New("test", configs.LogConfig{}), configs.ParserConfig{FactoryAddress: factoryAddr})
+		dexApp := dex.NewDexApp(&app, &rawStore, &repo, logging.New("test", configs.LogConfig{}), configs.ParserDexConfig{FactoryAddress: factoryAddr})
 		pairMap := map[string]dex.Pair{pair.ContractAddr: pair}
 
 		pairs := []dex.Pair{}
