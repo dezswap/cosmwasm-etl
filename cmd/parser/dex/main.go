@@ -38,13 +38,13 @@ const (
 	app = "parser"
 )
 
-func getCollectorReadStore(c *configs.Config) collector_store.ReadStore {
-	nodeConf := c.Parser.NodeConfig
+func getDexCollectorReadStore(c configs.Config, dc configs.ParserDexConfig) collector_store.ReadStore {
+	nodeConf := dc.NodeConfig
 	if nodeConf.GrpcConfig.Host != "" {
-		nodeConf := c.Parser.NodeConfig
+		nodeConf := dc.NodeConfig
 		serviceDesc := grpc.GetServiceDesc("collector", nodeConf.GrpcConfig)
 
-		store, err := collector_store.New(*c, serviceDesc, nil)
+		store, err := collector_store.New(c, serviceDesc, nil)
 		if err != nil {
 			panic(err)
 		}
@@ -56,43 +56,42 @@ func getCollectorReadStore(c *configs.Config) collector_store.ReadStore {
 					DisableKeepAlives: false,            // Use HTTP Keep-Alive
 				},
 			}
-			store, _ = collector_store.New(*c, serviceDesc, datastore.NewLcdClient(nodeConf.FailoverLcdHost, httpClient))
+			store, _ = collector_store.New(c, serviceDesc, datastore.NewLcdClient(nodeConf.FailoverLcdHost, httpClient))
 		}
 
-		return collector_store.NewReadStoreWithGrpc(c.Parser.ChainId, store)
+		return collector_store.NewReadStoreWithGrpc(dc.ChainId, store)
 	}
 
 	s3Client, err := s3client.NewClient()
 	if err != nil {
 		panic(err)
 	}
-	return collector_store.NewReadStore(c.Parser.ChainId, s3Client)
+	return collector_store.NewReadStore(dc.ChainId, s3Client)
 }
 
-func main() {
-	c := configs.New()
-	logger := logging.New("main", c.Log)
-	if c.Sentry.DSN != "" {
-		sentryEnv := fmt.Sprintf("%s-%s", c.Parser.ChainId, app)
-		logging.ConfigureReporter(logger, c.Sentry.DSN, sentryEnv, map[string]string{
-			"x-chain_id": c.Parser.ChainId,
+func dex_main(c configs.ParserDexConfig, logc configs.LogConfig, sentryc configs.SentryConfig, rdbc configs.RdbConfig, readStore collector_store.ReadStore) {
+	logger := logging.New("main", logc)
+	if sentryc.DSN != "" {
+		sentryEnv := fmt.Sprintf("%s-%s", c.ChainId, app)
+		logging.ConfigureReporter(logger, sentryc.DSN, sentryEnv, map[string]string{
+			"x-chain_id": c.ChainId,
 			"x-app":      "parser",
-			"x-env":      c.Log.Environment,
+			"x-env":      logc.Environment,
 		})
 	}
 	defer catch(logger)
 
-	repo := repo.New(c.Parser.ChainId, c.Rdb)
+	repo := repo.New(c.ChainId, rdbc)
 	var app p_dex.TargetApp
 	var err error
-	if c.Parser.TargetApp == dex.Terraswap {
-		app, err = pts.New(repo, logger, c.Parser)
-	} else if c.Parser.TargetApp == dex.Dezswap {
-		app, err = pds.New(repo, logger, c.Parser, c.Parser.ChainId)
-	} else if c.Parser.TargetApp == dex.Starfleit {
-		app, err = psf.New(repo, logger, c.Parser, c.Parser.ChainId)
+	if c.TargetApp == dex.Terraswap {
+		app, err = pts.New(repo, logger, c)
+	} else if c.TargetApp == dex.Dezswap {
+		app, err = pds.New(repo, logger, c, c.ChainId)
+	} else if c.TargetApp == dex.Starfleit {
+		app, err = psf.New(repo, logger, c, c.ChainId)
 	} else {
-		panic("unknown target app: " + c.Parser.TargetApp)
+		panic("unknown target app: " + c.TargetApp)
 	}
 
 	if err != nil {
@@ -100,8 +99,8 @@ func main() {
 	}
 
 	var rawDataStore p_dex.SourceDataStore
-	if c.Parser.TargetApp == dex.Terraswap {
-		r := rpc.New(c.Parser.NodeConfig.RestClientConfig.RpcHost, &http.Client{
+	if c.TargetApp == dex.Terraswap {
+		r := rpc.New(c.NodeConfig.RestClientConfig.RpcHost, &http.Client{
 			Transport: &http.Transport{
 				MaxIdleConns:      10,               // Maximum idle connections to keep open
 				IdleConnTimeout:   30 * time.Second, // Time to keep idle connections open
@@ -109,9 +108,9 @@ func main() {
 			},
 		})
 
-		switch dts.TerraswapFactory(c.Parser.FactoryAddress) {
+		switch dts.TerraswapFactory(c.FactoryAddress) {
 		case dts.MAINNET_FACTORY:
-			lcd := terra_phoenix.NewLcd(c.Parser.NodeConfig.RestClientConfig.LcdHost, &http.Client{
+			lcd := terra_phoenix.NewLcd(c.NodeConfig.RestClientConfig.LcdHost, &http.Client{
 				Transport: &http.Transport{
 					MaxIdleConns:      10,               // Maximum idle connections to keep open
 					IdleConnTimeout:   30 * time.Second, // Time to keep idle connections open
@@ -119,11 +118,11 @@ func main() {
 				},
 			})
 			terraswapQueryClient := dts_phoenix.NewPhoenixClient(lcd)
-			rawDataStore = ts_srcstore.NewPhoenixStore(c.Parser.FactoryAddress, r, lcd, terraswapQueryClient)
+			rawDataStore = ts_srcstore.NewPhoenixStore(c.FactoryAddress, r, lcd, terraswapQueryClient)
 		case dts.CLASSIC_V2_FACTORY, dts.PISCO_FACTORY:
 			panic(errors.New("not implemented yet"))
 		case dts.CLASSIC_V1_FACTORY:
-			lcd := col4.NewLcd(c.Parser.NodeConfig.RestClientConfig.LcdHost, &http.Client{
+			lcd := col4.NewLcd(c.NodeConfig.RestClientConfig.LcdHost, &http.Client{
 				Transport: &http.Transport{
 					MaxIdleConns:      10,               // Maximum idle connections to keep open
 					IdleConnTimeout:   30 * time.Second, // Time to keep idle connections open
@@ -131,19 +130,18 @@ func main() {
 				},
 			})
 			terraswapQueryClient := dts_colv1.NewCol4Client(lcd)
-			rawDataStore = ts_srcstore.NewCol4Store(c.Parser.FactoryAddress, r, lcd, terraswapQueryClient)
+			rawDataStore = ts_srcstore.NewCol4Store(c.FactoryAddress, r, lcd, terraswapQueryClient)
 		default:
-			panic(errors.Errorf("invalid factory address: %s", c.Parser.FactoryAddress))
+			panic(errors.Errorf("invalid factory address: %s", c.FactoryAddress))
 		}
 	} else {
-		readStore := getCollectorReadStore(&c)
 		rawDataStore = srcstore.New(readStore)
 	}
 
-	runner := p_dex.NewDexApp(app, rawDataStore, repo, logger, c.Parser)
+	runner := p_dex.NewDexApp(app, rawDataStore, repo, logger, c)
 
 	const BLOCK_SECONDS = 5 * time.Second
-	for errCount := uint(0); errCount <= c.Parser.ErrTolerance; {
+	for errCount := uint(0); errCount <= c.ErrTolerance; {
 		if err := runner.Run(); err != nil {
 			errCount++
 			logger.Errorf("errCount: %d, err: %s", errCount, err)
@@ -153,6 +151,25 @@ func main() {
 		wait := BLOCK_SECONDS * time.Duration(math.Pow(2, float64(errCount)))
 		time.Sleep(wait)
 	}
+
+}
+
+func main() {
+	c := configs.New()
+	logger := logging.New("parser", c.Log)
+	defer catch(logger)
+	if c.Parser.DexConfig == nil {
+		panic("dex config is nil")
+	}
+
+	dc := *c.Parser.DexConfig
+	var readstore collector_store.ReadStore
+	switch dc.TargetApp {
+	case dex.Terraswap:
+	case dex.Dezswap, dex.Starfleit:
+		readstore = getDexCollectorReadStore(c, dc)
+	}
+	dex_main(dc, c.Log, c.Sentry, c.Rdb, readstore)
 
 }
 
