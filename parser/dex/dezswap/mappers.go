@@ -20,8 +20,6 @@ type mapperMixin struct{}
 
 type createPairMapper struct{ mapperMixin }
 
-type initialProvideMapper struct{ mapperMixin }
-
 type transferMapperMixin struct {
 	mapperMixin
 }
@@ -165,21 +163,6 @@ func (m *transferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals
 		Meta: map[string]interface{}{
 			"recipient": to,
 		},
-	}}, nil
-}
-
-func (m *initialProvideMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) ([]*dex.ParsedTx, error) {
-	if err := m.checkResult(res, ds.PairInitialProvideMatchedLen); err != nil {
-		return nil, errors.Wrap(err, "initialProvideMapper.MatchedToParsedTx")
-	}
-	return []*dex.ParsedTx{{
-		Type:         dex.InitialProvide,
-		Sender:       "",
-		ContractAddr: res[ds.PairInitialProvideToIdx].Value,
-		Assets:       [2]dex.Asset{{}, {}},
-		LpAddr:       res[ds.PairInitialProvideAddrIdx].Value,
-		LpAmount:     res[ds.PairInitialProvideAmountIdx].Value,
-		Meta:         nil,
 	}}, nil
 }
 

@@ -34,7 +34,6 @@ const (
 	PairProvideMatchedLen        = PairProvideShareIdx + 1
 	PairV2ProvideMatchedLen      = PairV2ProvideShareIdx + 1
 	PairWithdrawMatchedLen       = PairWithdrawWithdrawShareIdx + 1
-	PairInitialProvideMatchedLen = PairInitialProvideToIdx + 1
 	WasmCommonTransferMatchedLen = WasmCommonTransferActionIdx + 1
 	WasmTransferMatchedLen       = WasmTransferToIdx + 1
 	WasmTransferFromMatchedLen   = WasmTransferFromToIdx + 1
@@ -85,13 +84,6 @@ const (
 	PairWithdrawRefundAssetsIdx = iota + PairCommonMatchedLen
 	PairWithdrawSenderIdx
 	PairWithdrawWithdrawShareIdx
-)
-
-const (
-	PairInitialProvideAddrIdx = iota
-	PairInitialProvideActionIdx
-	PairInitialProvideAmountIdx
-	PairInitialProvideToIdx
 )
 
 const (

@@ -52,3 +52,18 @@ const (
 	WasmTransferFromKey           = "from"
 	WasmTransferToKey             = "to"
 )
+
+const (
+	PairInitialProvideAddrIdx = iota
+	PairInitialProvideActionIdx
+	PairInitialProvideAmountIdx
+	PairInitialProvideToIdx
+	PairInitialProvideMatchedLen
+)
+
+const (
+	PairInitialProvideAddrKey   = "_contract_address"
+	PairInitialProvideActionKey = "action"
+	PairInitialProvideAmountKey = "amount"
+	PairInitialProvideToKey     = "to"
+)

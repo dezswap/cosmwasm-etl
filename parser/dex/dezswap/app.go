@@ -4,6 +4,7 @@ import (
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/parser/dex"
+	pdex "github.com/dezswap/cosmwasm-etl/pkg/dex"
 	ds "github.com/dezswap/cosmwasm-etl/pkg/dex/dezswap"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
@@ -121,11 +122,11 @@ func (p *dezswapApp) updateParsers(pairs map[string]dex.Pair, height uint64) err
 	}
 	p.Parsers.PairActionParser = parser.NewParser[dex.ParsedTx](pairFinder, pairMapper)
 
-	initialProvideFinder, err := ds.CreatePairInitialProvideRuleFinder(pairFilter)
+	initialProvideFinder, err := pdex.CreatePairInitialProvideRuleFinder(pairFilter)
 	if err != nil {
 		return errors.Wrap(err, "updateParsers")
 	}
-	p.Parsers.InitialProvide = parser.NewParser[dex.ParsedTx](initialProvideFinder, &initialProvideMapper{})
+	p.Parsers.InitialProvide = parser.NewParser[dex.ParsedTx](initialProvideFinder, dex.NewInitialProvideMapper())
 
 	wasmTransferFinder, err := ds.CreateWasmCommonTransferRuleFinder()
 	if err != nil {
