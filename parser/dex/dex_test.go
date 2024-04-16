@@ -1,6 +1,7 @@
 package dex
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -88,6 +89,71 @@ func Test_srcHeightCheck(t *testing.T) {
 				i, tc.srcHeight, tc.expectError, err)
 		} else {
 			app.lastSrcHeight = tc.srcHeight
+		}
+	}
+}
+func Test_validate(t *testing.T) {
+	tcs := []struct {
+		actualPools []PoolInfo
+		exceptions  []string
+		errMsg      string
+		explain     string
+	}{
+		{
+			[]PoolInfo{
+				{ContractAddr: "ContractAddr1", TotalShare: "1000", Assets: []Asset{{"Asset0", "100"}, {"Asset1", "100"}}},
+				{ContractAddr: "ContractAddr2", TotalShare: "2000", Assets: []Asset{{"Asset0", "200"}, {"Asset1", "200"}}},
+			},
+			[]string{},
+			"",
+			"must match the expected pools",
+		},
+		{
+			[]PoolInfo{
+				{ContractAddr: "ContractAddr1", TotalShare: "1000", Assets: []Asset{{"Asset0", "100"}, {"Asset1", "100"}}},
+			},
+			[]string{"ContractAddr2"},
+			"",
+			"ContractAddr2 is in exception list, must be skipped although actual pool does not match the expected pool",
+		},
+		{
+			[]PoolInfo{
+				{ContractAddr: "ContractAddr1", TotalShare: "1000", Assets: []Asset{{"Asset0", "100"}, {"Asset1", "100"}}},
+				{ContractAddr: "ContractAddr2", TotalShare: "2000", Assets: []Asset{{"Asset0", "200"}, {"Asset1", "100"}}},
+			},
+			[]string{"ContractAddr2"},
+			"",
+			"ContractAddr2 is in exception list, must be skipped although asset1 amount does not match the expected pool",
+		},
+		{
+			[]PoolInfo{
+				{ContractAddr: "ContractAddr1", TotalShare: "1000", Assets: []Asset{{"Asset0", "100"}, {"Asset1", "100"}}},
+				{ContractAddr: "ContractAddr2", TotalShare: "2000", Assets: []Asset{{"Asset0", "200"}, {"Asset1", "200"}}},
+				{ContractAddr: "ContractAddr3", TotalShare: "3000", Assets: []Asset{{"Asset0", "300"}, {"Asset1", "300"}}},
+				{ContractAddr: "ContractAddr4", TotalShare: "4000", Assets: []Asset{{"Asset0", "400"}, {"Asset1", "400"}}},
+			},
+			[]string{"ContractAddr3", "ContractAddr4"},
+			"",
+			"must be skipped because ContractAddr3 and ContractAddr4 are in exception list",
+		},
+	}
+	expectedPools := []PoolInfo{
+		{ContractAddr: "ContractAddr1", TotalShare: "1000", Assets: []Asset{{"Asset0", "100"}, {"Asset1", "100"}}},
+		{ContractAddr: "ContractAddr2", TotalShare: "2000", Assets: []Asset{{"Asset0", "200"}, {"Asset1", "200"}}},
+	}
+	from, to := uint64(0), uint64(0)
+
+	for idx, tc := range tcs {
+		repoMock := RepoMock{}
+		repoMock.On("ParsedPoolsInfo", from, to).Return(tc.actualPools, nil)
+		repoMock.On("ValidationExceptionList").Return(tc.exceptions, nil)
+		dexApp := dexApp{Repo: &repoMock}
+		err := dexApp.validate(uint64(from), uint64(to), expectedPools)
+		errMsg := fmt.Sprintf("tc(%d): %s", idx, tc.explain)
+		if tc.errMsg != "" {
+			assert.Error(t, err, errMsg)
+		} else {
+			assert.NoError(t, err, errMsg)
 		}
 	}
 }

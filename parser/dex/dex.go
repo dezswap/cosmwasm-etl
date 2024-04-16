@@ -185,7 +185,21 @@ func (app *dexApp) validate(from, to uint64, expected []PoolInfo) error {
 	for _, pool := range expected {
 		expectedPool[pool.ContractAddr] = pool
 	}
+
+	exceptions, err := app.ValidationExceptionList()
+	if err != nil {
+		return errors.Wrap(err, "dexApp.validate")
+	}
+	exceptionMap := make(map[string]bool)
+	for _, addr := range exceptions {
+		delete(expectedPool, addr)
+		exceptionMap[addr] = true
+	}
+
 	for _, pool := range actual {
+		if _, ok := exceptionMap[pool.ContractAddr]; ok {
+			continue
+		}
 		exp, ok := expectedPool[pool.ContractAddr]
 		if !ok {
 			return errors.New(fmt.Sprintf("unexpected pool(%s) found", pool.ContractAddr))
