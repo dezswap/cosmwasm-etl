@@ -1,4 +1,4 @@
-package columbus_v1
+package columbusv1
 
 import (
 	"strconv"
