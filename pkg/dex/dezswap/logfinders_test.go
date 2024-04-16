@@ -87,8 +87,6 @@ func Test_LogFinders(t *testing.T) {
 		{PairWithdrawRawLogStr, nil, CreatePairAllRulesFinder, 1, PairWithdrawMatchedLen, "must match once"},
 		{PairWithdrawRawLogStr, map[string]bool{"xpla1ng9mj65a5cunzvkdqctgsv3pewgrx2hvk9tnrww77v3tk2lp7c9qllk0xh": true}, CreatePairWithdrawRuleFinder, 1, PairWithdrawMatchedLen, "must match once"},
 		{PairWithdrawRawLogStr, map[string]bool{"DIFFERENT_PAIR_ADDR": true}, CreatePairWithdrawRuleFinder, 0, 0, "must not match"},
-		//InitialProvide
-		{PairInitialProvideRawLogStr, map[string]bool{"xpla10x8w4n9cvg4f63fjrm0yc6c54a4p3csuk0uv0hskz8g3aljufl6qlrs6gp": true}, CreatePairInitialProvideRuleFinder, 1, PairInitialProvideMatchedLen, "must match once"},
 	}
 
 	for idx, tc := range tcs {
@@ -298,11 +296,6 @@ const PairWithdrawRawLogStr = `[
         ]
 	}
 ]`
-
-const PairInitialProvideRawLogStr = `[
-    {"type":"execute","attributes":[{"key":"_contract_address","value":"xpla10x8w4n9cvg4f63fjrm0yc6c54a4p3csuk0uv0hskz8g3aljufl6qlrs6gp"},{"key":"_contract_address","value":"xpla1p3dsd5k7cl0p0jhtj0s00vrf45s4c6j3wtjsaaalatmr2jwl7p0sy3sd26"},{"key":"_contract_address","value":"xpla1r57m20afwdhkwy67520p8vzdchzecesmlmc8k8w2z7t3h9aevjvs35x4r5"},{"key":"_contract_address","value":"xpla1he85n9h0mcnzhpegj76wwcyjv626tced0zkp58wakjc7d3fm50xq8sywg6"},{"key":"_contract_address","value":"xpla1p3dsd5k7cl0p0jhtj0s00vrf45s4c6j3wtjsaaalatmr2jwl7p0sy3sd26"}]},
-    {"type":"message","attributes":[{"key":"action","value":"/cosmwasm.wasm.v1.MsgExecuteContract"},{"key":"module","value":"wasm"},{"key":"sender","value":"xpla1g8hkzkgfa3uq0cg9d6h99jk5nlg92lwx2jme2l"}]},
-    {"type":"wasm","attributes":[{"key":"_contract_address","value":"xpla10x8w4n9cvg4f63fjrm0yc6c54a4p3csuk0uv0hskz8g3aljufl6qlrs6gp"},{"key":"action","value":"provide_liquidity"},{"key":"sender","value":"xpla1g8hkzkgfa3uq0cg9d6h99jk5nlg92lwx2jme2l"},{"key":"receiver","value":"xpla1g8hkzkgfa3uq0cg9d6h99jk5nlg92lwx2jme2l"},{"key":"assets","value":"500000000000xpla1r57m20afwdhkwy67520p8vzdchzecesmlmc8k8w2z7t3h9aevjvs35x4r5, 19605600000000xpla1he85n9h0mcnzhpegj76wwcyjv626tced0zkp58wakjc7d3fm50xq8sywg6"},{"key":"share","value":"3130942349155"},{"key":"refund_assets","value":"0xpla1r57m20afwdhkwy67520p8vzdchzecesmlmc8k8w2z7t3h9aevjvs35x4r5, 0xpla1he85n9h0mcnzhpegj76wwcyjv626tced0zkp58wakjc7d3fm50xq8sywg6"},{"key":"_contract_address","value":"xpla1p3dsd5k7cl0p0jhtj0s00vrf45s4c6j3wtjsaaalatmr2jwl7p0sy3sd26"},{"key":"action","value":"mint"},{"key":"amount","value":"1000"},{"key":"to","value":"xpla10x8w4n9cvg4f63fjrm0yc6c54a4p3csuk0uv0hskz8g3aljufl6qlrs6gp"},{"key":"_contract_address","value":"xpla1r57m20afwdhkwy67520p8vzdchzecesmlmc8k8w2z7t3h9aevjvs35x4r5"},{"key":"action","value":"transfer_from"},{"key":"amount","value":"500000000000"},{"key":"by","value":"xpla10x8w4n9cvg4f63fjrm0yc6c54a4p3csuk0uv0hskz8g3aljufl6qlrs6gp"},{"key":"from","value":"xpla1g8hkzkgfa3uq0cg9d6h99jk5nlg92lwx2jme2l"},{"key":"to","value":"xpla10x8w4n9cvg4f63fjrm0yc6c54a4p3csuk0uv0hskz8g3aljufl6qlrs6gp"},{"key":"_contract_address","value":"xpla1he85n9h0mcnzhpegj76wwcyjv626tced0zkp58wakjc7d3fm50xq8sywg6"},{"key":"action","value":"transfer_from"},{"key":"amount","value":"19605600000000"},{"key":"by","value":"xpla10x8w4n9cvg4f63fjrm0yc6c54a4p3csuk0uv0hskz8g3aljufl6qlrs6gp"},{"key":"from","value":"xpla1g8hkzkgfa3uq0cg9d6h99jk5nlg92lwx2jme2l"},{"key":"to","value":"xpla10x8w4n9cvg4f63fjrm0yc6c54a4p3csuk0uv0hskz8g3aljufl6qlrs6gp"},{"key":"_contract_address","value":"xpla1p3dsd5k7cl0p0jhtj0s00vrf45s4c6j3wtjsaaalatmr2jwl7p0sy3sd26"},{"key":"action","value":"mint"},{"key":"amount","value":"3130942349155"},{"key":"to","value":"xpla1g8hkzkgfa3uq0cg9d6h99jk5nlg92lwx2jme2l"}]}]`
 
 const TransferRawLogStr = `[
 	{"type":"execute","attributes":[{"key":"_contract_address","value":"xpla1w6hv0suf8dmpq8kxd8a6yy9fnmntlh7hh9kl37qmax7kyzfd047qnnp0mm"}]},

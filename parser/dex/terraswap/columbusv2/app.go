@@ -3,8 +3,8 @@ package columbusv2
 import (
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/parser"
-	p_dex "github.com/dezswap/cosmwasm-etl/parser/dex"
-	"github.com/dezswap/cosmwasm-etl/pkg/dex"
+	"github.com/dezswap/cosmwasm-etl/parser/dex"
+	pdex "github.com/dezswap/cosmwasm-etl/pkg/dex"
 	"github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap/columbusv2"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
@@ -13,43 +13,43 @@ import (
 
 // runner for terraswap
 type terraswapApp struct {
-	p_dex.PairRepo
-	Parsers *p_dex.PairParsers
-	p_dex.DexMixin
+	dex.PairRepo
+	Parsers *dex.PairParsers
+	dex.DexMixin
 }
 
-var _ p_dex.TargetApp = &terraswapApp{}
+var _ dex.TargetApp = &terraswapApp{}
 
-func New(repo p_dex.PairRepo, logger logging.Logger, c configs.ParserDexConfig) (p_dex.TargetApp, error) {
+func New(repo dex.PairRepo, logger logging.Logger, c configs.ParserDexConfig) (dex.TargetApp, error) {
 	finder, err := columbusv2.CreateCreatePairRuleFinder(c.FactoryAddress)
 	if err != nil {
 		return nil, errors.Wrap(err, "NewApp")
 	}
 
-	parsers := p_dex.PairParsers{
-		CreatePairParser: parser.NewParser(finder, p_dex.NewFactoryMapper()),
+	parsers := dex.PairParsers{
+		CreatePairParser: parser.NewParser(finder, dex.NewFactoryMapper()),
 		PairActionParser: nil,
 		InitialProvide:   nil,
 		WasmTransfer:     nil,
 		Transfer:         nil,
 	}
 
-	return &terraswapApp{repo, &parsers, p_dex.DexMixin{}}, nil
+	return &terraswapApp{repo, &parsers, dex.DexMixin{}}, nil
 }
 
-func (p *terraswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]p_dex.ParsedTx, error) {
+func (p *terraswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx, error) {
 	pairs, err := p.GetPairs()
 	if err != nil {
 		return nil, errors.Wrap(err, "phoenix.terraswapApp.ParseTxs")
 	}
 
-	txDtos := []p_dex.ParsedTx{}
-	createPairTxs, err := p.Parsers.CreatePairParser.Parse(tx.LogResults, p_dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp}, nil)
+	txDtos := []dex.ParsedTx{}
+	createPairTxs, err := p.Parsers.CreatePairParser.Parse(tx.LogResults, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp}, nil)
 	if err != nil {
 		return nil, errors.Wrap(err, "phoenix.terraswapApp.ParseTxs")
 	}
 	for _, ctx := range createPairTxs {
-		pairs[ctx.ContractAddr] = p_dex.Pair{
+		pairs[ctx.ContractAddr] = dex.Pair{
 			ContractAddr: ctx.ContractAddr,
 			LpAddr:       ctx.LpAddr,
 			Assets:       []string{ctx.Assets[0].Addr, ctx.Assets[1].Addr},
@@ -62,20 +62,29 @@ func (p *terraswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]p_dex.ParsedT
 		return nil, errors.Wrap(err, "phoenix.terraswapApp.ParseTxs")
 	}
 
-	pairTxs := []*p_dex.ParsedTx{}
-	wasmTxs := []*p_dex.ParsedTx{}
-	transferTxs := []*p_dex.ParsedTx{}
+	pairTxs := []*dex.ParsedTx{}
+	wasmTxs := []*dex.ParsedTx{}
+	transferTxs := []*dex.ParsedTx{}
 	for _, raw := range tx.LogResults {
-		if !dex.ParsableRules[string(raw.Type)] {
+		if !pdex.ParsableRules[string(raw.Type)] {
 			continue
 		}
-		ptxs, err := p.Parsers.PairActionParser.Parse(eventlog.LogResults{raw}, p_dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
+		ptxs, err := p.Parsers.PairActionParser.Parse(eventlog.LogResults{raw}, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
 		if err != nil {
 			return nil, errors.Wrap(err, "phoenix.terraswapApp.ParseTxs")
 		}
 		pairTxs = append(pairTxs, ptxs...)
 
-		wtxs, err := p.Parsers.WasmTransfer.Parse(eventlog.LogResults{raw}, p_dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
+		// find initial provide to a pair
+		if p.HasProvide(ptxs) {
+			ipTxs, err := p.Parsers.InitialProvide.Parse(eventlog.LogResults{raw}, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
+			if err != nil {
+				return nil, errors.Wrap(err, "parseTxs")
+			}
+			pairTxs = append(pairTxs, ipTxs...)
+		}
+
+		wtxs, err := p.Parsers.WasmTransfer.Parse(eventlog.LogResults{raw}, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
 		if err != nil {
 			return nil, errors.Wrap(err, "phoenix.terraswapApp.ParseTxs")
 		}
@@ -93,7 +102,7 @@ func (p *terraswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]p_dex.ParsedT
 			}
 			raw.Attributes = *attrs
 		}
-		transfers, err := p.Parsers.Transfer.Parse(eventlog.LogResults{raw}, p_dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
+		transfers, err := p.Parsers.Transfer.Parse(eventlog.LogResults{raw}, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
 		if err != nil {
 			return nil, errors.Wrap(err, "phoenix.terraswapApp.ParseTxs")
 		}
@@ -110,7 +119,7 @@ func (p *terraswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]p_dex.ParsedT
 	return txDtos, nil
 }
 
-func (p *terraswapApp) updateParsers(pairs map[string]p_dex.Pair) error {
+func (p *terraswapApp) updateParsers(pairs map[string]dex.Pair) error {
 	pairFilter := make(map[string]bool)
 	for k := range pairs {
 		pairFilter[k] = true
@@ -120,18 +129,24 @@ func (p *terraswapApp) updateParsers(pairs map[string]p_dex.Pair) error {
 	if err != nil {
 		return errors.Wrap(err, "updateParsers")
 	}
-	p.Parsers.PairActionParser = parser.NewParser[p_dex.ParsedTx](pairFinder, &pairMapper{pairSet: pairs})
+	p.Parsers.PairActionParser = parser.NewParser[dex.ParsedTx](pairFinder, &pairMapper{pairSet: pairs})
+
+	initialProvideFinder, err := pdex.CreatePairInitialProvideRuleFinder(pairFilter)
+	if err != nil {
+		return errors.Wrap(err, "updateParsers")
+	}
+	p.Parsers.InitialProvide = parser.NewParser[dex.ParsedTx](initialProvideFinder, dex.NewInitialProvideMapper())
 
 	wasmTransferFinder, err := columbusv2.CreateWasmCommonTransferRuleFinder(pairFilter)
 	if err != nil {
 		return errors.Wrap(err, "updateParsers")
 	}
-	p.Parsers.WasmTransfer = parser.NewParser[p_dex.ParsedTx](wasmTransferFinder, p_dex.NewWasmTransferMapper(dex.WasmTransferCw20AddrKey, pairs))
+	p.Parsers.WasmTransfer = parser.NewParser[dex.ParsedTx](wasmTransferFinder, dex.NewWasmTransferMapper(pdex.WasmTransferCw20AddrKey, pairs))
 
 	transferRule, err := columbusv2.CreateSortedTransferRuleFinder(nil)
 	if err != nil {
 		return errors.Wrap(err, "updateParsers")
 	}
-	p.Parsers.Transfer = parser.NewParser[p_dex.ParsedTx](transferRule, p_dex.NewTransferMapper(pairs))
+	p.Parsers.Transfer = parser.NewParser[dex.ParsedTx](transferRule, dex.NewTransferMapper(pairs))
 	return nil
 }

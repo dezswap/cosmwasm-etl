@@ -125,7 +125,7 @@ func (p *starfleitApp) updateParsers(pairs map[string]dex.Pair, height uint64) e
 	if err != nil {
 		return errors.Wrap(err, "updateParsers")
 	}
-	p.Parsers.InitialProvide = parser.NewParser[dex.ParsedTx](initialProvideFinder, &initialProvideMapper{})
+	p.Parsers.InitialProvide = parser.NewParser[dex.ParsedTx](initialProvideFinder, dex.NewInitialProvideMapper())
 
 	wasmTransferFinder, err := sf.CreateWasmCommonTransferRuleFinder()
 	if err != nil {

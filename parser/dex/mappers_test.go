@@ -157,3 +157,47 @@ func Test_TransferMapper(t *testing.T) {
 		assert.Equal(tc.expectedTx, tx, errMsg)
 	}
 }
+
+func Test_InitialProvideMapper(t *testing.T) {
+
+	const userAddr = "userAddr"
+	pair := Pair{ContractAddr: "Pair", LpAddr: "LiquidityToken", Assets: []string{"Asset1", "Asset2"}}
+	tcs := []struct {
+		mapper         parser.Mapper[ParsedTx]
+		matchedResults el.MatchedResult
+		expectedTx     []*ParsedTx
+		errMsg         string
+	}{
+		/// Initial Provide
+		{
+			&initialProvideMapper{mapperMixin{}},
+			el.MatchedResult{
+				{Key: "_contract_address", Value: pair.LpAddr}, {Key: "action", Value: "mint"},
+				{Key: "amount", Value: "1000"}, {Key: "to", Value: pair.ContractAddr},
+			},
+			[]*ParsedTx{{"", time.Time{}, InitialProvide, "", pair.ContractAddr, [2]Asset{}, pair.LpAddr, "1000", "", nil}},
+			"",
+		},
+		{
+			&initialProvideMapper{mapperMixin{}}, el.MatchedResult{
+				{Key: "_contract_address", Value: pair.LpAddr}, {Key: "action", Value: "mint"},
+				{Key: "amount", Value: "1000"}, {Key: "to", Value: pair.ContractAddr}, {Key: "sender", Value: pair.ContractAddr},
+			},
+			nil,
+			"Wrong format of matched must return error",
+		},
+	}
+
+	for idx, tc := range tcs {
+		errMsg := fmt.Sprintf("tc(%d)", idx)
+		assert := assert.New(t)
+
+		tx, err := tc.mapper.MatchedToParsedTx(tc.matchedResults)
+		if tc.errMsg != "" {
+			assert.Error(err, errMsg, tc.errMsg)
+		} else {
+			assert.NoError(err, err)
+			assert.Equal(tc.expectedTx, tx, errMsg)
+		}
+	}
+}

@@ -22,6 +22,8 @@ type wasmCommonTransferMapper struct {
 	pairSet     map[string]Pair
 }
 
+type initialProvideMapper struct{ mapperMixin }
+
 func NewFactoryMapper() parser.Mapper[ParsedTx] {
 	return &factoryMapper{mapperMixin{}}
 }
@@ -186,6 +188,30 @@ func (m transferMapper) transferToParsedTx(pair Pair, from, assetsStr string, fr
 		LpAmount:     "",
 		Meta:         meta,
 	}, nil
+}
+
+func NewInitialProvideMapper() parser.Mapper[ParsedTx] {
+	return &initialProvideMapper{mapperMixin{}}
+}
+
+func (m *initialProvideMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) ([]*ParsedTx, error) {
+	if err := m.checkResult(res, dex_common.PairInitialProvideMatchedLen); err != nil {
+		return nil, errors.Wrap(err, "initialProvideMapper.MatchedToParsedTx")
+	}
+	matchMap, err := eventlog.ResultToItemMap(res)
+	if err != nil {
+		return nil, errors.Wrap(err, "transferMapper.MatchedToParsedTx")
+	}
+
+	return []*ParsedTx{{
+		Type:         InitialProvide,
+		Sender:       "",
+		ContractAddr: matchMap[dex_common.PairInitialProvideToKey].Value,
+		Assets:       [2]Asset{{}, {}},
+		LpAddr:       matchMap[dex_common.PairInitialProvideAddrKey].Value,
+		LpAmount:     matchMap[dex_common.PairInitialProvideAmountKey].Value,
+		Meta:         nil,
+	}}, nil
 }
 
 func (*mapperMixin) checkResult(res eventlog.MatchedResult, expectedLen ...int) error {
