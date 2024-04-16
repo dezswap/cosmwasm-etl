@@ -143,9 +143,12 @@ func (m *pairMapper) withdrawMatchedToParsedTx(res eventlog.MatchedResult, pair 
 		Type:         dex.Withdraw,
 		ContractAddr: matchMap[columbusv2.PairAddrKey].Value,
 		Sender:       matchMap[columbusv2.PairWithdrawSenderKey].Value,
-		Assets:       [2]dex.Asset{assets[0], assets[1]},
+		Assets:       [2]dex.Asset{{Addr: assets[0].Addr, Amount: "0"}, {Addr: assets[1].Addr, Amount: "0"}},
 		LpAddr:       pair.LpAddr,
 		LpAmount:     matchMap[columbusv2.PairWithdrawWithdrawShareKey].Value,
+		Meta: map[string]interface{}{
+			"withdraw_assets": assets,
+		},
 	}}, nil
 
 }
