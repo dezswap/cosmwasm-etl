@@ -87,6 +87,10 @@ func (p *priceImpl) Run(height uint64) error {
 	}
 
 	for _, t := range txs {
+		if t.Asset0Amount == "0" || t.Asset1Amount == "0" {
+			continue
+		}
+
 		if t.Asset0 == p.priceToken || t.Asset1 == p.priceToken {
 			if err := p.updateDirectSwapPrice(t); err != nil {
 				return err
