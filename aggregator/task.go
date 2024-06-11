@@ -68,8 +68,9 @@ type priceTask struct {
 type pairStatsUpdateTask struct {
 	taskImpl
 
-	priceToken string
-	srcDb      parser.ReadRepository
+	priceToken  string
+	srcDb       parser.ReadRepository
+	prevStatMap map[uint64]schemas.PairStats30m
 }
 
 type pairStatsRecentUpdateTask struct {
@@ -575,8 +576,9 @@ func newPairStatsUpdateTask(config configs.AggregatorConfig, srcRepo parser.Read
 			parentTasks: parentTasks,
 			logger:      logger,
 		},
-		priceToken: config.PriceToken,
-		srcDb:      srcRepo,
+		priceToken:  config.PriceToken,
+		srcDb:       srcRepo,
+		prevStatMap: make(map[uint64]schemas.PairStats30m),
 	}
 }
 
@@ -612,7 +614,7 @@ func (t *pairStatsUpdateTask) Execute(start time.Time, end time.Time) error {
 
 	startTs := util.ToEpoch(start)
 	endTs := util.ToEpoch(end)
-	stats, err := t.srcDb.PairStats(startTs, endTs, t.priceToken)
+	stats, err := t.srcDb.PairStats(startTs, endTs, t.priceToken, t.prevStatMap)
 	if err != nil {
 		return err
 	}
@@ -629,6 +631,8 @@ func (t *pairStatsUpdateTask) Execute(start time.Time, end time.Time) error {
 			s.Liquidity1InPrice = lp.Liquidity1InPrice
 			stats[i] = s
 		}
+
+		t.prevStatMap[s.PairId] = s
 	}
 
 	if len(stats) > 0 {
