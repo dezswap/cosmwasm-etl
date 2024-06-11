@@ -34,7 +34,7 @@ type ReadRepository interface {
 	GetRecentParsedTxs(startHeight uint64, endHeight uint64) ([]schemas.ParsedTxWithPrice, error)
 	RecentPrices(startHeight uint64, endHeight uint64, targetTokens []string, priceToken string) (map[uint64][]schemas.Price, error)
 	GetParsedTxsWithPriceOfPair(pairId uint64, priceToken string, startTs float64, endTs float64) ([]schemas.ParsedTxWithPrice, error)
-	PairStats(startTs float64, endTs float64, priceToken string) ([]schemas.PairStats30m, error)
+	PairStats(startTs float64, endTs float64, priceToken string, prevStatsMap map[uint64]schemas.PairStats30m) ([]schemas.PairStats30m, error)
 	AccountStats(startTs float64, endTs float64) ([]schemas.AccountStats30m, error)
 	LiquiditiesOfPairStats(startTs float64, endTs float64, priceToken string) (map[uint64]schemas.PairStats30m, error)
 	OldestTxTimestamp() (float64, error)
@@ -283,7 +283,7 @@ func (r *readRepoImpl) GetParsedTxsWithPriceOfPair(pairId uint64, priceToken str
 	return res, nil
 }
 
-func (r *readRepoImpl) PairStats(startTs float64, endTs float64, priceToken string) ([]schemas.PairStats30m, error) {
+func (r *readRepoImpl) PairStats(startTs float64, endTs float64, priceToken string, prevStatsMap map[uint64]schemas.PairStats30m) ([]schemas.PairStats30m, error) {
 	query := `
 select -- asset0's stats by pairs
     pair_id,
@@ -405,7 +405,20 @@ group by pair_id
 				if err != nil {
 					return nil, errors.Wrap(err, "readRepoImpl.PairStats")
 				}
-				s.LastSwapPrice = lastVolume1.Quo(lastVolume0).Abs().String()
+
+				if lastVolume0.IsZero() || lastVolume1.IsZero() {
+					if p, ok := prevStatsMap[r0.PairId]; ok {
+						s.LastSwapPrice = p.LastSwapPrice
+					} else {
+						lps, err := r.latestPairStat(r0.PairId)
+						if err != nil {
+							return nil, errors.Wrap(err, "readRepoImpl.PairStats")
+						}
+						s.LastSwapPrice = lps.LastSwapPrice
+					}
+				} else {
+					s.LastSwapPrice = lastVolume1.Quo(lastVolume0).Abs().String()
+				}
 
 				res0[i] = s
 			}
@@ -413,6 +426,20 @@ group by pair_id
 	}
 
 	return res0, nil
+}
+
+func (r *readRepoImpl) latestPairStat(pairId uint64) (schemas.PairStats30m, error) {
+	var stat schemas.PairStats30m
+
+	if tx := r.db.Model(schemas.PairStats30m{}).Where("chain_id = ? and pair_id = ?", r.chainId, pairId).Order(
+		"timestamp desc").Limit(1).Find(&stat); tx.Error != nil {
+		if errors.Is(tx.Error, sql.ErrNoRows) {
+			return schemas.PairStats30m{}, nil
+		}
+		return schemas.PairStats30m{}, tx.Error
+	}
+
+	return stat, nil
 }
 
 func (r *readRepoImpl) AccountStats(startTs float64, endTs float64) ([]schemas.AccountStats30m, error) {

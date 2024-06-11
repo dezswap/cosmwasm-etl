@@ -267,7 +267,7 @@ func TestPairStatsUpdateTaskExecute(t *testing.T) {
 	rp := repoMock{}
 	rp.On("HeightOnTimestamp").Return(uint64(0), nil)
 	rp.On("LastHeightOfPrice").Return(uint64(0), nil)
-	rp.On("PairStats", mock.Anything, mock.Anything, mock.Anything).Return(stats, nil)
+	rp.On("PairStats", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(stats, nil)
 	rp.On("LiquiditiesOfPairStats", mock.Anything, mock.Anything, mock.Anything).Return(lpMap, nil)
 
 	task := pairStatsUpdateTask{
@@ -276,7 +276,8 @@ func TestPairStatsUpdateTaskExecute(t *testing.T) {
 			destDb:  &rp,
 			logger:  logging.Discard,
 		},
-		srcDb: &rp,
+		srcDb:       &rp,
+		prevStatMap: make(map[uint64]schemas.PairStats30m),
 	}
 	err := task.Execute(time.Time{}, end)
 

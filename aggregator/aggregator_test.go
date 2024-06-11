@@ -166,7 +166,7 @@ func (r *repoMock) UpdatePairStatsRecent(_ *gorm.DB, stats []schemas.PairStatsRe
 	return nil
 }
 
-func (r *repoMock) PairStats(_ float64, _ float64, _ string) ([]schemas.PairStats30m, error) {
+func (r *repoMock) PairStats(_ float64, _ float64, _ string, _ map[uint64]schemas.PairStats30m) ([]schemas.PairStats30m, error) {
 	args := r.Mock.MethodCalled("PairStats")
 	return args.Get(0).([]schemas.PairStats30m), args.Error(1)
 }
