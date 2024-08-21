@@ -283,7 +283,7 @@ func (r *readRepoImpl) GetParsedTxsWithPriceOfPair(pairId uint64, priceToken str
 	return res, nil
 }
 
-func (r *readRepoImpl) PairStats(startTs float64, endTs float64, priceToken string, prevStatsMap map[uint64]schemas.PairStats30m) ([]schemas.PairStats30m, error) {
+func (r *readRepoImpl) PairStats(startTs float64, endTs float64, priceToken string, prevStatsMap map[uint64]schemas.PairStats30m) (stats []schemas.PairStats30m, err error) {
 	query := `
 select -- asset0's stats by pairs
     pair_id,
@@ -313,12 +313,12 @@ from (select distinct -- processed asset0 values
                 pt.type,
                 pt.asset0_amount as volume,
                 pt.commission0_amount as commission,
-                first_value(pr.price) over (partition by pt.height order by pr.height desc) as price,
+                coalesce(first_value(pr.price) over (partition by pt.height order by pr.height desc), 0) as price,
                 t.decimals
             from parsed_tx pt
                 join pair p on pt.chain_id = p.chain_id and pt.contract = p.contract
                 join tokens t on pt.chain_id = t.chain_id and pt.asset0 = t.address
-                join (select height, token_id, price from price -- token prices
+                left join (select height, token_id, price from price -- token prices
                       union
                       select 0 height, id as token_id, 1 as price from tokens where address = ?) pr
                     on t.id = pr.token_id and pr.height <= pt.height
@@ -328,8 +328,8 @@ from (select distinct -- processed asset0 values
               and type in ('swap', 'provide', 'withdraw')) t) t
 group by pair_id
 `
-	res0 := []schemas.PairStats30m{}
-	if tx := r.db.Raw(query, priceToken, r.chainId, startTs, endTs).Scan(&res0); tx.Error != nil {
+	var asset0Stats []schemas.PairStats30m
+	if tx := r.db.Raw(query, priceToken, r.chainId, startTs, endTs).Scan(&asset0Stats); tx.Error != nil {
 		return nil, errors.Wrap(tx.Error, "readRepoImpl.PairStats")
 	}
 
@@ -358,12 +358,12 @@ from (select distinct -- processed asset1 values
                 type,
                 pt.asset1_amount as volume,
                 pt.commission1_amount as commission,
-                first_value(pr.price) over (partition by pt.height order by pr.height desc) as price,
+                coalesce(first_value(pr.price) over (partition by pt.height order by pr.height desc), 0) as price,
                 t.decimals
             from parsed_tx pt
                 join pair p on pt.chain_id = p.chain_id and pt.contract = p.contract
                 join tokens t on pt.chain_id = t.chain_id and pt.asset1 = t.address
-                join (select height, token_id, price from price
+                left join (select height, token_id, price from price
                       union select 0 height, id as token_id, 1 as price from tokens where address = ?) pr
                     on t.id = pr.token_id and pr.height <= pt.height
             where pt.chain_id = ?
@@ -372,60 +372,73 @@ from (select distinct -- processed asset1 values
               and type in ('swap', 'provide', 'withdraw')) t) t
 group by pair_id
 `
-	res1 := []schemas.PairStats30m{}
-	if tx := r.db.Raw(query, priceToken, r.chainId, startTs, endTs).Scan(&res1); tx.Error != nil {
+	var asset1Stats []schemas.PairStats30m
+	if tx := r.db.Raw(query, priceToken, r.chainId, startTs, endTs).Scan(&asset1Stats); tx.Error != nil {
 		return nil, errors.Wrap(tx.Error, "readRepoImpl.PairStats")
 	}
+	asset1StatsMap := make(map[uint64]schemas.PairStats30m)
+	for _, s := range asset1Stats {
+		asset1StatsMap[s.PairId] = s
+	}
 
-	for i, r0 := range res0 {
-		for _, r1 := range res1 {
-			if r0.PairId == r1.PairId {
-				s := res0[i]
-				ts := util.ToTime(endTs)
-
-				s.YearUtc = ts.Year()
-				s.MonthUtc = int(ts.Month())
-				s.DayUtc = ts.Day()
-				s.HourUtc = ts.Hour()
-				s.MinuteUtc = ts.Minute()
-				s.Timestamp = endTs
-				s.ChainId = r.chainId
-				s.PriceToken = priceToken
-
-				s.Volume1 = r1.Volume1
-				s.Volume1InPrice = r1.Volume1InPrice
-				s.Commission1 = r1.Commission1
-				s.Commission1InPrice = r1.Commission1InPrice
-
-				lastVolume0, err := util.ExponentToDecimal(r0.LastSwapPrice)
-				if err != nil {
-					return nil, errors.Wrap(err, "readRepoImpl.PairStats")
-				}
-				lastVolume1, err := util.ExponentToDecimal(r1.LastSwapPrice)
-				if err != nil {
-					return nil, errors.Wrap(err, "readRepoImpl.PairStats")
-				}
-
-				if lastVolume0.IsZero() || lastVolume1.IsZero() {
-					if p, ok := prevStatsMap[r0.PairId]; ok {
-						s.LastSwapPrice = p.LastSwapPrice
-					} else {
-						lps, err := r.latestPairStat(r0.PairId)
-						if err != nil {
-							return nil, errors.Wrap(err, "readRepoImpl.PairStats")
-						}
-						s.LastSwapPrice = lps.LastSwapPrice
-					}
-				} else {
-					s.LastSwapPrice = lastVolume1.Quo(lastVolume0).Abs().String()
-				}
-
-				res0[i] = s
+	for _, asset0 := range asset0Stats {
+		if asset1, ok := asset1StatsMap[asset0.PairId]; ok {
+			lastVolume0, err := util.ExponentToDecimal(asset0.LastSwapPrice)
+			if err != nil {
+				return nil, errors.Wrap(err, "readRepoImpl.PairStats")
 			}
+			lastVolume1, err := util.ExponentToDecimal(asset1.LastSwapPrice)
+			if err != nil {
+				return nil, errors.Wrap(err, "readRepoImpl.PairStats")
+			}
+
+			var lastSwapPrice string
+			if lastVolume0.IsZero() || lastVolume1.IsZero() {
+				if p, ok := prevStatsMap[asset0.PairId]; ok {
+					lastSwapPrice = p.LastSwapPrice
+				} else {
+					lps, err := r.latestPairStat(asset0.PairId)
+					if err != nil {
+						return nil, errors.Wrap(err, "readRepoImpl.PairStats")
+					}
+					lastSwapPrice = lps.LastSwapPrice
+				}
+			} else {
+				lastSwapPrice = lastVolume1.Quo(lastVolume0).Abs().String()
+			}
+
+			ts := util.ToTime(endTs)
+			stats = append(stats, schemas.PairStats30m{
+				YearUtc:        ts.Year(),
+				MonthUtc:       int(ts.Month()),
+				DayUtc:         ts.Day(),
+				HourUtc:        ts.Hour(),
+				MinuteUtc:      ts.Minute(),
+				PairId:         asset0.PairId,
+				ChainId:        r.chainId,
+				Volume0:        asset0.Volume0,
+				Volume1:        asset1.Volume1,
+				Volume0InPrice: asset0.Volume0InPrice,
+				Volume1InPrice: asset1.Volume1InPrice,
+				LastSwapPrice:  lastSwapPrice,
+				// read below fields separately by `LiquiditiesOfPairStats`
+				// Liquidity0         string  `json:"liquidity0"`
+				// Liquidity1         string  `json:"liquidity1"`
+				// Liquidity0InPrice  string  `json:"liquidity0_in_price"`
+				// Liquidity1InPrice  string  `json:"liquidity1_in_price"`
+				Commission0:        asset0.Commission0,
+				Commission1:        asset1.Commission1,
+				Commission0InPrice: asset0.Commission0InPrice,
+				Commission1InPrice: asset1.Commission1InPrice,
+				PriceToken:         priceToken,
+				TxCnt:              asset0.TxCnt,
+				ProviderCnt:        asset0.ProviderCnt,
+				Timestamp:          endTs,
+			})
 		}
 	}
 
-	return res0, nil
+	return
 }
 
 func (r *readRepoImpl) latestPairStat(pairId uint64) (schemas.PairStats30m, error) {
