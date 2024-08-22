@@ -474,62 +474,60 @@ group by pt.sender, p.id;
 	return res, nil
 }
 
-func (r *readRepoImpl) LiquiditiesOfPairStats(startTs float64, endTs float64, priceToken string) (map[uint64]schemas.PairStats30m, error) {
+func (r *readRepoImpl) LiquiditiesOfPairStats(startTs float64, endTs float64, priceToken string) (pairIdLpMap map[uint64]schemas.PairStats30m, err error) {
 	query := `
-select distinct * from (
-select p.id pair_id,
+WITH latest_lp AS (
+    SELECT pair_id, MAX(height) AS height
+    FROM lp_history
+    WHERE chain_id = ?
+        AND timestamp >= ?
+        AND timestamp < ?
+    GROUP BY pair_id
+),
+required_height_by_token AS (
+    SELECT DISTINCT ll.height, t.id token_id, t.address token_address, t.decimals token_decimals
+    FROM latest_lp ll
+    JOIN pair p ON ll.pair_id = p.id
+    JOIN tokens t ON p.chain_id = t.chain_id AND (p.asset0 = t.address OR p.asset1 = t.address)
+),
+token_price_by_height AS (
+    SELECT DISTINCT
+        COALESCE(FIRST_VALUE(p.price) OVER (PARTITION BY p.token_id ORDER BY p.height DESC), 0) price,
+        rht.token_address,
+        rht.token_decimals,
+        rht.height
+    FROM required_height_by_token rht LEFT JOIN price p ON rht.token_id = p.token_id AND p.height <= rht.height
+    UNION
+    SELECT 1 price,
+       rht.token_address,
+       rht.token_decimals,
+       rht.height
+    FROM required_height_by_token rht
+    WHERE token_address = ?
+)
+SELECT lh.pair_id,
        lh.liquidity0,
-       lh.liquidity0 * first_value(pr.price) over (partition by lh.height order by pr.height desc) / pow(10, t.decimals) as liquidity0_in_price
-from lp_history lh
-    join pair p on p.id = lh.pair_id
-    join tokens t on p.asset0 = t.address and t.chain_id = ?
-    join (select pair_id, max(height) height
-    from lp_history lh
-    where lh.timestamp >= ?
-      and lh.timestamp < ?
-group by pair_id) latest on lh.height = latest.height
-    join (select height, token_id, price from price
- union select 0 height, id as token_id, 1 as price from tokens where address = ?) pr on pr.token_id = t.id and pr.height <= latest.height) t
-`
-	res0 := []schemas.PairStats30m{}
-	if tx := r.db.Raw(query, r.chainId, startTs, endTs, priceToken).Scan(&res0); tx.Error != nil {
-		return nil, errors.Wrap(tx.Error, "repo.LiquiditiesOfPairStats")
-	}
-
-	query = `
-select distinct * from (
-select p.id pair_id,
        lh.liquidity1,
-       lh.liquidity1 * first_value(pr.price) over (partition by lh.height order by pr.height desc) / pow(10, t.decimals) as liquidity1_in_price
-from lp_history lh
-    join pair p on p.id = lh.pair_id
-    join tokens t on p.asset1 = t.address and t.chain_id = ?
-    join (select pair_id, max(height) height
-    from lp_history lh
-    where lh.timestamp >= ?
-      and lh.timestamp < ?
-group by pair_id) latest on lh.height = latest.height
-    join (select height, token_id, price from price
- union select 0 height, id as token_id, 1 as price from tokens where address = ?) pr on pr.token_id = t.id and pr.height <= latest.height) t;
+       lh.liquidity0 * COALESCE(t0.price, 0) / POWER(10, t0.token_decimals) as liquidity0_in_price,
+       lh.liquidity1 * COALESCE(t1.price, 0) / POWER(10, t1.token_decimals) as liquidity1_in_price
+FROM lp_history lh
+    JOIN latest_lp ll ON lh.pair_id = ll.pair_id AND lh.height = ll.height
+    JOIN pair p ON lh.pair_id = p.id
+    LEFT JOIN token_price_by_height t0 ON p.asset0 = t0.token_address AND ll.height = t0.height
+    LEFT JOIN token_price_by_height t1 ON p.asset1 = t1.token_address AND ll.height = t1.height
 `
-	res1 := []schemas.PairStats30m{}
-	if tx := r.db.Raw(query, r.chainId, startTs, endTs, priceToken).Scan(&res1); tx.Error != nil {
+
+	var pairLps []schemas.PairStats30m
+	if tx := r.db.Raw(query, r.chainId, startTs, endTs, priceToken).Scan(&pairLps); tx.Error != nil {
 		return nil, errors.Wrap(tx.Error, "repo.LiquiditiesOfPairStats")
 	}
 
-	res := make(map[uint64]schemas.PairStats30m)
-	for _, r := range res0 {
-		res[r.PairId] = r
-	}
-	for _, r := range res1 {
-		if ps, ok := res[r.PairId]; ok {
-			ps.Liquidity1 = r.Liquidity1
-			ps.Liquidity1InPrice = r.Liquidity1InPrice
-			res[r.PairId] = ps
-		}
+	pairIdLpMap = make(map[uint64]schemas.PairStats30m)
+	for _, lp := range pairLps {
+		pairIdLpMap[lp.PairId] = lp
 	}
 
-	return res, nil
+	return
 }
 
 func (r *readRepoImpl) TxHeightToSync(syncedHeight int64, condition ...string) (int64, error) {
