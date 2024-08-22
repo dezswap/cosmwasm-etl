@@ -618,6 +618,11 @@ func (t *pairStatsUpdateTask) Execute(start time.Time, end time.Time) error {
 	if err != nil {
 		return err
 	}
+	if len(stats) == 0 {
+		// no stats, skip remaining steps
+		return nil
+	}
+
 	lpMap, err := t.srcDb.LiquiditiesOfPairStats(startTs, endTs, t.priceToken)
 	if err != nil {
 		return err
