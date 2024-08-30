@@ -61,18 +61,20 @@ jobs:
     needs: tests
     name: build deps image
     if: success() && github.ref == 'refs/heads/main'
+    permissions:
+      id-token: write
+      contents: read
 
     steps:
       - name: checkout
         uses: actions/checkout@v3
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4.0.2
+        uses: aws-actions/configure-aws-credentials@v3
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-session-name: cosmwasm-etl-deps
           aws-region: ${{ secrets.AWS_DEPS_REGION }}
-
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2.0.1

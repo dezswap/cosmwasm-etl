@@ -39,6 +39,10 @@ env:
   TARGET: ${{ format('{0}-cosmwasm-etl-{1}', github.event.inputs.network, github.event.inputs.app_type) }}
   CONFIG_NAME: ${{ format('{0}_{1}_CONFIG', github.event.inputs.network, github.event.inputs.app_type) }}
 
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
   deploy:
     name: build and deploy the app
@@ -55,13 +59,13 @@ jobs:
       - name: checkout
         uses: actions/checkout@v3
 
-      - name: Configure AWS credentials for dependency image
-        uses: aws-actions/configure-aws-credentials@v4.0.2
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v3
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_DEPS_REGION }}
-          mask-aws-account-id: 'true'
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-session-name: cosmwasm-etl-deploy
+          aws-region: ${{ env.AWS_REGION }}
+
 
       - name: Login to Amazon ECR
         id: login-ecr-deps
@@ -74,12 +78,11 @@ jobs:
           docker pull  ${{ steps.login-ecr-deps.outputs.registry }}/$ECR_REPOSITORY:deps-${{env.GIT_COMMIT}}
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4.0.2
+        uses: aws-actions/configure-aws-credentials@v3
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:  ${{ inputs.region }}
-          mask-aws-account-id: 'true'
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-session-name: cosmwasm-etl-deploy
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
         id: login-ecr
