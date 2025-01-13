@@ -168,6 +168,8 @@ func dex_main(c configs.ParserDexConfig, logc configs.LogConfig, sentryc configs
 
 func main() {
 	c := configs.New()
+
+	grpc.SetLogConfig(c.Log)
 	logger := logging.New("parser", c.Log)
 	defer catch(logger)
 	if c.Parser.DexConfig == nil {

@@ -40,6 +40,7 @@ func main() {
 
 	defer catch(logger)
 
+	grpc.SetLogConfig(c.Log)
 	serviceDesc := grpc.GetServiceDesc("collector", nodeConf.GrpcConfig)
 	httpClient := &http.Client{
 		Transport: &http.Transport{
