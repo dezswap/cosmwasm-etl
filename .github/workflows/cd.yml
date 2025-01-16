@@ -64,7 +64,7 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           role-session-name: cosmwasm-etl-deploy
-          aws-region: ${{ env.AWS_REGION }}
+          aws-region: ${{ inputs.region }}
 
 
       - name: Login to Amazon ECR
@@ -76,17 +76,6 @@ jobs:
         working-directory: .
         run: |
           docker pull  ${{ steps.login-ecr-deps.outputs.registry }}/$ECR_REPOSITORY:deps-${{env.GIT_COMMIT}}
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v3
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          role-session-name: cosmwasm-etl-deploy
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2.0.1
 
       - name: Build the app, tag and push image
         id: build
