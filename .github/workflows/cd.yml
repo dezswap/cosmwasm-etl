@@ -81,7 +81,7 @@ jobs:
         id: build
         working-directory: .
         env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REGISTRY: ${{ steps.login-ecr-deps.outputs.registry }}
           CONFIG: ${{ secrets[env.CONFIG_NAME] }}
         run: |
           IMAGE_TAG=${{inputs.app_type}}-${{env.GIT_COMMIT}}
@@ -109,7 +109,7 @@ jobs:
         with:
           task-definition: ./${{ env.TARGET }}.json
           container-name: ${{ env.TARGET }}
-          image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY}}:${{ env.TARGET }}
+          image: ${{ steps.login-ecr-deps.outputs.registry }}/${{ env.ECR_REPOSITORY}}:${{ env.TARGET }}
 
       - name: Deploy Amazon ECS task definition
         uses: aws-actions/amazon-ecs-deploy-task-definition@v1.4.10
