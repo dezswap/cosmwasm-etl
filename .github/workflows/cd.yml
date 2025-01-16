@@ -112,7 +112,7 @@ jobs:
           image: ${{ steps.login-ecr-deps.outputs.registry }}/${{ env.ECR_REPOSITORY}}:${{ env.TARGET }}
 
       - name: Deploy Amazon ECS task definition
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v1.4.10
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
           task-definition: ${{ steps.task-def.outputs.task-definition }}
           service: ${{ env.TARGET }}
