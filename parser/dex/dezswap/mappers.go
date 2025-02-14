@@ -2,11 +2,11 @@ package dezswap
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/parser/dex"
+	pdex "github.com/dezswap/cosmwasm-etl/pkg/dex"
 	ds "github.com/dezswap/cosmwasm-etl/pkg/dex/dezswap"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 	"github.com/pkg/errors"
@@ -16,12 +16,10 @@ var _ parser.Mapper[dex.ParsedTx] = &createPairMapper{}
 var _ parser.Mapper[dex.ParsedTx] = &transferMapper{}
 var _ parser.Mapper[dex.ParsedTx] = &wasmTransferMapper{}
 
-type mapperMixin struct{}
-
-type createPairMapper struct{ mapperMixin }
+type createPairMapper struct{ pdex.MapperMixin }
 
 type transferMapperMixin struct {
-	mapperMixin
+	pdex.MapperMixin
 }
 type transferMapper struct {
 	mixin   transferMapperMixin
@@ -34,10 +32,10 @@ type wasmTransferMapper struct {
 
 // match implements mapper
 func (m *createPairMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) ([]*dex.ParsedTx, error) {
-	if err := m.mapperMixin.checkResult(res, ds.CreatePairMatchedLen); err != nil {
+	if err := m.CheckResult(res, ds.CreatePairMatchedLen); err != nil {
 		return nil, errors.Wrap(err, "createPairMapper.MatchedToParsedTx")
 	}
-	sortResult(res)
+	m.SortResult(res)
 	assets := strings.Split(res[ds.FactoryPairIdx].Value, "-")
 	if len(assets) != 2 {
 		msg := fmt.Sprintf("expected assets length(%d)", 2)
@@ -59,7 +57,7 @@ func (m *createPairMapper) MatchedToParsedTx(res eventlog.MatchedResult, optiona
 
 // match implements mapper
 func (m *wasmTransferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) ([]*dex.ParsedTx, error) {
-	sortResult(res)
+	m.mixin.SortResult(res)
 	action := res[ds.WasmCommonTransferActionIdx]
 
 	switch action.Value {
@@ -92,7 +90,7 @@ func (m *wasmTransferMapper) transferMatchedToParsedTx(res eventlog.MatchedResul
 }
 
 func (m *wasmTransferMapper) transferFromMatchedToParsedTx(res eventlog.MatchedResult, _ ...interface{}) ([]*dex.ParsedTx, error) {
-	if err := m.mixin.checkResult(res, ds.WasmTransferFromMatchedLen); err != nil {
+	if err := m.mixin.CheckResult(res, ds.WasmTransferFromMatchedLen); err != nil {
 		return nil, errors.Wrap(err, "wasmTransferMapper.transferFromMatchedToParsedTx")
 	}
 	from := res[ds.WasmTransferFromFromIdx].Value
@@ -114,7 +112,7 @@ func (m *wasmTransferMapper) transferFromMatchedToParsedTx(res eventlog.MatchedR
 
 // match implements mapper
 func (m *transferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) ([]*dex.ParsedTx, error) {
-	if err := m.mixin.checkResult(res, ds.TransferMatchedLen); err != nil {
+	if err := m.mixin.CheckResult(res, ds.TransferMatchedLen); err != nil {
 		return nil, errors.Wrap(err, "transferMapper.MatchedToParsedTx")
 	}
 	from := res[ds.TransferSenderIdx].Value
@@ -166,14 +164,6 @@ func (m *transferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals
 	}}, nil
 }
 
-func (*mapperMixin) checkResult(res eventlog.MatchedResult, expectedLen int) error {
-	if len(res) != expectedLen {
-		msg := fmt.Sprintf("expected results length(%d)", expectedLen)
-		return errors.New(msg)
-	}
-	return nil
-}
-
 func (*wasmTransferMapper) matchedToParsedTx(pair *dex.Pair, from, to, targetToken, amount string, isFromPair bool) ([]*dex.ParsedTx, error) {
 	assets := [2]dex.Asset{
 		{Addr: pair.Assets[0]},
@@ -217,24 +207,4 @@ func (*transferMapperMixin) pairBy(pairSet map[string]dex.Pair, from, to string)
 	}
 
 	return &toPair, fromOk, nil
-}
-
-// sortResult sorts the result by key split by "_contract_address"
-// @param res will be sorted
-func sortResult(res eventlog.MatchedResult) {
-	const sortSplitter = "_contract_address"
-	sort := func(from, to int) {
-		target := res[from:to]
-		sort.Slice(target, func(i, j int) bool {
-			return target[i].Key < target[j].Key
-		})
-	}
-	prev := 0
-	for idx, v := range res {
-		if v.Key == sortSplitter {
-			sort(prev, idx)
-			prev = idx
-		}
-	}
-	sort(prev, len(res))
 }

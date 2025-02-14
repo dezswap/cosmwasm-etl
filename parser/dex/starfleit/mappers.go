@@ -2,7 +2,7 @@ package starfleit
 
 import (
 	"fmt"
-	"sort"
+	pdex "github.com/dezswap/cosmwasm-etl/pkg/dex"
 	"strings"
 
 	"github.com/dezswap/cosmwasm-etl/parser"
@@ -16,12 +16,10 @@ var _ parser.Mapper[dex.ParsedTx] = &createPairMapper{}
 var _ parser.Mapper[dex.ParsedTx] = &transferMapper{}
 var _ parser.Mapper[dex.ParsedTx] = &wasmTransferMapper{}
 
-type mapperMixin struct{}
-
-type createPairMapper struct{ mapperMixin }
+type createPairMapper struct{ pdex.MapperMixin }
 
 type transferMapperMixin struct {
-	mapperMixin
+	pdex.MapperMixin
 }
 type transferMapper struct {
 	mixin   transferMapperMixin
@@ -34,10 +32,10 @@ type wasmTransferMapper struct {
 
 // match implements mapper
 func (m *createPairMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) ([]*dex.ParsedTx, error) {
-	if err := m.mapperMixin.checkResult(res, sf.CreatePairMatchedLen); err != nil {
+	if err := m.CheckResult(res, sf.CreatePairMatchedLen); err != nil {
 		return nil, errors.Wrap(err, "createPairMapper.MatchedToParsedTx")
 	}
-	sortResult(res)
+	m.SortResult(res)
 	assets := strings.Split(res[sf.FactoryPairIdx].Value, "-")
 	if len(assets) != 2 {
 		msg := fmt.Sprintf("expected assets length(%d)", 2)
@@ -59,7 +57,7 @@ func (m *createPairMapper) MatchedToParsedTx(res eventlog.MatchedResult, optiona
 
 // match implements mapper
 func (m *wasmTransferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) ([]*dex.ParsedTx, error) {
-	sortResult(res)
+	m.mixin.SortResult(res)
 	action := res[sf.WasmCommonTransferActionIdx]
 
 	switch action.Value {
@@ -74,7 +72,7 @@ func (m *wasmTransferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optio
 }
 
 func (m *wasmTransferMapper) v1MatchedToParsedTx(res eventlog.MatchedResult, _ ...interface{}) ([]*dex.ParsedTx, error) {
-	if err := m.mixin.checkResult(res, sf.WasmV1TransferMatchedLen); err != nil {
+	if err := m.mixin.CheckResult(res, sf.WasmV1TransferMatchedLen); err != nil {
 		return nil, errors.Wrap(err, "wasmTransferMapper.v1MatchedToParsedTx")
 	}
 	from := res[sf.WasmTransferFromIdx].Value
@@ -95,7 +93,7 @@ func (m *wasmTransferMapper) v1MatchedToParsedTx(res eventlog.MatchedResult, _ .
 }
 
 func (m *wasmTransferMapper) v2MatchedToParsedTx(res eventlog.MatchedResult, _ ...interface{}) ([]*dex.ParsedTx, error) {
-	if err := m.mixin.checkResult(res, sf.WasmV2TransferMatchedLen); err != nil {
+	if err := m.mixin.CheckResult(res, sf.WasmV2TransferMatchedLen); err != nil {
 		return nil, errors.Wrap(err, "wasmTransferMapper.v2MatchedToParsedTx")
 	}
 	from := res[sf.WasmTransferFromFromIdx].Value
@@ -117,7 +115,7 @@ func (m *wasmTransferMapper) v2MatchedToParsedTx(res eventlog.MatchedResult, _ .
 
 // match implements mapper
 func (m *transferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) ([]*dex.ParsedTx, error) {
-	if err := m.mixin.checkResult(res, sf.TransferMatchedLen); err != nil {
+	if err := m.mixin.CheckResult(res, sf.TransferMatchedLen); err != nil {
 		return nil, errors.Wrap(err, "transferMapper.MatchedToParsedTx")
 	}
 	from := res[sf.TransferSenderIdx].Value
@@ -169,14 +167,6 @@ func (m *transferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals
 	}}, nil
 }
 
-func (*mapperMixin) checkResult(res eventlog.MatchedResult, expectedLen int) error {
-	if len(res) != expectedLen {
-		msg := fmt.Sprintf("expected results length(%d)", expectedLen)
-		return errors.New(msg)
-	}
-	return nil
-}
-
 func (*wasmTransferMapper) matchedToParsedTx(pair *dex.Pair, from, to, targetToken, amount string, isFromPair bool) ([]*dex.ParsedTx, error) {
 	assets := [2]dex.Asset{
 		{Addr: pair.Assets[0]},
@@ -220,24 +210,4 @@ func (*transferMapperMixin) pairBy(pairSet map[string]dex.Pair, from, to string)
 	}
 
 	return &toPair, fromOk, nil
-}
-
-// sortResult sorts the result by key split by "_contract_address"
-// @param res will be sorted
-func sortResult(res eventlog.MatchedResult) {
-	const sortSplitter = "_contract_address"
-	sort := func(from, to int) {
-		target := res[from:to]
-		sort.Slice(target, func(i, j int) bool {
-			return target[i].Key < target[j].Key
-		})
-	}
-	prev := 0
-	for idx, v := range res {
-		if v.Key == sortSplitter {
-			sort(prev, idx)
-			prev = idx
-		}
-	}
-	sort(prev, len(res))
 }
