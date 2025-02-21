@@ -9,6 +9,7 @@ import (
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 	"github.com/pkg/errors"
+	"strings"
 )
 
 // runner for terraswap
@@ -21,26 +22,17 @@ type dezswapApp struct {
 
 var _ dex.TargetApp = &dezswapApp{}
 
-func New(repo dex.PairRepo, logger logging.Logger, c configs.ParserDexConfig, chainId string) (dex.TargetApp, error) {
-	finder, err := ds.CreateCreatePairRuleFinder(c.ChainId)
-	if err != nil {
-		return nil, errors.Wrap(err, "NewApp")
-	}
-
-	parsers := &dex.PairParsers{
-		CreatePairParser: parser.NewParser[dex.ParsedTx](finder, &createPairMapper{}),
-		PairActionParser: nil,
-		InitialProvide:   nil,
-		WasmTransfer:     nil,
-		Transfer:         nil,
-	}
-
-	return &dezswapApp{repo, parsers, dex.DexMixin{}, chainId}, nil
+func New(repo dex.PairRepo, _ logging.Logger, _ configs.ParserDexConfig, chainId string) (dex.TargetApp, error) {
+	return &dezswapApp{repo, &dex.PairParsers{}, dex.DexMixin{}, chainId}, nil
 }
 
 func (p *dezswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx, error) {
 	pairs, err := p.GetPairs()
 	if err != nil {
+		return nil, errors.Wrap(err, "parseTxs")
+	}
+
+	if err := p.updateParsers(pairs, height); err != nil {
 		return nil, errors.Wrap(err, "parseTxs")
 	}
 
@@ -57,10 +49,6 @@ func (p *dezswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx, e
 		}
 		ctx.Sender = tx.Sender
 		txDtos = append(txDtos, *ctx)
-	}
-
-	if err := p.updateParsers(pairs, height); err != nil {
-		return nil, errors.Wrap(err, "parseTxs")
 	}
 
 	pairTxs := []*dex.ParsedTx{}
@@ -106,38 +94,78 @@ func (p *dezswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx, e
 }
 
 func (p *dezswapApp) updateParsers(pairs map[string]dex.Pair, height uint64) error {
+	postAttrLen, isUpdateHeight := getPostEventAttrLen(p.chainId, height)
+
+	// create pair parser
+	{
+		if p.Parsers.CreatePairParser == nil || isUpdateHeight {
+			finder, err := ds.CreateCreatePairRuleFinder(p.chainId)
+			if err != nil {
+				return errors.Wrap(err, "updateParsers")
+			}
+
+			p.Parsers.CreatePairParser = parser.NewParser[dex.ParsedTx](
+				finder, &createPairMapper{MapperMixin: pdex.MapperMixin{PostEventAttrLen: postAttrLen}})
+		}
+	}
+
 	pairFilter := make(map[string]bool)
 	for k := range pairs {
 		pairFilter[k] = true
 	}
 
-	pairFinder, err := ds.CreatePairAllRulesFinder(pairFilter)
-	if err != nil {
-		return errors.Wrap(err, "updateParsers")
+	// pair action parser
+	{
+		pairFinder, err := ds.CreatePairAllRulesFinder(pairFilter)
+		if err != nil {
+			return errors.Wrap(err, "updateParsers")
+		}
+
+		pairMapper, err := pairMapperBy(p.chainId, height, pairs)
+		if err != nil {
+			return errors.Wrap(err, "updateParsers")
+		}
+		p.Parsers.PairActionParser = parser.NewParser[dex.ParsedTx](pairFinder, pairMapper)
 	}
 
-	pairMapper, err := pairMapperBy(p.chainId, height, pairs)
-	if err != nil {
-		return errors.Wrap(err, "updateParsers")
+	// initial provide parser
+	{
+		initialProvideFinder, err := pdex.CreatePairInitialProvideRuleFinder(pairFilter)
+		if err != nil {
+			return errors.Wrap(err, "updateParsers")
+		}
+		p.Parsers.InitialProvide = parser.NewParser[dex.ParsedTx](initialProvideFinder, dex.NewInitialProvideMapper(postAttrLen))
 	}
-	p.Parsers.PairActionParser = parser.NewParser[dex.ParsedTx](pairFinder, pairMapper)
 
-	initialProvideFinder, err := pdex.CreatePairInitialProvideRuleFinder(pairFilter)
-	if err != nil {
-		return errors.Wrap(err, "updateParsers")
+	// wasm transfer parser
+	{
+		wasmTransferFinder, err := ds.CreateWasmCommonTransferRuleFinder()
+		if err != nil {
+			return errors.Wrap(err, "updateParsers")
+		}
+		p.Parsers.WasmTransfer = parser.NewParser[dex.ParsedTx](
+			wasmTransferFinder, &wasmTransferMapper{mixin: transferMapperMixin{pdex.MapperMixin{PostEventAttrLen: postAttrLen}}, pairSet: pairs})
 	}
-	p.Parsers.InitialProvide = parser.NewParser[dex.ParsedTx](initialProvideFinder, dex.NewInitialProvideMapper())
 
-	wasmTransferFinder, err := ds.CreateWasmCommonTransferRuleFinder()
-	if err != nil {
-		return errors.Wrap(err, "updateParsers")
+	// transfer parser
+	{
+		transferRule, err := ds.CreateTransferRuleFinder()
+		if err != nil {
+			return errors.Wrap(err, "updateParsers")
+		}
+		p.Parsers.Transfer = parser.NewParser[dex.ParsedTx](transferRule, &transferMapper{pairSet: pairs})
 	}
-	p.Parsers.WasmTransfer = parser.NewParser[dex.ParsedTx](wasmTransferFinder, &wasmTransferMapper{pairSet: pairs})
 
-	transferRule, err := ds.CreateTransferRuleFinder()
-	if err != nil {
-		return errors.Wrap(err, "updateParsers")
-	}
-	p.Parsers.Transfer = parser.NewParser[dex.ParsedTx](transferRule, &transferMapper{pairSet: pairs})
 	return nil
+}
+
+func getPostEventAttrLen(chainId string, height uint64) (len int, isUpdateHeight bool) {
+	if strings.HasPrefix(chainId, ds.TestnetPrefix) {
+		isUpdateHeight = height == ds.TestnetSdkV50Height
+		if height >= ds.TestnetSdkV50Height {
+			len++
+		}
+	}
+
+	return
 }

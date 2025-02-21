@@ -12,44 +12,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_mapperMixin(t *testing.T) {
-	mapperMixin := mapperMixin{}
-
-	tcs := []struct {
-		matchedResults el.MatchedResult
-		expectedLen    int
-		errMsg         string
-	}{
-		{
-			el.MatchedResult{
-				{Key: "amount", Value: "1000Asset1"}, {Key: "recipient", Value: "Pair"}, {Key: "sender", Value: "A"},
-			},
-			3,
-			"",
-		},
-		{
-			el.MatchedResult{
-				{Key: "recipient", Value: "Pair"}, {Key: "sender", Value: "A"},
-				{Key: "amount", Value: "1000Asset1"}, {Key: "WRONG_MATCHED_LENGTH", Value: "LENGTH"},
-			},
-			3,
-			"must return error when matched result length is not equal to expected",
-		},
-	}
-
-	for idx, tc := range tcs {
-		assert := assert.New(t)
-		errMsg := fmt.Sprintf("tc(%d)", idx)
-
-		err := mapperMixin.checkResult(tc.matchedResults, tc.expectedLen)
-		if tc.errMsg != "" {
-			assert.Error(err, errMsg, tc.errMsg)
-		} else {
-			assert.NoError(err, errMsg)
-		}
-	}
-}
-
 func Test_TransferMapper(t *testing.T) {
 	const userAddr = "user"
 	pair := dex.Pair{ContractAddr: "Pair", LpAddr: "LiquidityToken", Assets: []string{"Asset1", "Asset2"}}
@@ -329,48 +291,6 @@ func Test_PairMapper(t *testing.T) {
 			assert.NoError(err, err)
 			assert.Equal(tc.expectedTx, tx, errMsg)
 		}
-	}
-}
-
-func Test_sortResult(t *testing.T) {
-
-	const userAddr = "userAddr"
-	pair := dex.Pair{ContractAddr: "Pair", LpAddr: "LiquidityToken", Assets: []string{"Asset1", "Asset2"}}
-	tcs := []struct {
-		target   el.MatchedResult
-		expected el.MatchedResult
-
-		errMsg string
-	}{
-		{
-
-			el.MatchedResult{
-				{Key: "_contract_address", Value: pair.ContractAddr}, {Key: "action", Value: "send"},
-				{Key: "from", Value: userAddr}, {Key: "to", Value: pair.ContractAddr},
-				{Key: "amount", Value: "332157"},
-				{Key: "_contract_address", Value: pair.ContractAddr}, {Key: "action", Value: "swap"},
-				{Key: "sender", Value: userAddr}, {Key: "receiver", Value: userAddr},
-				{Key: "offer_asset", Value: pair.Assets[0]}, {Key: "ask_asset", Value: pair.Assets[1]},
-				{Key: "offer_amount", Value: "100000"}, {Key: "return_amount", Value: "100583"},
-				{Key: "spread_amount", Value: "2"}, {Key: "commission_amount", Value: "302"},
-			},
-			el.MatchedResult{
-				{Key: "_contract_address", Value: pair.ContractAddr}, {Key: "action", Value: "send"},
-				{Key: "amount", Value: "332157"},
-				{Key: "from", Value: userAddr}, {Key: "to", Value: pair.ContractAddr},
-				{Key: "_contract_address", Value: pair.ContractAddr}, {Key: "action", Value: "swap"},
-				{Key: "ask_asset", Value: pair.Assets[1]}, {Key: "commission_amount", Value: "302"},
-				{Key: "offer_amount", Value: "100000"}, {Key: "offer_asset", Value: pair.Assets[0]},
-				{Key: "receiver", Value: userAddr}, {Key: "return_amount", Value: "100583"},
-				{Key: "sender", Value: userAddr}, {Key: "spread_amount", Value: "2"},
-			},
-			"",
-		},
-	}
-
-	for _, tc := range tcs {
-		sortResult(tc.target)
-		assert.Equal(t, tc.target, tc.expected, tc.errMsg)
 	}
 }
 

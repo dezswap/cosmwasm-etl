@@ -2,6 +2,7 @@ package starfleit
 
 import (
 	"fmt"
+	pdex "github.com/dezswap/cosmwasm-etl/pkg/dex"
 	"strings"
 
 	"github.com/dezswap/cosmwasm-etl/parser"
@@ -16,7 +17,8 @@ var _ pairMapper = &pairMapperImpl{}
 
 type pairMapper interface {
 	getPair(addr string) (dex.Pair, error)
-	checkResult(res eventlog.MatchedResult, expectedLen int) error
+	CheckResult(res eventlog.MatchedResult, expectedLen int) error
+	SortResult(res eventlog.MatchedResult)
 	swapMatchedToParsedTx(res eventlog.MatchedResult, pair dex.Pair) ([]*dex.ParsedTx, error)
 	provideMatchedToParsedTx(res eventlog.MatchedResult, pair dex.Pair) ([]*dex.ParsedTx, error)
 	withdrawMatchedToParsedTx(res eventlog.MatchedResult, pair dex.Pair) ([]*dex.ParsedTx, error)
@@ -27,7 +29,7 @@ type pairMapperImpl struct {
 }
 
 type pairMapperMixin struct {
-	mapperMixin
+	pdex.MapperMixin
 	pairSet map[string]dex.Pair
 }
 
@@ -36,7 +38,7 @@ type pairV2Mapper struct {
 }
 
 func pairMapperBy(chainId string, height uint64, pairSet map[string]dex.Pair) (parser.Mapper[dex.ParsedTx], error) {
-	base := &pairMapperMixin{mapperMixin{}, pairSet}
+	base := &pairMapperMixin{pdex.MapperMixin{}, pairSet}
 	if strings.HasPrefix(chainId, sf.TestnetPrefix) {
 		if height < sf.TestnetV2Height {
 			return &pairMapperImpl{base}, nil
@@ -59,7 +61,7 @@ func (m *pairMapperImpl) MatchedToParsedTx(res eventlog.MatchedResult, optionals
 		msg := fmt.Sprintf("results length must bigger than %d", sf.PairCommonMatchedLen)
 		return nil, errors.New(msg)
 	}
-	sortResult(res)
+	m.SortResult(res)
 	pair, err := m.getPair(res[sf.PairAddrIdx].Value)
 	if err != nil {
 		return nil, errors.Wrap(err, "pairMapperImpl.MatchedToParsedTx")
@@ -89,7 +91,7 @@ func (m *pairMapperMixin) getPair(addr string) (dex.Pair, error) {
 }
 
 func (m *pairMapperMixin) swapMatchedToParsedTx(res eventlog.MatchedResult, pair dex.Pair) ([]*dex.ParsedTx, error) {
-	if err := m.checkResult(res, sf.PairSwapMatchedLen); err != nil {
+	if err := m.CheckResult(res, sf.PairSwapMatchedLen); err != nil {
 		return nil, errors.Wrap(err, "pairMapper.swapMatchedToParsedTx")
 	}
 
@@ -118,7 +120,7 @@ func (m *pairMapperMixin) swapMatchedToParsedTx(res eventlog.MatchedResult, pair
 }
 
 func (m *pairMapperMixin) provideMatchedToParsedTx(res eventlog.MatchedResult, pair dex.Pair) ([]*dex.ParsedTx, error) {
-	if err := m.checkResult(res, sf.PairProvideMatchedLen); err != nil {
+	if err := m.CheckResult(res, sf.PairProvideMatchedLen); err != nil {
 		return nil, errors.Wrap(err, "pairMapper.PairProvideMatchedLen")
 	}
 
@@ -142,7 +144,7 @@ func (m *pairMapperMixin) provideMatchedToParsedTx(res eventlog.MatchedResult, p
 }
 
 func (m *pairMapperMixin) withdrawMatchedToParsedTx(res eventlog.MatchedResult, pair dex.Pair) ([]*dex.ParsedTx, error) {
-	if err := m.checkResult(res, sf.PairWithdrawMatchedLen); err != nil {
+	if err := m.CheckResult(res, sf.PairWithdrawMatchedLen); err != nil {
 		return nil, errors.Wrap(err, "pairMapper.withdrawMatchedToParsedTx")
 	}
 
@@ -170,7 +172,7 @@ func (m *pairMapperMixin) withdrawMatchedToParsedTx(res eventlog.MatchedResult, 
 }
 
 func (m *pairV2Mapper) provideMatchedToParsedTx(res eventlog.MatchedResult, pair dex.Pair) ([]*dex.ParsedTx, error) {
-	if err := m.checkResult(res, sf.PairV2ProvideMatchedLen); err != nil {
+	if err := m.CheckResult(res, sf.PairV2ProvideMatchedLen); err != nil {
 		return nil, errors.Wrap(err, "v2PairMapper.PairProvideMatchedLen")
 	}
 

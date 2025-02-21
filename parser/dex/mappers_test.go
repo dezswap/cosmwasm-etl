@@ -12,51 +12,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_mapperMixin(t *testing.T) {
-	mapperMixin := mapperMixin{}
-
-	tcs := []struct {
-		matchedResults el.MatchedResult
-		expectedLen    int
-		errMsg         string
-	}{
-		{
-			el.MatchedResult{
-				{Key: "recipient", Value: "Pair"}, {Key: "sender", Value: "A"}, {Key: "amount", Value: "1000Asset1"},
-			},
-			3,
-			"",
-		},
-		{
-			el.MatchedResult{
-				{Key: "recipient", Value: "Pair"}, {Key: "sender", Value: "A"},
-				{Key: "amount", Value: "1000Asset1"}, {Key: "WRONG_MATCHED_LENGTH", Value: "LENGTH"},
-			},
-			3,
-			"must return error when matched result length is not equal to expected",
-		},
-		{
-			el.MatchedResult{
-				{Key: "recipient", Value: "Pair"}, {Key: "sender", Value: "A"}, {Key: "amount", Value: ""},
-			},
-			3,
-			"empty value must return error",
-		},
-	}
-
-	for idx, tc := range tcs {
-		assert := assert.New(t)
-		errMsg := fmt.Sprintf("tc(%d)", idx)
-
-		err := mapperMixin.checkResult(tc.matchedResults, tc.expectedLen)
-		if tc.errMsg != "" {
-			assert.Error(err, errMsg, tc.errMsg)
-		} else {
-			assert.NoError(err, errMsg)
-		}
-	}
-}
-
 func Test_TransferMapper(t *testing.T) {
 	const userAddr = "user"
 	pair := Pair{ContractAddr: "Pair", LpAddr: "LiquidityToken", Assets: []string{"Asset1", "Asset2"}}
@@ -170,7 +125,7 @@ func Test_InitialProvideMapper(t *testing.T) {
 	}{
 		/// Initial Provide
 		{
-			&initialProvideMapper{mapperMixin{}},
+			&initialProvideMapper{dex.MapperMixin{}},
 			el.MatchedResult{
 				{Key: "_contract_address", Value: pair.LpAddr}, {Key: "action", Value: "mint"},
 				{Key: "amount", Value: "1000"}, {Key: "to", Value: pair.ContractAddr},
@@ -179,7 +134,7 @@ func Test_InitialProvideMapper(t *testing.T) {
 			"",
 		},
 		{
-			&initialProvideMapper{mapperMixin{}}, el.MatchedResult{
+			&initialProvideMapper{dex.MapperMixin{}}, el.MatchedResult{
 				{Key: "_contract_address", Value: pair.LpAddr}, {Key: "action", Value: "mint"},
 				{Key: "amount", Value: "1000"}, {Key: "to", Value: pair.ContractAddr}, {Key: "sender", Value: pair.ContractAddr},
 			},

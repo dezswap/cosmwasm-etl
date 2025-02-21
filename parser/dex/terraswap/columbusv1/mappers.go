@@ -2,6 +2,7 @@ package columbusv1
 
 import (
 	"fmt"
+	pdex "github.com/dezswap/cosmwasm-etl/pkg/dex"
 
 	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/parser/dex"
@@ -13,10 +14,8 @@ import (
 
 var _ parser.Mapper[dex.ParsedTx] = &pairMapper{}
 
-type mapperMixin struct{}
-
 type pairMapper struct {
-	mixin   mapperMixin
+	mixin   pdex.MapperMixin
 	pairSet map[string]dex.Pair
 }
 
@@ -46,7 +45,7 @@ func (m *pairMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...
 
 func (m *pairMapper) swapMatchedToParsedTx(res eventlog.MatchedResult, pair dex.Pair) ([]*dex.ParsedTx, error) {
 	var err error
-	if err = m.mixin.checkResult(res, cv1.PairSwapMatchedLen); err != nil {
+	if err = m.mixin.CheckResult(res, cv1.PairSwapMatchedLen); err != nil {
 		return nil, errors.Wrap(err, "pairMapper.swapMatchedToParsedTx")
 	}
 
@@ -84,7 +83,7 @@ func (m *pairMapper) swapMatchedToParsedTx(res eventlog.MatchedResult, pair dex.
 }
 
 func (m *pairMapper) provideMatchedToParsedTx(res eventlog.MatchedResult, pair dex.Pair) ([]*dex.ParsedTx, error) {
-	if err := m.mixin.checkResult(res, cv1.PairProvideMatchedLen); err != nil {
+	if err := m.mixin.CheckResult(res, cv1.PairProvideMatchedLen); err != nil {
 		return nil, errors.Wrap(err, "pairMapper.PairProvideMatchedLen")
 	}
 
@@ -107,7 +106,7 @@ func (m *pairMapper) provideMatchedToParsedTx(res eventlog.MatchedResult, pair d
 }
 
 func (m *pairMapper) withdrawMatchedToParsedTx(res eventlog.MatchedResult, pair dex.Pair) ([]*dex.ParsedTx, error) {
-	if err := m.mixin.checkResult(res, cv1.PairWithdrawMatchedLen); err != nil {
+	if err := m.mixin.CheckResult(res, cv1.PairWithdrawMatchedLen); err != nil {
 		return nil, errors.Wrap(err, "pairMapper.withdrawMatchedToParsedTx")
 	}
 
@@ -134,18 +133,4 @@ func (m *pairMapper) withdrawMatchedToParsedTx(res eventlog.MatchedResult, pair 
 		},
 	}}, nil
 
-}
-
-func (*mapperMixin) checkResult(res eventlog.MatchedResult, expectedLen ...int) error {
-	if len(expectedLen) > 0 && len(res) != expectedLen[0] {
-		msg := fmt.Sprintf("expected results length(%d)", expectedLen)
-		return errors.New(msg)
-	}
-	for i, r := range res {
-		if r.Value == "" {
-			msg := fmt.Sprintf("matched result(%d) must not be empty", i)
-			return errors.New(msg)
-		}
-	}
-	return nil
 }
