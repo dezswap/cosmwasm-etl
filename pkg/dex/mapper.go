@@ -7,14 +7,11 @@ import (
 	"sort"
 )
 
-const msgIndexKey = "msg_index"
-
 type MapperMixin struct {
-	PostEventAttrLen int
 }
 
 func (m *MapperMixin) CheckResult(res eventlog.MatchedResult, expectedLen int) error {
-	if len(res) != expectedLen+m.PostEventAttrLen {
+	if len(res) != expectedLen {
 		msg := fmt.Sprintf("expected results length(%d)", expectedLen)
 		return errors.New(msg)
 	}
@@ -35,9 +32,6 @@ func (*MapperMixin) SortResult(res eventlog.MatchedResult) {
 	sort := func(from, to int) {
 		target := res[from:to]
 		sort.Slice(target, func(i, j int) bool {
-			if target[i].Key == msgIndexKey {
-				return false
-			}
 			return target[i].Key < target[j].Key
 		})
 	}

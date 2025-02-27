@@ -46,12 +46,7 @@ func pairMapperBy(chainId string, height uint64, pairSet map[string]dex.Pair) (p
 		if height < ds.TestnetV2Height {
 			return &pairMapperImpl{base}, nil
 		} else {
-			postLen, _ := getPostEventAttrLen(chainId, height)
-			return &pairMapperImpl{
-				pairMapper: &pairV2Mapper{
-					pairMapperMixin: &pairMapperMixin{MapperMixin: pdex.MapperMixin{PostEventAttrLen: postLen}, pairSet: pairSet},
-				},
-			}, nil
+			return &pairMapperImpl{&pairV2Mapper{base}}, nil
 		}
 	} else if strings.HasPrefix(chainId, ds.MainnetPrefix) {
 		if height < ds.MainnetV2Height {

@@ -9,7 +9,6 @@ import (
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 	"github.com/pkg/errors"
-	"strings"
 )
 
 // runner for terraswap
@@ -23,16 +22,25 @@ type dezswapApp struct {
 var _ dex.TargetApp = &dezswapApp{}
 
 func New(repo dex.PairRepo, _ logging.Logger, _ configs.ParserDexConfig, chainId string) (dex.TargetApp, error) {
-	return &dezswapApp{repo, &dex.PairParsers{}, dex.DexMixin{}, chainId}, nil
+	finder, err := ds.CreateCreatePairRuleFinder(chainId)
+	if err != nil {
+		return nil, errors.Wrap(err, "NewApp")
+	}
+
+	parsers := &dex.PairParsers{
+		CreatePairParser: parser.NewParser[dex.ParsedTx](finder, &createPairMapper{}),
+		PairActionParser: nil,
+		InitialProvide:   nil,
+		WasmTransfer:     nil,
+		Transfer:         nil,
+	}
+
+	return &dezswapApp{repo, parsers, dex.DexMixin{}, chainId}, nil
 }
 
 func (p *dezswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx, error) {
 	pairs, err := p.GetPairs()
 	if err != nil {
-		return nil, errors.Wrap(err, "parseTxs")
-	}
-
-	if err := p.updateParsers(pairs, height); err != nil {
 		return nil, errors.Wrap(err, "parseTxs")
 	}
 
@@ -49,6 +57,10 @@ func (p *dezswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx, e
 		}
 		ctx.Sender = tx.Sender
 		txDtos = append(txDtos, *ctx)
+	}
+
+	if err := p.updateParsers(pairs, height); err != nil {
+		return nil, errors.Wrap(err, "parseTxs")
 	}
 
 	pairTxs := []*dex.ParsedTx{}
@@ -94,21 +106,6 @@ func (p *dezswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx, e
 }
 
 func (p *dezswapApp) updateParsers(pairs map[string]dex.Pair, height uint64) error {
-	postAttrLen, isUpdateHeight := getPostEventAttrLen(p.chainId, height)
-
-	// create pair parser
-	{
-		if p.Parsers.CreatePairParser == nil || isUpdateHeight {
-			finder, err := ds.CreateCreatePairRuleFinder(p.chainId)
-			if err != nil {
-				return errors.Wrap(err, "updateParsers")
-			}
-
-			p.Parsers.CreatePairParser = parser.NewParser[dex.ParsedTx](
-				finder, &createPairMapper{MapperMixin: pdex.MapperMixin{PostEventAttrLen: postAttrLen}})
-		}
-	}
-
 	pairFilter := make(map[string]bool)
 	for k := range pairs {
 		pairFilter[k] = true
@@ -134,7 +131,7 @@ func (p *dezswapApp) updateParsers(pairs map[string]dex.Pair, height uint64) err
 		if err != nil {
 			return errors.Wrap(err, "updateParsers")
 		}
-		p.Parsers.InitialProvide = parser.NewParser[dex.ParsedTx](initialProvideFinder, dex.NewInitialProvideMapper(postAttrLen))
+		p.Parsers.InitialProvide = parser.NewParser[dex.ParsedTx](initialProvideFinder, dex.NewInitialProvideMapper())
 	}
 
 	// wasm transfer parser
@@ -144,7 +141,7 @@ func (p *dezswapApp) updateParsers(pairs map[string]dex.Pair, height uint64) err
 			return errors.Wrap(err, "updateParsers")
 		}
 		p.Parsers.WasmTransfer = parser.NewParser[dex.ParsedTx](
-			wasmTransferFinder, &wasmTransferMapper{mixin: transferMapperMixin{pdex.MapperMixin{PostEventAttrLen: postAttrLen}}, pairSet: pairs})
+			wasmTransferFinder, &wasmTransferMapper{mixin: transferMapperMixin{pdex.MapperMixin{}}, pairSet: pairs})
 	}
 
 	// transfer parser
@@ -157,15 +154,4 @@ func (p *dezswapApp) updateParsers(pairs map[string]dex.Pair, height uint64) err
 	}
 
 	return nil
-}
-
-func getPostEventAttrLen(chainId string, height uint64) (len int, isUpdateHeight bool) {
-	if strings.HasPrefix(chainId, ds.TestnetPrefix) {
-		isUpdateHeight = height == ds.TestnetSdkV50Height
-		if height >= ds.TestnetSdkV50Height {
-			len++
-		}
-	}
-
-	return
 }
