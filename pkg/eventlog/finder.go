@@ -1,6 +1,10 @@
 package eventlog
 
-import "github.com/pkg/errors"
+import (
+	"github.com/pkg/errors"
+)
+
+const KeyMsgIndex = "msg_index"
 
 type LogFinder interface {
 	// return empty slice if there is no match
@@ -36,38 +40,62 @@ func (f *logfinderImpl) FindFromLogs(logs LogResults) MatchedResults {
 
 func (f *logfinderImpl) FindFromAttrs(attrs Attributes) MatchedResults {
 	results := MatchedResults{}
-	ruleLen := len(f.rule.Items)
-	attrLen := len(attrs)
+	ruleItemsSize := len(f.rule.Items)
+	attrsSize := len(attrs)
 
-	if ruleLen > attrLen {
+	if ruleItemsSize > attrsSize {
 		return nil
 	}
 
-	for aIdx := 0; (aIdx + ruleLen) <= attrLen; aIdx++ {
-		idx := 0
-		for ; idx < ruleLen; idx++ {
-			if !f.rule.Items[idx].Match(attrs[aIdx+idx]) {
-				break
-			}
-		}
-
-		if idx != ruleLen {
+	for i := 0; (i + ruleItemsSize) <= attrsSize; i++ {
+		matchedResult, nextAttrIdx := f.findMatchingSubseq(i, attrs)
+		if ruleItemsSize != len(matchedResult) {
 			continue
 		}
 
-		matchedResult := make(MatchedResult, 0)
-
-		if f.rule.Until != "" {
-			for ; (idx+aIdx) < attrLen && attrs[idx+aIdx].Key != f.rule.Until; idx++ {
-			}
-		}
-
-		for i := 0; i < idx; i++ {
-			matchedResult = append(matchedResult, MatchedItem{attrs[aIdx+i].Key, attrs[aIdx+i].Value})
-		}
-
+		matchedResult, lastAttrIdx := f.appendUntil(nextAttrIdx, matchedResult, attrs)
 		results = append(results, matchedResult)
-		aIdx += (idx - 1)
+
+		i = lastAttrIdx
 	}
 	return results
+}
+
+// findMatchingSubseq iterate and compare only the size of `rule.Items`
+func (f *logfinderImpl) findMatchingSubseq(attrIdx int, attrs Attributes) (MatchedResult, int) {
+	ruleItemsSize := len(f.rule.Items)
+	attrsSize := len(attrs)
+	matchedResult := make(MatchedResult, 0)
+
+	i := 0
+	for ; i < ruleItemsSize; i++ {
+		// skip `msg_index` key to check multiple events
+		// `msg_index` has added since cosmos-sdk v50 and no need to include `matchedResult`
+		if attrs[attrIdx+i].Key == KeyMsgIndex && (attrIdx+ruleItemsSize) < attrsSize {
+			attrIdx++
+		}
+		if !f.rule.Items[i].Match(attrs[attrIdx+i]) {
+			break
+		}
+
+		matchedResult = append(matchedResult, MatchedItem{attrs[attrIdx+i].Key, attrs[attrIdx+i].Value})
+	}
+
+	return matchedResult, attrIdx + i
+}
+
+// appendUntil `matchedResult` will include attrs up to the `Until` Key
+func (f *logfinderImpl) appendUntil(attrIdx int, matchedResult MatchedResult, attrs Attributes) (MatchedResult, int) {
+	attrsSize := len(attrs)
+
+	if f.rule.Until != "" {
+		for ; attrIdx < attrsSize && attrs[attrIdx].Key != f.rule.Until; attrIdx++ {
+			key := attrs[attrIdx].Key
+			if key != KeyMsgIndex {
+				matchedResult = append(matchedResult, MatchedItem{key, attrs[attrIdx].Value})
+			}
+		}
+	}
+
+	return matchedResult, attrIdx - 1
 }

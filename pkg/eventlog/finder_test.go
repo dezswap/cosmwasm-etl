@@ -208,5 +208,143 @@ func TestFindFromAttr(t *testing.T) {
 		assert.NotNil(t, results)
 		assert.Len(t, results, tc.expectedLen, tc.errMsg)
 	}
+}
 
+func TestFindFromAttr_WithMsgIndex(t *testing.T) {
+	testCases := []struct {
+		attrs              Attributes
+		rule               RuleItems
+		ruleUntil          string
+		expectedResultLen  int
+		expectedMatchedLen int
+	}{
+		// create_pair
+		{
+			Attributes{
+				{"_contract_address", "factory_address"},
+				{"action", "create_pair"},
+				{"pair", "asset1_address-asset2_address"},
+				{"msg_index", "0"},
+				{"_contract_address", "pair_address"},
+				{"liquidity_token_addr", "lp_token_address"},
+				{"msg_index", "0"},
+				{"_contract_address", "factory_address"},
+				{"pair_contract_addr", "pair_address"},
+				{"liquidity_token_addr", "lp_token_address"},
+				{"msg_index", "0"},
+			},
+			RuleItems{
+				RuleItem{Key: "_contract_address", Filter: nil},
+				RuleItem{Key: "action", Filter: "create_pair"},
+				RuleItem{Key: "pair", Filter: nil},
+				RuleItem{Key: "_contract_address", Filter: nil},
+				RuleItem{Key: "liquidity_token_addr", Filter: nil},
+			},
+			"",
+			1,
+			5,
+		},
+		{
+			Attributes{
+				{"_contract_address", "factory_address"},
+				{"action", "create_pair"},
+				{"pair", "asset1_address-asset2_address"},
+				{"msg_index", "0"},
+				{"_contract_address", "pair_address"},
+				{"liquidity_token_addr", "lp_token_address"},
+				{"msg_index", "0"},
+			},
+			RuleItems{
+				RuleItem{Key: "_contract_address", Filter: nil},
+				RuleItem{Key: "action", Filter: "create_pair"},
+				RuleItem{Key: "pair", Filter: nil},
+				RuleItem{Key: "_contract_address", Filter: nil},
+				RuleItem{Key: "liquidity_token_addr", Filter: nil},
+			},
+			"",
+			1,
+			5,
+		},
+		// swap
+		{
+			Attributes{
+				{"_contract_address", "pair_address"},
+				{"action", "swap"},
+				{"sender", "sender_address"},
+				{"receiver", "receiver_address"},
+				{"offer_asset", "asset1_address"},
+				{"ask_asset", "asset2_address"},
+				{"offer_amount", "1000000"},
+				{"return_amount", "1000"},
+				{"spread_amount", "1"},
+				{"commission_amount", "3"},
+				{"msg_index", "0"},
+				{"_contract_address", "asset2_address"},
+				{"action", "transfer"},
+				{"amount", "1000"},
+				{"from", "pair_address"},
+				{"to", "sender_address"},
+				{"msg_index", "0"},
+			},
+			RuleItems{
+				RuleItem{Key: "_contract_address", Filter: nil},
+				RuleItem{Key: "action", Filter: func(v string) bool { return v == "swap" }},
+			},
+			"_contract_address",
+			1,
+			10,
+		},
+		// provide
+		{
+			Attributes{
+				{"_contract_address", "asset2_address"},
+				{"action", "increase_allowance"},
+				{"owner", "provider_address"},
+				{"spender", "pair_address"},
+				{"amount", "1000000"},
+				{"msg_index", "0"},
+				{"_contract_address", "pair_address"},
+				{"action", "provide_liquidity"},
+				{"sender", "provider_address"},
+				{"receiver", "provider_address"},
+				{"assets", "1000000asset1, 1000000asset2"},
+				{"share", "1000000"},
+				{"refund_assets", "0asset1, 0asset2"},
+				{"msg_index", "1"},
+				{"_contract_address", "asset2_address"},
+				{"action", "transfer_from"},
+				{"amount", "1000000"},
+				{"by", "pair_address"},
+				{"from", "provider_address"},
+				{"to", "pair_address"},
+				{"msg_index", "1"},
+				{"_contract_address", "lp_token_address"},
+				{"action", "mint"},
+				{"amount", "1000000"},
+				{"to", "provider_address"},
+				{"msg_index", "1"},
+			},
+			RuleItems{
+				RuleItem{Key: "_contract_address", Filter: nil},
+				RuleItem{Key: "action", Filter: func(v string) bool { return v == "provide_liquidity" }},
+			},
+			"_contract_address",
+			1,
+			7,
+		},
+	}
+
+	for _, tc := range testCases {
+		rule, _ := NewRule("_", tc.rule, tc.ruleUntil)
+		finder, _ := NewLogFinder(rule)
+		results := finder.FindFromAttrs(tc.attrs)
+		assert.NotNil(t, results)
+		assert.Len(t, results, tc.expectedResultLen)
+		for _, r := range results {
+			assert.Len(t, r, tc.expectedMatchedLen)
+			for _, i := range r {
+				assert.NotEqual(t, "msg_index", i.Key)
+			}
+		}
+	}
 }
