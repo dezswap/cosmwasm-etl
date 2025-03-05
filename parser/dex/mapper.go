@@ -188,10 +188,7 @@ func (m transferMapper) transferToParsedTx(pair Pair, from, assetsStr string, fr
 	}, nil
 }
 
-func NewInitialProvideMapper(postEventAttrLen ...int) parser.Mapper[ParsedTx] {
-	if len(postEventAttrLen) > 0 {
-		return &initialProvideMapper{MapperMixin: pdex.MapperMixin{PostEventAttrLen: postEventAttrLen[0]}}
-	}
+func NewInitialProvideMapper() parser.Mapper[ParsedTx] {
 	return &initialProvideMapper{pdex.MapperMixin{}}
 }
 

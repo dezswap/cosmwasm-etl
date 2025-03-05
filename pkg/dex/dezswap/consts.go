@@ -8,8 +8,6 @@ const (
 const (
 	MainnetV2Height = 3166247
 	TestnetV2Height = 2975818
-
-	TestnetSdkV50Height = 12015741
 )
 
 var FactoryAddress = map[string]string{
