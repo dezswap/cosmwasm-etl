@@ -18,4 +18,7 @@ DROP INDEX IF EXISTS pair_chain_id_asset_0_asset_1_key;
 DROP INDEX IF EXISTS pair_chain_id_lp_key;
 DROP TABLE IF EXISTS "pair";
 
+DROP TABLE IF EXISTS "tokens";
+DROP TABLE IF EXISTS "latest_pools";
+
 COMMIT;
