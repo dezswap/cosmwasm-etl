@@ -67,4 +67,49 @@ CREATE INDEX pool_info_contract_idx ON pool_info ("contract");
 CREATE UNIQUE INDEX pool_info_chain_id_height_contract_key ON pool_info ("chain_id", "height", "contract");
 ALTER TABLE pool_info ADD CONSTRAINT pool_info_contract_pair_fkey FOREIGN KEY ("chain_id","contract") REFERENCES pair ("chain_id", "contract");
 
+CREATE TABLE IF NOT EXISTS "tokens" (
+  "id"         BIGSERIAL PRIMARY KEY,
+  "created_at" TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  "updated_at" TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  "deleted_at" TIMESTAMP WITH TIME ZONE,
+  "chain_id"   TEXT NOT NULL,
+  "address"    TEXT NOT NULL,
+  "protocol"   TEXT,
+  "symbol"     TEXT,
+  "name"       TEXT,
+  "decimals"   SMALLINT,
+  "icon"       TEXT,
+  "verified"   BOOLEAN DEFAULT FALSE NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_tokens_deleted_at ON tokens ("deleted_at");
+CREATE INDEX IF NOT EXISTS idx_tokens_address ON tokens ("address");
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tokens_chain_id_address_key ON tokens ("chain_id", "address");
+CREATE INDEX IF NOT EXISTS idx_tokens_chain_id ON tokens ("chain_id");
+
+
+CREATE TABLE IF NOT EXISTS "latest_pools" (
+  "id"            BIGSERIAL PRIMARY KEY,
+  "created_at"    TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  "updated_at"    TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  "deleted_at"    TIMESTAMP WITH TIME ZONE,
+  "chain_id"      TEXT NOT NULL,
+  "address"       TEXT NOT NULL,
+  "height"        BIGINT,
+  "asset0"        TEXT,
+  "asset0_amount" TEXT,
+  "asset1"        TEXT,
+  "asset1_amount" TEXT,
+  "lp"            TEXT,
+  "lp_amount"     TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_latest_pools_address ON latest_pools ("address");
+CREATE UNIQUE INDEX IF NOT EXISTS idx_latest_pools_chain_id_address_key ON latest_pools ("chain_id", "address");
+CREATE INDEX IF NOT EXISTS idx_latest_pools_chain_id ON latest_pools ("chain_id");
+CREATE INDEX IF NOT EXISTS idx_latest_pools_deleted_at ON latest_pools ("deleted_at");
+CREATE INDEX IF NOT EXISTS idx_latest_pools_lp ON latest_pools ("lp");
+CREATE INDEX IF NOT EXISTS idx_latest_pools_asset1 ON latest_pools ("asset1");
+CREATE INDEX IF NOT EXISTS idx_latest_pools_asset0 ON latest_pools ("asset0");
+
 COMMIT;
