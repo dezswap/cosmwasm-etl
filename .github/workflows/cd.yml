@@ -58,10 +58,10 @@ jobs:
           echo "CONFIG_NAME=$(echo "$CONFIG_NAME" | tr '-' '_' | tr '[:lower:]' '[:upper:]')" >> $GITHUB_ENV
 
       - name: checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v3
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           role-session-name: cosmwasm-etl-deploy
@@ -106,7 +106,7 @@ jobs:
 
       - name: Fill in the new image ID in the Amazon ECS task definition
         id: task-def
-        uses: aws-actions/amazon-ecs-render-task-definition@v1.2.0
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
           task-definition: ./${{ env.TARGET }}.json
           container-name: ${{ env.TARGET }}
