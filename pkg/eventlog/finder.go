@@ -4,7 +4,13 @@ import (
 	"github.com/pkg/errors"
 )
 
-const KeyMsgIndex = "msg_index"
+// skipKeys
+// - msg_index: Added since cosmos-sdk v50, skip to check multiple events
+// - token_id: dorado-1 specific e.g. E04160F77490C13B3D1AF80FCC3FCFE210FC526F2720E2AE0C3A9984D3F16DCA
+var skipKeys = []string{
+	"msg_index",
+	"token_id",
+}
 
 type LogFinder interface {
 	// return empty slice if there is no match
@@ -69,9 +75,7 @@ func (f *logfinderImpl) findMatchingSubseq(attrIdx int, attrs Attributes) (Match
 
 	i := 0
 	for ; i < ruleItemsSize; i++ {
-		// skip `msg_index` key to check multiple events
-		// `msg_index` has added since cosmos-sdk v50 and no need to include `matchedResult`
-		if attrs[attrIdx+i].Key == KeyMsgIndex && (attrIdx+ruleItemsSize) < attrsSize {
+		if shouldSkipKey(attrs[attrIdx+i].Key) && (attrIdx+ruleItemsSize) < attrsSize {
 			attrIdx++
 		}
 		if !f.rule.Items[i].Match(attrs[attrIdx+i]) {
@@ -91,11 +95,20 @@ func (f *logfinderImpl) appendUntil(attrIdx int, matchedResult MatchedResult, at
 	if f.rule.Until != "" {
 		for ; attrIdx < attrsSize && attrs[attrIdx].Key != f.rule.Until; attrIdx++ {
 			key := attrs[attrIdx].Key
-			if key != KeyMsgIndex {
+			if !shouldSkipKey(key) {
 				matchedResult = append(matchedResult, MatchedItem{key, attrs[attrIdx].Value})
 			}
 		}
 	}
 
 	return matchedResult, attrIdx - 1
+}
+
+func shouldSkipKey(key string) bool {
+	for _, s := range skipKeys {
+		if key == s {
+			return true
+		}
+	}
+	return false
 }

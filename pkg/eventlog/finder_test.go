@@ -348,3 +348,52 @@ func TestFindFromAttr_WithMsgIndex(t *testing.T) {
 		}
 	}
 }
+
+func TestFindFromAttr_WithTokenId(t *testing.T) {
+	testCases := []struct {
+		attrs              Attributes
+		rule               RuleItems
+		ruleUntil          string
+		expectedResultLen  int
+		expectedMatchedLen int
+	}{
+		// transfer
+		{
+			Attributes{
+				{"_contract_address", "token_address"},
+				{"action", "transfer"},
+				{"token_id", "1357"},
+				{"amount", "1"},
+				{"from", "from_address"},
+				{"to", "to_address"},
+				{"_contract_address", "token_address"},
+				{"action", "transfer"},
+				{"token_id", "1357"},
+				{"amount", "1"},
+				{"from", "from_address"},
+				{"to", "to_address"},
+			},
+			RuleItems{
+				RuleItem{Key: "_contract_address", Filter: nil},
+				RuleItem{Key: "action", Filter: "transfer"},
+			},
+			"_contract_address",
+			2,
+			5,
+		},
+	}
+
+	for _, tc := range testCases {
+		rule, _ := NewRule("_", tc.rule, tc.ruleUntil)
+		finder, _ := NewLogFinder(rule)
+		results := finder.FindFromAttrs(tc.attrs)
+		assert.NotNil(t, results)
+		assert.Len(t, results, tc.expectedResultLen)
+		for _, r := range results {
+			assert.Len(t, r, tc.expectedMatchedLen)
+			for _, i := range r {
+				assert.NotEqual(t, "token_id", i.Key)
+			}
+		}
+	}
+}
