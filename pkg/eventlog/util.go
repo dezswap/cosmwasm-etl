@@ -23,7 +23,7 @@ func SortAttributes(attrs Attributes, filter map[string]bool) (*Attributes, erro
 	end := len(filter)
 	for end <= len(filtered) {
 		sort.Slice(filtered[idx:end], func(i, j int) bool {
-			return filtered[i].Key < attrs[j].Key
+			return filtered[idx:end][i].Key < attrs[j].Key
 		})
 		idx = end
 		end = idx + len(filter)
