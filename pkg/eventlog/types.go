@@ -4,9 +4,12 @@ type LogType string
 
 const (
 	//TODO add if need more
-	Message      LogType = "message"
-	WasmType     LogType = "wasm"
-	TransferType LogType = "transfer"
+	Message         LogType = "message"
+	ExecuteType     LogType = "execute"
+	WasmType        LogType = "wasm"
+	TransferType    LogType = "transfer"
+	InstantiateType LogType = "instantiate"
+	ReplyType       LogType = "reply"
 
 	//columbus 4
 	FromContract LogType = "from_contract"

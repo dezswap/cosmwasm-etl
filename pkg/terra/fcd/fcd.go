@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 
 	"github.com/pkg/errors"
 )
@@ -21,12 +22,71 @@ var (
 )
 
 type Fcd interface {
+	Block(height uint64, chainId string) (*FcdBlockRes, error)
 	TxsOf(addr string, option FcdTxsReqQuery) (*FcdTxsRes, error)
+	Tx(hash string) (*FcdTxRes, error)
 }
 
 type fcdImpl struct {
 	baseUrl string
 	*http.Client
+}
+
+func (f *fcdImpl) Block(height uint64, chainId string) (*FcdBlockRes, error) {
+	u, err := url.Parse(f.baseUrl)
+	u = u.JoinPath("v1", "blocks", strconv.Itoa(int(height)))
+	params := url.Values{}
+	params.Add("chainId", chainId)
+	u.RawQuery = params.Encode()
+
+	res, err := f.Client.Get(u.String())
+	if err != nil {
+		return nil, errors.Wrap(err, "fcdImpl.Block")
+	}
+
+	defer res.Body.Close()
+	if res.StatusCode >= http.StatusInternalServerError {
+		return nil, errors.Wrapf(STATUS_SERVER_ERROR, "fcdImpl.Block: status code %d", res.StatusCode)
+	}
+
+	data, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, errors.Wrap(err, "fcdImpl.Block")
+	}
+
+	blockRes := FcdBlockRes{}
+	if err := json.Unmarshal(data, &blockRes); err != nil {
+		return nil, errors.Wrap(err, "fcdImpl.Tx")
+	}
+
+	return &blockRes, nil
+}
+
+func (f *fcdImpl) Tx(hash string) (*FcdTxRes, error) {
+	u, err := url.Parse(f.baseUrl)
+	u = u.JoinPath("v1", "tx", hash)
+
+	res, err := f.Client.Get(u.String())
+	if err != nil {
+		return nil, errors.Wrap(err, "fcdImpl.Tx")
+	}
+
+	defer res.Body.Close()
+	if res.StatusCode >= http.StatusInternalServerError {
+		return nil, errors.Wrapf(STATUS_SERVER_ERROR, "fcdImpl.Tx: status code %d", res.StatusCode)
+	}
+
+	data, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, errors.Wrap(err, "fcdImpl.Tx")
+	}
+
+	txRes := FcdTxRes{}
+	if err := json.Unmarshal(data, &txRes); err != nil {
+		return nil, errors.Wrap(err, "fcdImpl.Tx")
+	}
+
+	return &txRes, nil
 }
 
 // TxsOf implements Fcd.
@@ -77,38 +137,4 @@ func (f *fcdImpl) TxsOf(addr string, option FcdTxsReqQuery) (*FcdTxsRes, error) 
 
 func New(baseUrl string, client *http.Client) Fcd {
 	return &fcdImpl{baseUrl, client}
-}
-
-type FcdTxsReqQuery struct {
-	Limit  *int `json:"limit"`
-	Offset *int `json:"next"`
-}
-
-type FcdTxsRes struct {
-	Limit int        `json:"limit"`
-	Next  int        `json:"next"`
-	Txs   []FcdTxRes `json:"txs"`
-}
-
-type FcdTxRes struct {
-	Id        int           `json:"id"`
-	ChainId   string        `json:"chainId"`
-	Logs      []FcdTxLogRes `json:"logs"`
-	Height    string        `json:"height"`
-	TxHash    string        `json:"txhash"`
-	RawLog    string        `json:"raw_log"`
-	Timestamp string        `json:"timestamp"`
-}
-
-type FcdTxLogRes struct {
-	MsgIndex int                `json:"msg_index"`
-	Events   []FcdTxLogEventRes `json:"events"`
-}
-
-type FcdTxLogEventRes struct {
-	Type       string `json:"type"`
-	Attributes []struct {
-		Key   string `json:"key"`
-		Value string `json:"value"`
-	} `json:"attributes"`
 }

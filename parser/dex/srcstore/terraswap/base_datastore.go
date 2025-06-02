@@ -2,6 +2,7 @@ package terraswap
 
 import (
 	"encoding/json"
+	"github.com/dezswap/cosmwasm-etl/pkg/terra/fcd"
 
 	"github.com/dezswap/cosmwasm-etl/parser"
 	p_dex "github.com/dezswap/cosmwasm-etl/parser/dex"
@@ -18,13 +19,18 @@ type baseRawDataStoreImpl struct {
 	mapper
 	rpc rpc.Rpc
 	lcd cosmos45.Lcd
+	fcd fcd.Fcd
 	terraswap.QueryClient
 }
 
 var _ p_dex.SourceDataStore = &baseRawDataStoreImpl{}
 
+func NewBaseStoreWithFcd(factoryAddress string, rpc rpc.Rpc, lcd cosmos45.Lcd, fcd fcd.Fcd, client terraswap.QueryClient) p_dex.SourceDataStore {
+	return &baseRawDataStoreImpl{factoryAddress, &mapperImpl{}, rpc, lcd, fcd, client}
+}
+
 func NewBaseStore(factoryAddress string, rpc rpc.Rpc, lcd cosmos45.Lcd, client terraswap.QueryClient) p_dex.SourceDataStore {
-	return &baseRawDataStoreImpl{factoryAddress, &mapperImpl{}, rpc, lcd, client}
+	return &baseRawDataStoreImpl{factoryAddress, &mapperImpl{}, rpc, lcd, nil, client}
 }
 
 // GetSourceSyncedHeight implements p_dex.RawDataStore
@@ -156,7 +162,16 @@ func (r *baseRawDataStoreImpl) AllPairs(height uint64) ([]p_dex.Pair, error) {
 func (r *baseRawDataStoreImpl) txSenderOf(hash string) (string, error) {
 	res, err := r.lcd.Tx(hash)
 	if err != nil {
-		return "", errors.Wrap(err, "txSenderOf")
+		if r.fcd != nil {
+			fcdRes, err := r.fcd.Tx(hash)
+			if err != nil {
+				return "", errors.Wrap(err, "txSenderOf")
+			}
+
+			res.Tx = fcdRes.Tx
+		} else {
+			return "", errors.Wrap(err, "txSenderOf")
+		}
 	}
 
 	for _, msg := range res.Tx.Body.Messages {

@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"testing"
 	"time"
@@ -109,6 +110,34 @@ func Test05GetBlockTxsFromHeight(t *testing.T) {
 	storeimpl.newServiceClientFunc = mockFunc
 
 	resp, err := storeimpl.GetBlockTxsFromHeight(startBlock)
+
+	assert.Nil(t, err)
+	assert.NotNil(t, resp)
+}
+
+func TestGetBlockTxsFromHeight(t *testing.T) {
+	httpClient := &http.Client{
+		Transport: &http.Transport{
+			MaxIdleConns:      10,               // Maximum idle connections to keep open
+			IdleConnTimeout:   30 * time.Second, // Time to keep idle connections open
+			DisableKeepAlives: false,            // Use HTTP Keep-Alive
+		},
+	}
+	serviceDesc := grpcConn.GetServiceDesc("collector", configs.GrpcConfig{
+		Host:         "grpc-dorado.fetch.ai",
+		Port:         443,
+		BackoffDelay: configs.Duration{time.Second},
+		NoTLS:        false,
+	})
+	c := configs.Config{
+		Collector: configs.CollectorConfig{
+			ChainId:                    "dorado-1",
+			PairFactoryContractAddress: "",
+		},
+	}
+	store, _ := New(c, serviceDesc, NewLcdClient("https://rest-dorado.fetch.ai", httpClient))
+
+	resp, err := store.GetNodeSyncedHeight()
 
 	assert.Nil(t, err)
 	assert.NotNil(t, resp)
