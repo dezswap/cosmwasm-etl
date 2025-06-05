@@ -2,7 +2,6 @@ package phoenix
 
 import (
 	"fmt"
-	"math/big"
 
 	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/parser/dex"
@@ -147,13 +146,6 @@ func (m *pairMapper) withdrawMatchedToParsedTx(res eventlog.MatchedResult, pair 
 // cw20 token is not refunded in provide event, it is transferred deducted amount to pair once.
 // wasm message shows users requested amount rather than actual provided amount.
 func (m *pairMapper) applyRefundAsset(provide []dex.Asset, refund []dex.Asset) (applied []dex.Asset, err error) {
-	toBigInt := func(amount string) (*big.Int, error) {
-		amountBigInt, ok := big.NewInt(0).SetString(amount, 10)
-		if !ok {
-			return nil, errors.New("invalid amount")
-		}
-		return amountBigInt, nil
-	}
 	applied = make([]dex.Asset, len(provide))
 	copy(applied, provide)
 
@@ -165,11 +157,11 @@ func (m *pairMapper) applyRefundAsset(provide []dex.Asset, refund []dex.Asset) (
 			continue
 		}
 
-		amount, err := toBigInt(provide[idx].Amount)
+		amount, err := dex.ToBigInt(provide[idx].Amount)
 		if err != nil {
 			return nil, err
 		}
-		refundAmount, err := toBigInt(refund[idx].Amount)
+		refundAmount, err := dex.ToBigInt(refund[idx].Amount)
 		if err != nil {
 			return nil, err
 		}
