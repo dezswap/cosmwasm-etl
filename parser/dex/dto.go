@@ -91,6 +91,7 @@ func (defaultVal ParsedTx) Override(tx ParsedTx) (ParsedTx, error) {
 type PoolInfo struct {
 	ContractAddr string  `json:"contractAddr"`
 	Assets       []Asset `json:"assets"`
+	LpAddr       string  `json:"lpAddr"`
 	TotalShare   string  `json:"totalShare" faker:"amountString"`
 }
 
