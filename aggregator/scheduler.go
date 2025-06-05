@@ -27,14 +27,14 @@ type predeterminedTimeScheduler struct {
 
 func (s *intervalScheduler) Schedule(ctx context.Context) error {
 	endTs := time.Now()
-	done := false
+
+loop:
 	for {
 		select {
 		case <-ctx.Done():
-			done = true
-			break
+			break loop
 		case <-time.After(time.Until(endTs)):
-			if err := s.task.Execute(time.Time{}, endTs); err != nil {
+			if err := s.Execute(time.Time{}, endTs); err != nil {
 				errChan <- err
 			}
 			s.logger.Infof("%s(%s) has been finished", reflect.TypeOf(s.task), endTs.UTC().Format(time.RFC1123Z))
@@ -45,9 +45,6 @@ func (s *intervalScheduler) Schedule(ctx context.Context) error {
 			} else {
 				endTs = next
 			}
-		}
-		if done {
-			break
 		}
 	}
 
@@ -69,12 +66,11 @@ func (s *predeterminedTimeScheduler) Schedule(ctx context.Context) error {
 		end = end.Add(s.interval)
 	}
 
-	done := false
+loop:
 	for {
 		select {
 		case <-ctx.Done():
-			done = true
-			break
+			break loop
 		case <-time.After(time.Until(end)):
 			if err := (s.predeterminedTimeTask).Execute(start, end); err != nil {
 				errChan <- err
@@ -83,9 +79,6 @@ func (s *predeterminedTimeScheduler) Schedule(ctx context.Context) error {
 
 			start = end
 			end = end.Add(s.interval)
-		}
-		if done {
-			break
 		}
 	}
 

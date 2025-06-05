@@ -145,7 +145,7 @@ func (app *dexApp) insert(height uint64, txs []ParsedTx, pools []PoolInfo) error
 		}
 	}
 
-	err := app.Repo.Insert(height, txs, pools, pairDtos)
+	err := app.Insert(height, txs, pools, pairDtos)
 	if err != nil {
 		return errors.Wrap(err, "insert")
 	}

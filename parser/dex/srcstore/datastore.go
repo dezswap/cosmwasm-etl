@@ -35,5 +35,5 @@ func (r *rawDataStoreImpl) GetPoolInfos(height uint64) ([]dex.PoolInfo, error) {
 		return nil, errors.Wrap(err, "rawDataStoreImpl.GetPoolInfos")
 	}
 
-	return r.mapper.rawPoolInfosToPoolInfos(poolInfos), nil
+	return r.rawPoolInfosToPoolInfos(poolInfos), nil
 }

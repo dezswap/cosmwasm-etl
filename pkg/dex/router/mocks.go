@@ -25,24 +25,24 @@ func (*routerMock) Logger() logging.Logger {
 
 // RouterAddress implements Router
 func (r *routerMock) RouterAddress() string {
-	args := r.Mock.MethodCalled("RouterAddress")
+	args := r.MethodCalled("RouterAddress")
 	return args.Get(0).(string)
 }
 
 // Routes implements Router
 func (r *routerMock) Routes(from string, to string) [][]string {
-	args := r.Mock.MethodCalled("Routes", from, to)
+	args := r.MethodCalled("Routes", from, to)
 	return args.Get(0).([][]string)
 }
 
 // TokensFrom implements Router
 func (r *routerMock) TokensFrom(from string, hopCount int) []string {
-	args := r.Mock.MethodCalled("TokensFrom", from, hopCount)
+	args := r.MethodCalled("TokensFrom", from, hopCount)
 	return args.Get(0).([]string)
 }
 
 // Update implements Router
 func (r *routerMock) Update() error {
-	args := r.Mock.MethodCalled("Update")
+	args := r.MethodCalled("Update")
 	return args.Error(0)
 }

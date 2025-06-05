@@ -18,7 +18,7 @@ var (
 )
 
 var (
-	QUERY_DIFFERENT_HEIGHT_ERROR = errors.New("query different height")
+	ErrQueryDifferentHeight = errors.New("query different height")
 )
 
 const (
