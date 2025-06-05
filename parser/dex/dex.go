@@ -110,7 +110,7 @@ func (app *dexApp) Run() error {
 			}
 		}
 
-		if err := app.insert(cur, parsedTxs, poolInfos); err != nil {
+		if err := app.insert(cur-1, cur, parsedTxs, poolInfos); err != nil {
 			return errors.Wrap(err, "app.Run")
 		}
 
@@ -132,7 +132,7 @@ func (app *dexApp) Run() error {
 }
 
 // insert implements parser
-func (app *dexApp) insert(height uint64, txs []ParsedTx, pools []PoolInfo) error {
+func (app *dexApp) insert(srcHeight uint64, targetHeight uint64, txs []ParsedTx, pools []PoolInfo) error {
 	pairDtos := []Pair{}
 	for _, tx := range txs {
 		if tx.Type == CreatePair {
@@ -145,7 +145,7 @@ func (app *dexApp) insert(height uint64, txs []ParsedTx, pools []PoolInfo) error
 		}
 	}
 
-	err := app.Insert(height, txs, pools, pairDtos)
+	err := app.Insert(srcHeight, targetHeight, txs, pools, pairDtos)
 	if err != nil {
 		return errors.Wrap(err, "insert")
 	}
