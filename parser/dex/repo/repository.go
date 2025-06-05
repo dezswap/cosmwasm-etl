@@ -67,7 +67,7 @@ func (r *repoImpl) GetPairs() (map[string]dex.Pair, error) {
 }
 
 // Insert implements p_dex.Repo
-func (r *repoImpl) Insert(height uint64, txs []dex.ParsedTx, arg ...interface{}) error {
+func (r *repoImpl) Insert(srcHeight uint64, targetHeight uint64, txs []dex.ParsedTx, arg ...interface{}) error {
 	if len(arg) != 2 {
 		errMsg := fmt.Sprintf("invalid others(%v)", arg)
 		return errors.New(errMsg)
@@ -86,11 +86,11 @@ func (r *repoImpl) Insert(height uint64, txs []dex.ParsedTx, arg ...interface{})
 
 	parsedTxs := []schemas.ParsedTx{}
 	for _, tx := range txs {
-		parsedTxs = append(parsedTxs, r.toParsedTxModel(r.chainId, height, tx))
+		parsedTxs = append(parsedTxs, r.toParsedTxModel(r.chainId, targetHeight, tx))
 	}
 	poolInfoTxs := []schemas.PoolInfo{}
 	for _, pool := range pools {
-		poolInfoTxs = append(poolInfoTxs, r.toPoolInfoModel(r.chainId, height, pool))
+		poolInfoTxs = append(poolInfoTxs, r.toPoolInfoModel(r.chainId, targetHeight, pool))
 	}
 	pairTxs := []schemas.Pair{}
 	for _, pair := range pairs {
@@ -107,7 +107,7 @@ func (r *repoImpl) Insert(height uint64, txs []dex.ParsedTx, arg ...interface{})
 		if err := tx.Model(schemas.PoolInfo{}).CreateInBatches(poolInfoTxs, len(poolInfoTxs)).Error; err != nil {
 			return errors.Wrap(err, "repo.Insert.PoolInfo")
 		}
-		if err := tx.Model(&schemas.SyncedHeight{}).Where("chain_id = ? AND height = ?", r.chainId, height-1).Update("height", height).Error; err != nil {
+		if err := tx.Model(&schemas.SyncedHeight{}).Where("chain_id = ? AND height = ?", r.chainId, srcHeight).Update("height", targetHeight).Error; err != nil {
 			return errors.Wrap(err, "repo.Insert.SyncedHeight")
 		}
 		return nil

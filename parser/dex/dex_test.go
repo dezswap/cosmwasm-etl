@@ -51,10 +51,10 @@ func Test_insert(t *testing.T) {
 		if tc.errMsg != "" {
 			err = errors.New(tc.errMsg)
 		}
-		repoMock.On("Insert", height, tc.txs, tc.poolInfos, pairDtos).Return(err)
+		repoMock.On("Insert", height-1, height, tc.txs, tc.poolInfos, pairDtos).Return(err)
 
 		app := dexApp{Repo: &repoMock}
-		err = app.insert(height, tc.txs, tc.poolInfos)
+		err = app.insert(height-1, height, tc.txs, tc.poolInfos)
 		if tc.errMsg != "" {
 			assert.Error(t, err, tc.errMsg)
 			repoMock.AssertExpectations(t)
