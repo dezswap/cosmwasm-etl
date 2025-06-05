@@ -10,7 +10,6 @@ import (
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/dezswap/cosmwasm-etl/collector/datastore"
-	collector_store "github.com/dezswap/cosmwasm-etl/collector/datastore"
 	"github.com/dezswap/cosmwasm-etl/configs"
 	p_dex "github.com/dezswap/cosmwasm-etl/parser/dex"
 	"github.com/pkg/errors"
@@ -39,13 +38,13 @@ const (
 	app = "parser"
 )
 
-func getDexCollectorReadStore(c configs.Config, dc configs.ParserDexConfig) collector_store.ReadStore {
+func getDexCollectorReadStore(c configs.Config, dc configs.ParserDexConfig) datastore.ReadStore {
 	nodeConf := dc.NodeConfig
 	if nodeConf.GrpcConfig.Host != "" {
 		nodeConf := dc.NodeConfig
 		serviceDesc := grpc.GetServiceDesc("collector", nodeConf.GrpcConfig)
 
-		store, err := collector_store.New(c, serviceDesc, nil)
+		store, err := datastore.New(c, serviceDesc, nil)
 		if err != nil {
 			panic(err)
 		}
@@ -57,20 +56,20 @@ func getDexCollectorReadStore(c configs.Config, dc configs.ParserDexConfig) coll
 					DisableKeepAlives: false,            // Use HTTP Keep-Alive
 				},
 			}
-			store, _ = collector_store.New(c, serviceDesc, datastore.NewLcdClient(nodeConf.FailoverLcdHost, httpClient))
+			store, _ = datastore.New(c, serviceDesc, datastore.NewLcdClient(nodeConf.FailoverLcdHost, httpClient))
 		}
 
-		return collector_store.NewReadStoreWithGrpc(dc.ChainId, store)
+		return datastore.NewReadStoreWithGrpc(dc.ChainId, store)
 	}
 
 	s3Client, err := s3client.NewClient()
 	if err != nil {
 		panic(err)
 	}
-	return collector_store.NewReadStore(dc.ChainId, s3Client)
+	return datastore.NewReadStore(dc.ChainId, s3Client)
 }
 
-func dex_main(c configs.ParserDexConfig, logc configs.LogConfig, sentryc configs.SentryConfig, rdbc configs.RdbConfig, readStore collector_store.ReadStore) {
+func dex_main(c configs.ParserDexConfig, logc configs.LogConfig, sentryc configs.SentryConfig, rdbc configs.RdbConfig, readStore datastore.ReadStore) {
 	logger := logging.New("main", logc)
 	if sentryc.DSN != "" {
 		sentryEnv := fmt.Sprintf("%s-%s", c.ChainId, app)
@@ -85,13 +84,14 @@ func dex_main(c configs.ParserDexConfig, logc configs.LogConfig, sentryc configs
 	repo := repo.New(c.ChainId, rdbc)
 	var app p_dex.TargetApp
 	var err error
-	if c.TargetApp == dex.Terraswap {
+	switch c.TargetApp {
+	case dex.Terraswap:
 		app, err = pts.New(repo, logger, c)
-	} else if c.TargetApp == dex.Dezswap {
+	case dex.Dezswap:
 		app, err = pds.New(repo, logger, c, c.ChainId)
-	} else if c.TargetApp == dex.Starfleit {
+	case dex.Starfleit:
 		app, err = psf.New(repo, logger, c, c.ChainId)
-	} else {
+	default:
 		panic("unknown target app: " + c.TargetApp)
 	}
 
@@ -177,7 +177,7 @@ func main() {
 	}
 
 	dc := *c.Parser.DexConfig
-	var readstore collector_store.ReadStore
+	var readstore datastore.ReadStore
 	switch dc.TargetApp {
 	case dex.Terraswap:
 	case dex.Dezswap, dex.Starfleit:

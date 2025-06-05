@@ -39,7 +39,7 @@ func New(repo fcdRepo, store permanentStore) ColumbusCollector {
 //
 // NOTE: fcd returns transactions in reverse order of height
 func (c *columbusFcdCollector) hasCollected(addr string) (bool, error) {
-	tx, err := c.permanentStore.FirstTxOf(addr)
+	tx, err := c.FirstTxOf(addr)
 	if err != nil {
 		return false, errors.Wrap(err, "col4permanentStore.HasCollected")
 	}
@@ -47,7 +47,7 @@ func (c *columbusFcdCollector) hasCollected(addr string) (bool, error) {
 		return false, nil
 	}
 
-	hasMore, err := c.fcdRepo.HasMoreTx(addr, tx.FcdOffset)
+	hasMore, err := c.HasMoreTx(addr, tx.FcdOffset)
 	if err != nil {
 		return false, errors.Wrap(err, "col4permanentStore.HasCollected")
 	}
