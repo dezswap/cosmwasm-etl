@@ -65,6 +65,7 @@ func (r *baseRawDataStoreImpl) GetPoolInfos(height uint64) ([]p_dex.PoolInfo, er
 				{Addr: pair.Assets[0], Amount: poolRes.Assets[0].Amount},
 				{Addr: pair.Assets[1], Amount: poolRes.Assets[1].Amount},
 			},
+			LpAddr:     pair.LpAddr,
 			TotalShare: poolRes.TotalShare,
 		}
 	}

@@ -179,6 +179,11 @@ func (pool *PoolInfo) Convert() *PoolInfoDTO {
 	return ret
 }
 
+type PoolInfoWithLpAddr struct {
+	PoolInfoDTO
+	LpAddr string `json:"lp_addr"`
+}
+
 type PoolInfoList struct {
-	Pairs map[string]PoolInfoDTO `json:"pairs"`
+	Pairs map[string]PoolInfoWithLpAddr `json:"pairs"`
 }
