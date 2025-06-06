@@ -724,7 +724,8 @@ const (
 							"amount":"5000000"
 						}
 					],
-					"total_share":"15811388300"
+					"total_share":"15811388300",
+					"lp_addr":"terra1ttaekgrc60xc3xcflq069m49lwu79m5t552rjcws48rzhxcr4g6shmdw2v"
 				}
 			}
 		}
@@ -748,7 +749,8 @@ const (
 					"amount":"5000000"
 				}
 			],
-			"total_share":"15811388300"
+			"total_share":"15811388300",
+			"lp_addr":"terra1ttaekgrc60xc3xcflq069m49lwu79m5t552rjcws48rzhxcr4g6shmdw2v"
 		}
 	`
 

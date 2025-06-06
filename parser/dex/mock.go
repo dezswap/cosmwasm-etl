@@ -62,7 +62,7 @@ func (m *RepoMock) GetSyncedHeight() (uint64, error) {
 }
 
 // Insert implements Repo
-func (m *RepoMock) Insert(height uint64, txs []ParsedTx, arg ...interface{}) error {
+func (m *RepoMock) Insert(srcHeight uint64, targetHeight uint64, txs []ParsedTx, arg ...interface{}) error {
 	if len(arg) != 2 {
 		errMsg := fmt.Sprintf("invalid others(%v)", arg)
 		return errors.New(errMsg)
@@ -78,7 +78,7 @@ func (m *RepoMock) Insert(height uint64, txs []ParsedTx, arg ...interface{}) err
 		errMsg := fmt.Sprintf("invalid pairs(%v)", arg[1])
 		return errors.New(errMsg)
 	}
-	args := m.MethodCalled("Insert", height, txs, pools, pairs)
+	args := m.MethodCalled("Insert", srcHeight, targetHeight, txs, pools, pairs)
 	return args.Error(0)
 }
 

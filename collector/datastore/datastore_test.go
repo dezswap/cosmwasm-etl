@@ -228,24 +228,24 @@ func Test10GetCurrentPoolStatusOfAllPairs(t *testing.T) {
 		mock.Anything,
 		&wasm.QuerySmartContractStateRequest{
 			Address:   "",
-			QueryData: wasm.RawContractMessage([]byte(`{"pairs":{"start_after":[{"token":{"contract_addr":"terra1qj5hs3e86qn4vm9dvtgtlkdp550r0rayk9wpay44mfw3gn3tr8nq5jw3dg"}},{"native_token":{"denom":"uluna"}}]}}`)),
+			QueryData: []byte(`{"pairs":{"start_after":[{"token":{"contract_addr":"terra1qj5hs3e86qn4vm9dvtgtlkdp550r0rayk9wpay44mfw3gn3tr8nq5jw3dg"}},{"native_token":{"denom":"uluna"}}]}}`),
 		}).Once().Return(&wasm.QuerySmartContractStateResponse{
-		Data: wasm.RawContractMessage([]byte(`{"pairs":[]}`)),
+		Data: []byte(`{"pairs":[]}`),
 	}, nil)
 	m.On("SmartContractState", mock.Anything,
 		&wasm.QuerySmartContractStateRequest{
 			Address:   "",
-			QueryData: wasm.RawContractMessage([]byte(`{"pairs":{}}`)),
+			QueryData: []byte(`{"pairs":{}}`),
 		}).Once().Return(&wasm.QuerySmartContractStateResponse{
-		Data: wasm.RawContractMessage([]byte(lightFactoryResp)),
+		Data: []byte(lightFactoryResp),
 	}, nil)
 
 	m.On("SmartContractState", mock.Anything,
 		&wasm.QuerySmartContractStateRequest{
 			Address:   "terra1xjv2pmf26yaz3wqft7caafgckdg4eflzsw56aqhdcjw58qx0v2mqux87t8",
-			QueryData: wasm.RawContractMessage([]byte(`{"pool": {}}`)),
+			QueryData: []byte(`{"pool": {}}`),
 		}).Return(&wasm.QuerySmartContractStateResponse{
-		Data: wasm.RawContractMessage([]byte(poolResponse)),
+		Data: []byte(poolResponse),
 	}, nil)
 
 	mockFunc := func(cc grpc1.ClientConn) wasm.QueryClient {
@@ -279,7 +279,7 @@ func Test11GetPoolStatusOfUnitPairByHeight(t *testing.T) {
 	ret, err := storeimpl.GetPoolStatusOfUnitPairByHeight(111, "terra1xjv2pmf26yaz3wqft7caafgckdg4eflzsw56aqhdcjw58qx0v2mqux87t8", path...)
 	assert.NoError(t, err)
 
-	expectedRet := &PoolInfoDTO{}
+	expectedRet := &PoolInfoWithLpAddr{}
 	err = json.Unmarshal([]byte(unitPoolResp), expectedRet)
 	if err != nil {
 		panic(err)
