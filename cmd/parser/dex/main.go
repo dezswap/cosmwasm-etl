@@ -119,7 +119,7 @@ func dex_main(c configs.ParserDexConfig, logc configs.LogConfig, sentryc configs
 				},
 			})
 			terraswapQueryClient := dts_phoenix.NewPhoenixClient(lcd)
-			rawDataStore = ts_srcstore.NewBaseStore(c.FactoryAddress, r, lcd, terraswapQueryClient)
+			rawDataStore = ts_srcstore.NewCol5Store(c.FactoryAddress, r, lcd, terraswapQueryClient)
 		case dts.CLASSIC_V2_FACTORY:
 			lcd := terra_cosmos45.NewLcd(c.NodeConfig.RestClientConfig.LcdHost, &http.Client{
 				Transport: &http.Transport{
@@ -129,7 +129,7 @@ func dex_main(c configs.ParserDexConfig, logc configs.LogConfig, sentryc configs
 				},
 			})
 			terraswapQueryClient := dts_colv2.NewColumbusV2Client(lcd)
-			rawDataStore = ts_srcstore.NewBaseStore(c.FactoryAddress, r, lcd, terraswapQueryClient)
+			rawDataStore = ts_srcstore.NewCol5Store(c.FactoryAddress, r, lcd, terraswapQueryClient)
 
 		case dts.PISCO_FACTORY:
 			panic(errors.New("not implemented yet"))
