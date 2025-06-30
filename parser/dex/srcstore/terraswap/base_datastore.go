@@ -2,6 +2,7 @@ package terraswap
 
 import (
 	"encoding/json"
+	"github.com/dezswap/cosmwasm-etl/pkg/terra/lcd"
 
 	"github.com/dezswap/cosmwasm-etl/parser"
 	p_dex "github.com/dezswap/cosmwasm-etl/parser/dex"
@@ -17,13 +18,13 @@ type baseRawDataStoreImpl struct {
 	factoryAddress string
 	mapper
 	rpc rpc.Rpc
-	lcd cosmos45.Lcd
+	lcd lcd.Lcd[cosmos45.LcdTxRes]
 	terraswap.QueryClient
 }
 
 var _ p_dex.SourceDataStore = &baseRawDataStoreImpl{}
 
-func NewBaseStore(factoryAddress string, rpc rpc.Rpc, lcd cosmos45.Lcd, client terraswap.QueryClient) p_dex.SourceDataStore {
+func NewBaseStore(factoryAddress string, rpc rpc.Rpc, lcd lcd.Lcd[cosmos45.LcdTxRes], client terraswap.QueryClient) p_dex.SourceDataStore {
 	return &baseRawDataStoreImpl{factoryAddress, &mapperImpl{}, rpc, lcd, client}
 }
 

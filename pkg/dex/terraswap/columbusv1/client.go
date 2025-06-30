@@ -1,6 +1,7 @@
 package columbusv1
 
 import (
+	"github.com/dezswap/cosmwasm-etl/pkg/terra/lcd"
 	"strconv"
 
 	"github.com/dezswap/cosmwasm-etl/pkg/dex"
@@ -10,10 +11,10 @@ import (
 )
 
 type col4QueryClient struct {
-	lcd col4.Lcd
+	lcd lcd.Lcd[col4.LcdTxRes]
 }
 
-func NewCol4Client(lcd col4.Lcd) terraswap.QueryClient {
+func NewCol4Client(lcd lcd.Lcd[col4.LcdTxRes]) terraswap.QueryClient {
 	return &col4QueryClient{lcd}
 }
 

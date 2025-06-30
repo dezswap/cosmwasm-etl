@@ -4,14 +4,15 @@ import (
 	"github.com/dezswap/cosmwasm-etl/pkg/dex"
 	"github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap"
 	"github.com/dezswap/cosmwasm-etl/pkg/terra/cosmos45"
+	"github.com/dezswap/cosmwasm-etl/pkg/terra/lcd"
 	"github.com/pkg/errors"
 )
 
 type phoenixQueryClient struct {
-	lcd cosmos45.Lcd
+	lcd lcd.Lcd[cosmos45.LcdTxRes]
 }
 
-func NewPhoenixClient(lcd cosmos45.Lcd) terraswap.QueryClient {
+func NewPhoenixClient(lcd lcd.Lcd[cosmos45.LcdTxRes]) terraswap.QueryClient {
 	return &phoenixQueryClient{lcd}
 }
 
