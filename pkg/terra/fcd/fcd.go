@@ -51,7 +51,7 @@ func (f *fcdImpl) TxsOf(addr string, option FcdTxsReqQuery) (*FcdTxsRes, error) 
 	params.Add("limit", fmt.Sprintf("%d", limit))
 	reqUrl := fmt.Sprintf("%s/v1/txs?%s", f.baseUrl, params.Encode())
 
-	res, err := f.Client.Get(reqUrl)
+	res, err := f.Get(reqUrl)
 	if err != nil {
 		return nil, errors.Wrap(err, "fcdImpl.TxsOf")
 	}

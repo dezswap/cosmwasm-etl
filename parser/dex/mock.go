@@ -21,43 +21,43 @@ var _ SourceDataStore = &RawStoreMock{}
 
 // matchedToParsedTx implements parser
 func (p *ParserMock) MatchedToParsedTx(result eventlog.MatchedResult, optional ...interface{}) ([]*ParsedTx, error) {
-	args := p.Mock.MethodCalled("matchedToParsedTx", result)
+	args := p.MethodCalled("matchedToParsedTx", result)
 	return args.Get(0).([]*ParsedTx), args.Error(1)
 }
 
 // parse implements parser
 func (p *ParserMock) Parse(raws eventlog.LogResults, defaultValue parser.Overrider[ParsedTx], optionals ...interface{}) ([]*ParsedTx, error) {
-	args := p.Mock.MethodCalled("parse", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	args := p.MethodCalled("parse", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	return args.Get(0).([]*ParsedTx), args.Error(1)
 }
 
 // GetPoolInfos implements RawDataStore
 func (r *RawStoreMock) GetPoolInfos(height uint64) ([]PoolInfo, error) {
-	args := r.Mock.MethodCalled("GetPoolInfos", height)
+	args := r.MethodCalled("GetPoolInfos", height)
 	return args.Get(0).([]PoolInfo), args.Error(1)
 }
 
 // GetSourceSyncedHeight implements RawDataStore
 func (r *RawStoreMock) GetSourceSyncedHeight() (uint64, error) {
-	args := r.Mock.MethodCalled("GetSourceSyncedHeight")
+	args := r.MethodCalled("GetSourceSyncedHeight")
 	return args.Get(0).(uint64), args.Error(1)
 }
 
 // GetSourceTxs implements RawDataStore
 func (r *RawStoreMock) GetSourceTxs(height uint64) (parser.RawTxs, error) {
-	args := r.Mock.MethodCalled("GetSourceTxs", height)
+	args := r.MethodCalled("GetSourceTxs", height)
 	return args.Get(0).(parser.RawTxs), args.Error(1)
 }
 
 // GetPairs implements Repo
 func (m *RepoMock) GetPairs() (map[string]Pair, error) {
-	args := m.Mock.MethodCalled("GetPairs")
+	args := m.MethodCalled("GetPairs")
 	return args.Get(0).(map[string]Pair), args.Error(1)
 }
 
 // GetSyncedHeight implements Repo
 func (m *RepoMock) GetSyncedHeight() (uint64, error) {
-	args := m.Mock.MethodCalled("GetSyncedHeight")
+	args := m.MethodCalled("GetSyncedHeight")
 	return args.Get(0).(uint64), args.Error(1)
 }
 
@@ -78,18 +78,18 @@ func (m *RepoMock) Insert(height uint64, txs []ParsedTx, arg ...interface{}) err
 		errMsg := fmt.Sprintf("invalid pairs(%v)", arg[1])
 		return errors.New(errMsg)
 	}
-	args := m.Mock.MethodCalled("Insert", height, txs, pools, pairs)
+	args := m.MethodCalled("Insert", height, txs, pools, pairs)
 	return args.Error(0)
 }
 
 // ParsedPoolInfo implements Repo.
 func (m *RepoMock) ParsedPoolsInfo(from, to uint64) ([]PoolInfo, error) {
-	args := m.Mock.MethodCalled("ParsedPoolsInfo", from, to)
+	args := m.MethodCalled("ParsedPoolsInfo", from, to)
 	return args.Get(0).([]PoolInfo), args.Error(1)
 }
 
 // ValidationExceptionList implements Repo.
 func (m *RepoMock) ValidationExceptionList() ([]string, error) {
-	args := m.Mock.MethodCalled("ValidationExceptionList")
+	args := m.MethodCalled("ValidationExceptionList")
 	return args.Get(0).([]string), args.Error(1)
 }

@@ -10,7 +10,6 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"github.com/dezswap/cosmwasm-etl/collector"
 	"github.com/dezswap/cosmwasm-etl/collector/datastore"
-	coldata "github.com/dezswap/cosmwasm-etl/collector/datastore"
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/pkg/grpc"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
@@ -57,7 +56,7 @@ func main() {
 	}
 
 	failoverClient := datastore.NewLcdClient(nodeConf.FailoverLcdHost, httpClient)
-	col, err := coldata.New(c, serviceDesc, failoverClient)
+	col, err := datastore.New(c, serviceDesc, failoverClient)
 	if err != nil {
 		logger.Panic(err)
 	}

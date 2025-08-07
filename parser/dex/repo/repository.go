@@ -61,7 +61,7 @@ func (r *repoImpl) GetPairs() (map[string]dex.Pair, error) {
 	}
 	result := make(map[string]dex.Pair)
 	for _, pair := range pairs {
-		result[pair.Contract] = r.mapper.toPairDto(pair)
+		result[pair.Contract] = r.toPairDto(pair)
 	}
 	return result, nil
 }
@@ -86,15 +86,15 @@ func (r *repoImpl) Insert(height uint64, txs []dex.ParsedTx, arg ...interface{})
 
 	parsedTxs := []schemas.ParsedTx{}
 	for _, tx := range txs {
-		parsedTxs = append(parsedTxs, r.mapper.toParsedTxModel(r.chainId, height, tx))
+		parsedTxs = append(parsedTxs, r.toParsedTxModel(r.chainId, height, tx))
 	}
 	poolInfoTxs := []schemas.PoolInfo{}
 	for _, pool := range pools {
-		poolInfoTxs = append(poolInfoTxs, r.mapper.toPoolInfoModel(r.chainId, height, pool))
+		poolInfoTxs = append(poolInfoTxs, r.toPoolInfoModel(r.chainId, height, pool))
 	}
 	pairTxs := []schemas.Pair{}
 	for _, pair := range pairs {
-		pairTxs = append(pairTxs, r.mapper.toPairModel(r.chainId, pair))
+		pairTxs = append(pairTxs, r.toPairModel(r.chainId, pair))
 	}
 
 	return r.db.Transaction(func(tx *gorm.DB) error {

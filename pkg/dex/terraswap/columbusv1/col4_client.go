@@ -71,7 +71,7 @@ func (c *col4QueryClient) heightCheck(actualStr string, expected uint64) error {
 	}
 
 	if actual != expected {
-		return dex.QUERY_DIFFERENT_HEIGHT_ERROR
+		return dex.ErrQueryDifferentHeight
 	}
 
 	return nil

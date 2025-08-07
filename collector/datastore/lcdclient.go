@@ -82,7 +82,7 @@ func (c *lcdClientImpl) GetTx(txHash string) (*txtypes.GetTxResponse, error) {
 		return nil, errors.Wrap(err, "lcdClientImpl.GetTx")
 	}
 	res.OverriddenRes.TxResponse.GasUsed = gasUsed
-	res.OverriddenRes.TxResponse.Tx = nil
+	res.OverriddenRes.Tx = nil
 
 	return &txtypes.GetTxResponse{
 		Tx:         nil,

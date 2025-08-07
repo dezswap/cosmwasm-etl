@@ -1,0 +1,17 @@
+version: "2"
+run:
+  timeout: 5m
+  tests: false
+linters:
+  enable:
+    - unparam
+    - misspell
+    - prealloc
+  settings:
+    errcheck:
+      exclude-functions:
+        - (*database/sql.Rows).Close
+        - (*database/sql.DB).Close
+        - (io.Closer).Close
+        - (github.com/dezswap/cosmwasm-etl/pkg/db/parser.ReadRepository).Close
+        - (github.com/dezswap/cosmwasm-etl/aggregator/repo.Repo).Close
