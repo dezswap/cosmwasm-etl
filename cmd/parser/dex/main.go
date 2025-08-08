@@ -163,7 +163,6 @@ func dex_main(c configs.ParserDexConfig, logc configs.LogConfig, sentryc configs
 		wait := BLOCK_SECONDS * time.Duration(math.Pow(2, float64(errCount)))
 		time.Sleep(wait)
 	}
-
 }
 
 func main() {
@@ -184,7 +183,6 @@ func main() {
 		readstore = getDexCollectorReadStore(c, dc)
 	}
 	dex_main(dc, c.Log, c.Sentry, c.Rdb, readstore)
-
 }
 
 func catch(logger logging.Logger) {

@@ -2,6 +2,7 @@ package dex
 
 import (
 	"fmt"
+	"math/big"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -60,5 +61,64 @@ func Test_GetAssetFromAssetAmountString(t *testing.T) {
 			assert.NoError(err, msg)
 		}
 	}
+}
 
+func TestToBigInt(t *testing.T) {
+	ln, _ := new(big.Int).SetString("9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999", 10)
+	tests := []struct {
+		name    string
+		input   string
+		want    *big.Int
+		wantErr bool
+	}{
+		{
+			name:    "valid positive number",
+			input:   "123456789",
+			want:    big.NewInt(123456789),
+			wantErr: false,
+		},
+		{
+			name:    "valid zero",
+			input:   "0",
+			want:    big.NewInt(0),
+			wantErr: false,
+		},
+		{
+			name:    "negative number",
+			input:   "-123",
+			want:    big.NewInt(-123),
+			wantErr: false,
+		},
+		{
+			name:    "valid large number",
+			input:   "9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999",
+			want:    ln,
+			wantErr: false,
+		},
+		{
+			name:    "invalid number with letters",
+			input:   "123abc",
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name:    "empty string",
+			input:   "",
+			want:    nil,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ToBigInt(tt.input)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ToBigInt() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr && got.Cmp(tt.want) != 0 {
+				t.Errorf("ToBigInt() = %v, want %v", got, tt.want)
+			}
+		})
+	}
 }

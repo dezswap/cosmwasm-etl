@@ -66,7 +66,7 @@ type DataStore interface {
 	GetCurrentPairsList(int64) (*PairListDTO, error)
 	GetCurrentPoolStatusOfUnitPair(int64, string) (*PoolInfoDTO, error)
 	GetCurrentPoolStatusOfAllPairs(int64) (*PoolInfoList, error)
-	GetPoolStatusOfUnitPairByHeight(int64, string, ...string) (*PoolInfoDTO, error)
+	GetPoolStatusOfUnitPairByHeight(int64, string, ...string) (*PoolInfoWithLpAddr, error)
 	GetPoolStatusOfAllPairsByHeight(int64, ...string) (*PoolInfoList, error)
 	UploadPoolInfoBinary(int64, []byte, ...string) error
 }
@@ -257,7 +257,7 @@ func (store *dataStoreImpl) GetCurrentPoolStatusOfAllPairs(height int64) (*PoolI
 		return nil, err
 	}
 
-	ret := &PoolInfoList{Pairs: make(map[string]PoolInfoDTO)}
+	ret := &PoolInfoList{Pairs: make(map[string]PoolInfoWithLpAddr)}
 
 	for _, val := range pairLists.Pairs {
 		unitPairInfo, err := store.getCurrentPoolStatusOfUnitPair(conn, height, val.ContractAddr)
@@ -266,7 +266,7 @@ func (store *dataStoreImpl) GetCurrentPoolStatusOfAllPairs(height int64) (*PoolI
 			return nil, err
 		}
 
-		ret.Pairs[val.ContractAddr] = *unitPairInfo
+		ret.Pairs[val.ContractAddr] = PoolInfoWithLpAddr{*unitPairInfo, val.LiquidityToken}
 	}
 
 	return ret, nil
@@ -299,7 +299,7 @@ func (store *dataStoreImpl) GetPoolStatusOfAllPairsByHeight(height int64, folder
 }
 
 // From S3
-func (store *dataStoreImpl) GetPoolStatusOfUnitPairByHeight(height int64, pairContract string, folderPath ...string) (*PoolInfoDTO, error) {
+func (store *dataStoreImpl) GetPoolStatusOfUnitPairByHeight(height int64, pairContract string, folderPath ...string) (*PoolInfoWithLpAddr, error) {
 	pairList, err := store.GetPoolStatusOfAllPairsByHeight(height, folderPath...)
 	if err != nil {
 		err = errors.Wrap(err, "GetPoolStatusOfUnitPairByHeight, GetPoolStatusOfAllPairsByHeight")
