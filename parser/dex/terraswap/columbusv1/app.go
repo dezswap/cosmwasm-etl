@@ -17,6 +17,8 @@ type terraswapApp struct {
 	p_dex.PairRepo
 	Parsers *p_dex.PairParsers
 	p_dex.DexMixin
+
+	flaggedAssets map[string]bool
 }
 
 var _ p_dex.TargetApp = &terraswapApp{}
@@ -35,7 +37,7 @@ func New(repo p_dex.PairRepo, logger logging.Logger, c configs.ParserDexConfig) 
 		Transfer:         nil,
 	}
 
-	return &terraswapApp{repo, &parsers, p_dex.DexMixin{}}, nil
+	return &terraswapApp{repo, &parsers, p_dex.DexMixin{}, make(map[string]bool)}, nil
 }
 
 func (p *terraswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]p_dex.ParsedTx, error) {
@@ -99,6 +101,10 @@ func (p *terraswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]p_dex.ParsedT
 	return txDtos, nil
 }
 
+func (p *terraswapApp) IsValidationExceptionCandidate(contractAddress string) bool {
+	return p.flaggedAssets[contractAddress]
+}
+
 func (p *terraswapApp) updateParsers(pairs map[string]p_dex.Pair) error {
 	pairFilter := make(map[string]bool)
 	for k := range pairs {
@@ -115,7 +121,7 @@ func (p *terraswapApp) updateParsers(pairs map[string]p_dex.Pair) error {
 	if err != nil {
 		return errors.Wrap(err, "createParsers")
 	}
-	p.Parsers.WasmTransfer = parser.NewParser[p_dex.ParsedTx](wasmTransferFinder, p_dex.NewWasmTransferMapper(dex.WasmTransferLegacyCw20AddrKey, pairs))
+	p.Parsers.WasmTransfer = parser.NewParser[p_dex.ParsedTx](wasmTransferFinder, p_dex.NewWasmTransferMapper(dex.WasmTransferLegacyCw20AddrKey, pairs, p.flaggedAssets))
 
 	transferRule, err := cv1.CreateTransferRuleFinder(nil)
 	if err != nil {

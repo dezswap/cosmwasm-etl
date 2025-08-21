@@ -51,6 +51,8 @@ const (
 	WasmTransferAmountKey         = "amount"
 	WasmTransferFromKey           = "from"
 	WasmTransferToKey             = "to"
+
+	WasmTransferTaxFlagPatternKey = "tax"
 )
 
 const (

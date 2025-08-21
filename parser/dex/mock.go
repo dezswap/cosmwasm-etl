@@ -82,6 +82,11 @@ func (m *RepoMock) Insert(height uint64, txs []ParsedTx, arg ...interface{}) err
 	return args.Error(0)
 }
 
+func (m *RepoMock) InsertPairValidationException(chainID string, contractAddress string) error {
+	args := m.MethodCalled("InsertPairValidationException")
+	return args.Error(0)
+}
+
 // ParsedPoolInfo implements Repo.
 func (m *RepoMock) ParsedPoolsInfo(from, to uint64) ([]PoolInfo, error) {
 	args := m.MethodCalled("ParsedPoolsInfo", from, to)
