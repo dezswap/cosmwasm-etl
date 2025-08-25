@@ -17,6 +17,9 @@ type dezswapApp struct {
 	Parsers *dex.PairParsers
 	dex.DexMixin
 	chainId string
+
+	// state
+	pairs map[string]dex.Pair
 }
 
 var _ dex.TargetApp = &dezswapApp{}
@@ -24,7 +27,7 @@ var _ dex.TargetApp = &dezswapApp{}
 func New(repo dex.PairRepo, _ logging.Logger, _ configs.ParserDexConfig, chainId string) (dex.TargetApp, error) {
 	finder, err := ds.CreateCreatePairRuleFinder(chainId)
 	if err != nil {
-		return nil, errors.Wrap(err, "NewApp")
+		return nil, errors.Wrap(err, "dezswap.New")
 	}
 
 	parsers := &dex.PairParsers{
@@ -35,22 +38,22 @@ func New(repo dex.PairRepo, _ logging.Logger, _ configs.ParserDexConfig, chainId
 		Transfer:         nil,
 	}
 
-	return &dezswapApp{repo, parsers, dex.DexMixin{}, chainId}, nil
+	pairs, err := repo.GetPairs()
+	if err != nil {
+		return nil, errors.Wrap(err, "dezswap.New")
+	}
+
+	return &dezswapApp{repo, parsers, dex.DexMixin{}, chainId, pairs}, nil
 }
 
 func (p *dezswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx, error) {
-	pairs, err := p.GetPairs()
-	if err != nil {
-		return nil, errors.Wrap(err, "parseTxs")
-	}
-
 	txDtos := []dex.ParsedTx{}
 	createPairTxs, err := p.Parsers.CreatePairParser.Parse(tx.LogResults, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp}, nil)
 	if err != nil {
 		return nil, errors.Wrap(err, "parseTxs")
 	}
 	for _, ctx := range createPairTxs {
-		pairs[ctx.ContractAddr] = dex.Pair{
+		p.pairs[ctx.ContractAddr] = dex.Pair{
 			ContractAddr: ctx.ContractAddr,
 			LpAddr:       ctx.LpAddr,
 			Assets:       []string{ctx.Assets[0].Addr, ctx.Assets[1].Addr},
@@ -59,7 +62,7 @@ func (p *dezswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx, e
 		txDtos = append(txDtos, *ctx)
 	}
 
-	if err := p.updateParsers(pairs, height); err != nil {
+	if err := p.updateParsers(p.pairs, height); err != nil {
 		return nil, errors.Wrap(err, "parseTxs")
 	}
 

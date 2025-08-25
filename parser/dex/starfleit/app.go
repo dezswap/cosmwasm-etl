@@ -16,6 +16,9 @@ type starfleitApp struct {
 	Parsers *dex.PairParsers
 	dex.DexMixin
 	chainId string
+
+	// state
+	pairs map[string]dex.Pair
 }
 
 var _ dex.TargetApp = &starfleitApp{}
@@ -34,22 +37,22 @@ func New(repo dex.PairRepo, logger logging.Logger, c configs.ParserDexConfig, ch
 		Transfer:         nil,
 	}
 
-	return &starfleitApp{repo, parsers, dex.DexMixin{}, chainId}, nil
+	pairs, err := repo.GetPairs()
+	if err != nil {
+		return nil, errors.Wrap(err, "starfleit.New")
+	}
+
+	return &starfleitApp{repo, parsers, dex.DexMixin{}, chainId, pairs}, nil
 }
 
 func (p *starfleitApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx, error) {
-	pairs, err := p.GetPairs()
-	if err != nil {
-		return nil, errors.Wrap(err, "parseTxs")
-	}
-
 	txDtos := []dex.ParsedTx{}
 	createPairTxs, err := p.Parsers.CreatePairParser.Parse(tx.LogResults, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp}, nil)
 	if err != nil {
 		return nil, errors.Wrap(err, "parseTxs")
 	}
 	for _, ctx := range createPairTxs {
-		pairs[ctx.ContractAddr] = dex.Pair{
+		p.pairs[ctx.ContractAddr] = dex.Pair{
 			ContractAddr: ctx.ContractAddr,
 			LpAddr:       ctx.LpAddr,
 			Assets:       []string{ctx.Assets[0].Addr, ctx.Assets[1].Addr},
@@ -58,7 +61,7 @@ func (p *starfleitApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx,
 		txDtos = append(txDtos, *ctx)
 	}
 
-	if err := p.updateParsers(pairs, height); err != nil {
+	if err := p.updateParsers(p.pairs, height); err != nil {
 		return nil, errors.Wrap(err, "parseTxs")
 	}
 

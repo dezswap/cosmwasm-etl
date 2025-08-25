@@ -17,6 +17,8 @@ type terraswapApp struct {
 	Parsers *dex.PairParsers
 	dex.DexMixin
 
+	// state
+	pairs         map[string]dex.Pair
 	flaggedAssets map[string]bool
 }
 
@@ -36,14 +38,15 @@ func New(repo dex.PairRepo, logger logging.Logger, c configs.ParserDexConfig) (d
 		Transfer:         nil,
 	}
 
-	return &terraswapApp{repo, &parsers, dex.DexMixin{}, make(map[string]bool)}, nil
+	pairs, err := repo.GetPairs()
+	if err != nil {
+		return nil, errors.Wrap(err, "columbusv2.New")
+	}
+
+	return &terraswapApp{repo, &parsers, dex.DexMixin{}, pairs, make(map[string]bool)}, nil
 }
 
 func (p *terraswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx, error) {
-	pairs, err := p.GetPairs()
-	if err != nil {
-		return nil, errors.Wrap(err, "phoenix.terraswapApp.ParseTxs")
-	}
 
 	txDtos := []dex.ParsedTx{}
 	createPairTxs, err := p.Parsers.CreatePairParser.Parse(tx.LogResults, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp}, nil)
@@ -51,7 +54,7 @@ func (p *terraswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx,
 		return nil, errors.Wrap(err, "phoenix.terraswapApp.ParseTxs")
 	}
 	for _, ctx := range createPairTxs {
-		pairs[ctx.ContractAddr] = dex.Pair{
+		p.pairs[ctx.ContractAddr] = dex.Pair{
 			ContractAddr: ctx.ContractAddr,
 			LpAddr:       ctx.LpAddr,
 			Assets:       []string{ctx.Assets[0].Addr, ctx.Assets[1].Addr},
@@ -60,7 +63,7 @@ func (p *terraswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx,
 		txDtos = append(txDtos, *ctx)
 	}
 
-	if err := p.updateParsers(pairs); err != nil {
+	if err := p.updateParsers(p.pairs); err != nil {
 		return nil, errors.Wrap(err, "phoenix.terraswapApp.ParseTxs")
 	}
 
