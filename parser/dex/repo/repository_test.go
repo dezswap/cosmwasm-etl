@@ -161,6 +161,7 @@ func (s *insertSuite) SetupSuite() {
 		s.height += 1
 	}
 }
+
 func (s *insertSuite) SetSuccessMock() {
 
 	pairLen, poolInfosLen := int64(len(s.pairs)), int64(len(s.poolInfos))
@@ -201,10 +202,41 @@ func (s *insertSuite) Test_Insert() {
 	assert.Error(err)
 }
 
+type validationExceptionSuite struct {
+	baseSuite
+}
+
+func (s *validationExceptionSuite) SetSuccessMock() {
+	s.Mock.ExpectBegin()
+	s.Mock.ExpectExec(`INSERT INTO "pair_validation_exception" (.+)`).WillReturnResult(sqlmock.NewResult(1, 1))
+	s.Mock.ExpectCommit()
+
+}
+
+func (s *validationExceptionSuite) SetFailMock() {
+	s.Mock.ExpectBegin()
+	s.Mock.ExpectExec(`INSERT INTO "pair_validation_exception" (.+)`).WillReturnError(errors.New("insert error"))
+	s.Mock.ExpectRollback()
+
+}
+
+func (s *validationExceptionSuite) Test_InsertPairValidationException() {
+	assert := assert.New(s.T())
+
+	s.SetSuccessMock()
+	err := s.Repo.InsertPairValidationException("testnet-1", "test1abcd")
+	assert.NoError(err)
+
+	s.SetFailMock()
+	err = s.Repo.InsertPairValidationException("testnet-1", "test1abcd")
+	assert.Error(err)
+}
+
 func Test_repo(t *testing.T) {
 	dex.FakerCustomGenerator()
 	faker.CustomGenerator()
 	suite.Run(t, new(SyncedHeightSuite))
 	suite.Run(t, new(pairsSuite))
 	suite.Run(t, new(insertSuite))
+	suite.Run(t, new(validationExceptionSuite))
 }

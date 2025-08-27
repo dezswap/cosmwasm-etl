@@ -105,6 +105,10 @@ func (p *dezswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx, e
 	return txDtos, nil
 }
 
+func (p *dezswapApp) IsValidationExceptionCandidate(contractAddress string) bool {
+	return false
+}
+
 func (p *dezswapApp) updateParsers(pairs map[string]dex.Pair, height uint64) error {
 	pairFilter := make(map[string]bool)
 	for k := range pairs {

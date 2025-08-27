@@ -16,8 +16,9 @@ type transferMapper struct {
 	pairSet map[string]Pair
 }
 type wasmCommonTransferMapper struct {
-	cw20AddrKey string
-	pairSet     map[string]Pair
+	cw20AddrKey  string
+	pairSet      map[string]Pair
+	flaggedPairs map[string]bool
 }
 
 type initialProvideMapper struct{ pdex.MapperMixin }
@@ -51,8 +52,8 @@ func (m *factoryMapper) MatchedToParsedTx(res eventlog.MatchedResult, optional .
 	}}, nil
 }
 
-func NewWasmTransferMapper(cw20AddrKey string, pairSet map[string]Pair) parser.Mapper[ParsedTx] {
-	return &wasmCommonTransferMapper{cw20AddrKey, pairSet}
+func NewWasmTransferMapper(cw20AddrKey string, pairSet map[string]Pair, flaggedPairs map[string]bool) parser.Mapper[ParsedTx] {
+	return &wasmCommonTransferMapper{cw20AddrKey, pairSet, flaggedPairs}
 }
 
 // match implements mapper
@@ -60,6 +61,13 @@ func (m *wasmCommonTransferMapper) MatchedToParsedTx(res eventlog.MatchedResult,
 	matchMap, err := eventlog.ResultToItemMap(res)
 	if err != nil {
 		return nil, errors.Wrap(err, "transferMapper.MatchedToParsedTx")
+	}
+
+	cw20Addr := matchMap[m.cw20AddrKey].Value
+	for _, r := range res {
+		if strings.Contains(strings.ToLower(r.Key), pdex.WasmTransferTaxFlagPatternKey) {
+			m.flaggedPairs[cw20Addr] = true
+		}
 	}
 
 	sender, receiver := matchMap[pdex.WasmTransferFromKey].Value, matchMap[pdex.WasmTransferToKey].Value
@@ -72,7 +80,6 @@ func (m *wasmCommonTransferMapper) MatchedToParsedTx(res eventlog.MatchedResult,
 	var txs []*ParsedTx
 
 	amount := matchMap[pdex.WasmTransferAmountKey].Value
-	cw20Addr := matchMap[m.cw20AddrKey].Value
 	if fromPair {
 		txs = append(txs, m.wasmTransferToParsedTx(fp, cw20Addr, sender, amount, true))
 	}

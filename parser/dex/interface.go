@@ -11,6 +11,7 @@ type DexParserApp interface {
 
 type TargetApp interface {
 	parser.TargetApp[ParsedTx]
+	IsValidationExceptionCandidate(contractAddress string) bool
 }
 
 type Repo interface {
@@ -18,6 +19,7 @@ type Repo interface {
 	PairRepo
 	ParsedPoolsInfo(from, to uint64) ([]PoolInfo, error)
 	ValidationExceptionList() ([]string, error)
+	InsertPairValidationException(chainID string, contractAddress string) error
 }
 
 type SourceDataStore interface {

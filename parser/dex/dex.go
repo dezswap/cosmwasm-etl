@@ -204,20 +204,10 @@ func (app *dexApp) validate(from, to uint64, expected []PoolInfo) error {
 		if !ok {
 			return errors.New(fmt.Sprintf("unexpected pool(%s) found", pool.ContractAddr))
 		}
-		for idx, expAsset := range exp.Assets {
-			if expAsset.Amount != pool.Assets[idx].Amount {
-				msg := fmt.Sprintf(
-					"pool(%s) asset(%s) amount mismatch: actual(%s), expected(%s)", pool.ContractAddr, expAsset.Addr, pool.Assets[idx].Amount, expAsset.Amount,
-				)
-				return errors.New(msg)
-			}
+		if err := app.comparePair(pool, exp); err != nil {
+			return err
 		}
-		if exp.TotalShare != pool.TotalShare {
-			msg := fmt.Sprintf(
-				"pool(%s) total share mismatch: actual(%s), expected(%s)", pool.ContractAddr, pool.TotalShare, exp.TotalShare,
-			)
-			return errors.New(msg)
-		}
+
 		delete(expectedPool, pool.ContractAddr)
 	}
 	if len(expectedPool) > 0 {
@@ -228,6 +218,46 @@ func (app *dexApp) validate(from, to uint64, expected []PoolInfo) error {
 		return errors.New(fmt.Sprintf("expected pools(%s) not found", addrs))
 	}
 	return nil
+}
+
+func (app *dexApp) comparePair(actual PoolInfo, expected PoolInfo) error {
+	var diffs []string
+
+	for idx, expAsset := range expected.Assets {
+		if expAsset.Amount != actual.Assets[idx].Amount {
+			diffs = append(diffs, fmt.Sprintf(
+				"pool(%s) asset(%s) amount mismatch: actual(%s), expected(%s)", actual.ContractAddr, expAsset.Addr, actual.Assets[idx].Amount, expAsset.Amount,
+			))
+		}
+	}
+
+	if expected.TotalShare != actual.TotalShare {
+		diffs = append(diffs, fmt.Sprintf(
+			"pool(%s) total share mismatch: actual(%s), expected(%s)", actual.ContractAddr, actual.TotalShare, expected.TotalShare,
+		))
+	}
+
+	if len(diffs) == 0 {
+		return nil
+	}
+
+	isValidationException := false
+	for _, a := range actual.Assets {
+		if app.IsValidationExceptionCandidate(a.Addr) {
+			isValidationException = true
+		}
+	}
+
+	if isValidationException {
+		err := app.InsertPairValidationException(app.chainId, actual.ContractAddr)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	}
+
+	return errors.New(strings.Join(diffs, "; "))
 }
 
 func (mixin *DexMixin) HasProvide(pairTxs []*ParsedTx) bool {

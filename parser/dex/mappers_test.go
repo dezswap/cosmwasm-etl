@@ -156,3 +156,28 @@ func Test_InitialProvideMapper(t *testing.T) {
 		}
 	}
 }
+
+// e.g. https://finder.terra-classic.hexxagon.io/mainnet/tx/def0a16fc181b19cde5b09f149130d0f980d23ef784583b7ad6c8bca4705a2b4
+func Test_WasmTransferMapper_FlaggedPairs(t *testing.T) {
+	const msgSender = "terra1tmrwqr9g6htfzdppd34w3nypavtha7exqxdrk6"
+	pair := Pair{
+		ContractAddr: "terra15ukfg2wy9xd4g8hd5nl2rdyn7arlwk4l9u6kalwmg0pew5pjlpgskydg2a",
+		LpAddr:       "terra17csvyqecvdt6mhvfyt2uu07lnseh6clmzus4v4zdyuqwy8y7hmwqxucz52",
+		Assets:       []string{"terra1zkhwtm4a559emekwj7z4vklzqupgjyad8ncpwvav38y5ef6g5tjse7ceus", "uluna"}}
+	pairSet := map[string]Pair{pair.ContractAddr: pair}
+	flagged := map[string]bool{}
+
+	mapper := NewWasmTransferMapper(dex.WasmTransferCw20AddrKey, pairSet, flagged)
+	res := el.MatchedResult{
+		{Key: "_contract_address", Value: pair.Assets[0]},
+		{Key: "action", Value: "transfer"},
+		{Key: "amount", Value: "90256368190315"},
+		{Key: "cw20_tax_amount", Value: "7220509455225"}, // tax flag key
+		{Key: "from", Value: pair.ContractAddr},
+		{Key: "to", Value: msgSender},
+	}
+
+	_, err := mapper.MatchedToParsedTx(res)
+	assert.NoError(t, err)
+	assert.True(t, flagged[pair.Assets[0]])
+}

@@ -104,6 +104,10 @@ func (p *starfleitApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx,
 	return txDtos, nil
 }
 
+func (p *starfleitApp) IsValidationExceptionCandidate(contractAddress string) bool {
+	return false
+}
+
 func (p *starfleitApp) updateParsers(pairs map[string]dex.Pair, height uint64) error {
 	pairFilter := make(map[string]bool)
 	for k := range pairs {

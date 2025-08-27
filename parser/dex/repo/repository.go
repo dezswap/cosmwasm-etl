@@ -114,6 +114,17 @@ func (r *repoImpl) Insert(height uint64, txs []dex.ParsedTx, arg ...interface{})
 	})
 }
 
+func (r *repoImpl) InsertPairValidationException(chainID string, contractAddress string) error {
+	if err := r.db.Model(&schemas.PairValidationException{}).Create(schemas.PairValidationException{
+		ChainId:  chainID,
+		Contract: contractAddress,
+	}).Error; err != nil {
+		return errors.Wrap(err, "repo.InsertPairValidationException")
+	}
+
+	return nil
+}
+
 // ParsedPoolInfo implements p_dex.Repo.
 func (r *repoImpl) ParsedPoolsInfo(from, to uint64) ([]dex.PoolInfo, error) {
 	type poolInfo struct {
