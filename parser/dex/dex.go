@@ -167,7 +167,7 @@ func (app *dexApp) checkRemoteHeight(srcHeight uint64) error {
 	return nil
 }
 
-// insert implements parser
+// validate with `expected` from the node, compare database updates, as `actual`
 func (app *dexApp) validate(from, to uint64, expected []PoolInfo) error {
 	if len(expected) == 0 {
 		app.logger.Infof("No pool info found at height %d", to)

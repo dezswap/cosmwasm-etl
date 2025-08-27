@@ -3,6 +3,7 @@ package col4
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/dezswap/cosmwasm-etl/pkg/terra/lcd"
 	"io"
 	"net/http"
 	"net/url"
@@ -10,17 +11,12 @@ import (
 	"github.com/pkg/errors"
 )
 
-type Lcd interface {
-	ContractState(address string, query string, height ...uint64) ([]byte, error)
-	Tx(hash string) (*LcdTxRes, error)
-}
-
 type lcdImpl struct {
 	baseUrl string
 	client  *http.Client
 }
 
-func NewLcd(baseUrl string, client *http.Client) Lcd {
+func NewLcd(baseUrl string, client *http.Client) lcd.Lcd[LcdTxRes] {
 	return &lcdImpl{baseUrl, client}
 }
 
@@ -68,7 +64,7 @@ func (l *lcdImpl) ContractState(address string, query string, height ...uint64) 
 	return data, nil
 }
 
-func QueryContractState[T any](lcd Lcd, address string, query string, height ...uint64) (*LcdContractStateRes[T], error) {
+func QueryContractState[T any](lcd lcd.Lcd[LcdTxRes], address string, query string, height ...uint64) (*LcdContractStateRes[T], error) {
 	resBytes, err := lcd.ContractState(address, query, height...)
 	if err != nil {
 		return nil, err

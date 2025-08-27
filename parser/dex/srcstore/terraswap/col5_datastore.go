@@ -6,26 +6,26 @@ import (
 	pdex "github.com/dezswap/cosmwasm-etl/parser/dex"
 	"github.com/dezswap/cosmwasm-etl/pkg/dex"
 	"github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap"
-	"github.com/dezswap/cosmwasm-etl/pkg/terra/col4"
+	"github.com/dezswap/cosmwasm-etl/pkg/terra/cosmos45"
 	"github.com/dezswap/cosmwasm-etl/pkg/terra/rpc"
 	"github.com/pkg/errors"
 )
 
-type col4ChainDataAdapter struct {
+type col5ChainDataAdapter struct {
 	factoryAddress string
 	mapper
 	rpc rpc.Rpc
-	lcd lcd.Lcd[col4.LcdTxRes]
+	lcd lcd.Lcd[cosmos45.LcdTxRes]
 	terraswap.QueryClient
 }
 
-var _ chainDataAdapter = &col4ChainDataAdapter{}
+var _ chainDataAdapter = &col5ChainDataAdapter{}
 
-func NewCol4Store(factoryAddress string, rpc rpc.Rpc, lcd lcd.Lcd[col4.LcdTxRes], client terraswap.QueryClient) pdex.SourceDataStore {
+func NewCol5Store(factoryAddress string, rpc rpc.Rpc, lcd lcd.Lcd[cosmos45.LcdTxRes], client terraswap.QueryClient) pdex.SourceDataStore {
 	return NewBaseStore(
 		rpc,
 		client,
-		&col4ChainDataAdapter{
+		&col5ChainDataAdapter{
 			factoryAddress: factoryAddress,
 			mapper:         &mapperImpl{},
 			rpc:            rpc,
@@ -34,13 +34,13 @@ func NewCol4Store(factoryAddress string, rpc rpc.Rpc, lcd lcd.Lcd[col4.LcdTxRes]
 		})
 }
 
-func (a *col4ChainDataAdapter) AllPairs(height uint64) ([]pdex.Pair, error) {
+func (a *col5ChainDataAdapter) AllPairs(height uint64) ([]pdex.Pair, error) {
 	var pairs []pdex.Pair
 	var startAfter []dex.AssetInfo = nil
 	for {
 		factoryRes, err := a.QueryPairs(a.factoryAddress, startAfter, height)
 		if err != nil {
-			return nil, errors.Wrap(err, "col4ChainDataAdapter.AllPairs")
+			return nil, errors.Wrap(err, "col5ChainDataAdapter.AllPairs")
 		}
 
 		if len(factoryRes.Pairs) == 0 {
@@ -57,15 +57,15 @@ func (a *col4ChainDataAdapter) AllPairs(height uint64) ([]pdex.Pair, error) {
 	return pairs, nil
 }
 
-func (a *col4ChainDataAdapter) TxSenderOf(hash string) (string, error) {
+func (a *col5ChainDataAdapter) TxSenderOf(hash string) (string, error) {
 	res, err := a.lcd.Tx(hash)
 	if err != nil {
-		return "", errors.Wrap(err, "col4ChainDataAdapter.TxSenderOf")
+		return "", errors.Wrap(err, "col5ChainDataAdapter.TxSenderOf")
 	}
 
-	for _, msg := range res.Tx.Value.Msg {
-		if msg.Type == col4.LCD_TERRA_TX_MSG_WASM_TYPE {
-			return msg.Value.Sender, nil
+	for _, msg := range res.Tx.Body.Messages {
+		if msg.Type == "/cosmwasm.wasm.v1.MsgExecuteContract" {
+			return msg.Sender, nil
 		}
 	}
 
