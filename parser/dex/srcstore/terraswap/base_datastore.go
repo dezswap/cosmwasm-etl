@@ -105,8 +105,15 @@ func (r *baseRawDataStoreImpl) GetSourceTxs(height uint64) (parser.RawTxs, error
 			return nil, errors.Wrap(err, "baseRawDataStoreImpl.GetSourceTxs")
 		}
 
+		logTypeAttrsMap := make(map[eventlog.LogType]eventlog.Attributes)
 		for _, log := range logs {
-			tx.LogResults = append(tx.LogResults, log.Events...)
+			for _, event := range log.Events {
+				logTypeAttrsMap[event.Type] = append(logTypeAttrsMap[event.Type], event.Attributes...)
+			}
+		}
+
+		for t, attrs := range logTypeAttrsMap {
+			tx.LogResults = append(tx.LogResults, eventlog.LogResult{Type: t, Attributes: attrs})
 		}
 
 		for _, lr := range tx.LogResults {
@@ -127,6 +134,7 @@ func (r *baseRawDataStoreImpl) GetSourceTxs(height uint64) (parser.RawTxs, error
 		}
 		rawTxs = append(rawTxs, tx)
 	}
+
 	return rawTxs, nil
 }
 
