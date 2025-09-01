@@ -1,0 +1,71 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  ECR_REPOSITORY: cosmwasm-etl
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    name: build and deploy the app
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Check if tag commit is on main branch
+        id: check_branch
+        run: |
+          branches_containing_tag=$(git branch -r --contains ${{ github.ref }} --format "%(refname:lstrip=3)")
+          echo "Branches containing tag: $branches_containing_tag"
+
+          if echo "$branches_containing_tag" | grep -Eq "^(origin/)?ci/refactoring"; then
+            # get version from tag
+            GIT_TAG=$(echo "${{ github.ref }}" | sed 's|refs/tags/v||')
+            echo "tag=$GIT_TAG" >> $GITHUB_OUTPUT
+            echo "run_next_job=true" >> $GITHUB_OUTPUT
+          else
+            echo "The tag commit is NOT on main branch. Exiting."
+            echo "run_next_job=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        if: ${{ steps.check_branch.outputs.run_next_job == 'true' }}
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-session-name: cosmwasm-etl-deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2.0.1
+
+      - name: Build, tag, and push image to Amazon ECR
+        id: build-image
+        working-directory: .
+        env:
+          IMAGE_TAG: ${{ steps.check_branch.outputs.tag }}
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          for app_type in collector parser-dex aggregator; do
+            echo "Building for $app_type"
+            APP_PATH=$(echo ${{inputs.app_type}} | tr '-' '/')
+            docker build \
+            --build-arg APP_PATH=$APP_PATH --no-cache \
+            -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}/$app_type:latest \
+            -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}/$app_type:${IMAGE_TAG} .
+            docker image push -a $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}/$app_type
+          done
