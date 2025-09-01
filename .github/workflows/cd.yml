@@ -35,10 +35,7 @@ env:
   # AWS
   ECR_REPOSITORY: cosmwasm-etl
   ECS_CLUSTER: cosmwasm-etl
-
-  GIT_COMMIT: ${{ github.sha }}
   TARGET: ${{ format('{0}-cosmwasm-etl-{1}', github.event.inputs.network, github.event.inputs.app_type) }}
-  CONFIG_NAME: ${{ format('{0}_{1}_CONFIG', github.event.inputs.network, github.event.inputs.app_type) }}
 
 permissions:
   id-token: write
@@ -48,55 +45,31 @@ jobs:
   deploy:
     name: build and deploy the app
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
     environment: production
     steps:
-      - name: Shortten commit hash
-        run: |
-          echo "GIT_COMMIT=${GIT_COMMIT::7}" >> $GITHUB_ENV
-          # to Upper case
-          echo "CONFIG_NAME=$(echo "$CONFIG_NAME" | tr '-' '_' | tr '[:lower:]' '[:upper:]')" >> $GITHUB_ENV
-
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+
+      - name: Check if ref is a tag and extract version
+        id: check-tag
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            GIT_TAG=$(echo "${{ github.ref }}" | sed 's|refs/tags/v||')
+            echo "tag=${GIT_TAG}" >> "$GITHUB_OUTPUT"
+            echo "run_next_job=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "This workflow must be triggered by a tag ref (refs/tags/*)."
+            echo "run_next_job=false" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
+        if: ${{ steps.check-tag.outputs.run_next_job == 'true' }}
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           role-session-name: cosmwasm-etl-deploy
           aws-region: ${{ inputs.region }}
-
-
-      - name: Login to Amazon ECR
-        id: login-ecr-deps
-        uses: aws-actions/amazon-ecr-login@v2.0.1
-
-      - name: Pull dependency image
-        id: pull
-        working-directory: .
-        run: |
-          docker pull  ${{ steps.login-ecr-deps.outputs.registry }}/$ECR_REPOSITORY:deps-${{env.GIT_COMMIT}}
-
-      - name: Build the app, tag and push image
-        id: build
-        working-directory: .
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr-deps.outputs.registry }}
-          CONFIG: ${{ secrets[env.CONFIG_NAME] }}
-        run: |
-          IMAGE_TAG=${{inputs.app_type}}-${{env.GIT_COMMIT}}
-          echo "${CONFIG}" > config.yaml
-
-          APP_PATH=$(echo ${{inputs.app_type}} | tr '-' '/')
-          docker build \
-            --build-arg BUILD_BASE_IMAGE="${{ steps.login-ecr-deps.outputs.registry }}/$ECR_REPOSITORY:deps-${{env.GIT_COMMIT}}" \
-            --build-arg APP_PATH=$APP_PATH \
-            --no-cache -t $ECR_REGISTRY/$ECR_REPOSITORY:${{env.TARGET}} -t $ECR_REGISTRY/$ECR_REPOSITORY:${IMAGE_TAG} .
-
-           docker image push -a $ECR_REGISTRY/$ECR_REPOSITORY
-
-           echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
 
       - name: Download Task Definition
         id: download-task-definition
@@ -110,7 +83,7 @@ jobs:
         with:
           task-definition: ./${{ env.TARGET }}.json
           container-name: ${{ env.TARGET }}
-          image: ${{ steps.login-ecr-deps.outputs.registry }}/${{ env.ECR_REPOSITORY}}:${{ env.TARGET }}
+          image: ${{ steps.login-ecr-deps.outputs.registry }}/${{ env.ECR_REPOSITORY}}/${{ github.event.inputs.app_type }}:${{ steps.check-tag.outputs.tag }}
 
       - name: Deploy Amazon ECS task definition
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
