@@ -93,7 +93,7 @@ endif
 # Apply https://github.com/golangci/golangci-lint to changes since forked from master branch
 .PHONY: lint
 lint:
-	golangci-lint run --timeout=5m --enable=unparam --enable=misspell --enable=prealloc --tests=false
+	golangci-lint run
 
 # Remove all compiled binaries from the directory
 .PHONY: clean

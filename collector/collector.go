@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
+	tendermintType "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/pkg/errors"
-	tendermintType "github.com/tendermint/tendermint/proto/tendermint/types"
 
 	"github.com/dezswap/cosmwasm-etl/collector/datastore"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"

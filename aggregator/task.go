@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/cosmos/cosmos-sdk/types"
+	cmath "cosmossdk.io/math"
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/pkg/dex/price"
 	"github.com/dezswap/cosmwasm-etl/pkg/dex/router"
@@ -140,7 +140,7 @@ func (t *lpHistoryTask) Execute(_ time.Time, _ time.Time) error {
 func (t lpHistoryTask) generateHistory(latestLpMap map[uint64][]string, txs []schemas.ParsedTxWithPrice) ([]schemas.LpHistory, error) {
 	history := []schemas.LpHistory{}
 
-	pairIdLpHistoryMap := make(map[uint64][2]types.Dec)
+	pairIdLpHistoryMap := make(map[uint64][2]cmath.LegacyDec)
 
 	var currLpHistory schemas.LpHistory
 	currHeight := uint64(0)
@@ -164,11 +164,11 @@ func (t lpHistoryTask) generateHistory(latestLpMap map[uint64][]string, txs []sc
 			}
 		}
 
-		volume0, err := types.NewDecFromStr(tx.Asset0Amount)
+		volume0, err := cmath.LegacyNewDecFromStr(tx.Asset0Amount)
 		if err != nil {
 			return nil, errors.Wrap(err, "lpHistoryTask.generateHistory")
 		}
-		volume1, err := types.NewDecFromStr(tx.Asset1Amount)
+		volume1, err := cmath.LegacyNewDecFromStr(tx.Asset1Amount)
 		if err != nil {
 			return nil, errors.Wrap(err, "lpHistoryTask.generateHistory")
 		}
@@ -177,17 +177,17 @@ func (t lpHistoryTask) generateHistory(latestLpMap map[uint64][]string, txs []sc
 		if !ok {
 			// initialize with the latest lp
 			if latestLp, ok := latestLpMap[tx.PairId]; ok {
-				lp[repo.Liquidity0], err = types.NewDecFromStr(latestLp[repo.Liquidity0])
+				lp[repo.Liquidity0], err = cmath.LegacyNewDecFromStr(latestLp[repo.Liquidity0])
 				if err != nil {
 					return nil, errors.Wrap(err, "lpHistoryTask.generateHistory")
 				}
-				lp[repo.Liquidity1], err = types.NewDecFromStr(latestLp[repo.Liquidity1])
+				lp[repo.Liquidity1], err = cmath.LegacyNewDecFromStr(latestLp[repo.Liquidity1])
 				if err != nil {
 					return nil, errors.Wrap(err, "lpHistoryTask.generateHistory")
 				}
 			} else {
-				lp[repo.Liquidity0] = types.ZeroDec()
-				lp[repo.Liquidity1] = types.ZeroDec()
+				lp[repo.Liquidity0] = cmath.LegacyZeroDec()
+				lp[repo.Liquidity1] = cmath.LegacyZeroDec()
 			}
 		}
 
@@ -388,18 +388,18 @@ func (t pairStatsRecentUpdateTask) generateStats(txs []schemas.ParsedTxWithPrice
 	type pairStat struct {
 		PairId             uint64
 		ChainId            string
-		Volume0            types.Dec
-		Volume1            types.Dec
-		Volume0InPrice     types.Dec
-		Volume1InPrice     types.Dec
-		Liquidity0         types.Dec
-		Liquidity1         types.Dec
-		Liquidity0InPrice  types.Dec
-		Liquidity1InPrice  types.Dec
-		Commission0        types.Dec
-		Commission1        types.Dec
-		Commission0InPrice types.Dec
-		Commission1InPrice types.Dec
+		Volume0            cmath.LegacyDec
+		Volume1            cmath.LegacyDec
+		Volume0InPrice     cmath.LegacyDec
+		Volume1InPrice     cmath.LegacyDec
+		Liquidity0         cmath.LegacyDec
+		Liquidity1         cmath.LegacyDec
+		Liquidity0InPrice  cmath.LegacyDec
+		Liquidity1InPrice  cmath.LegacyDec
+		Commission0        cmath.LegacyDec
+		Commission1        cmath.LegacyDec
+		Commission0InPrice cmath.LegacyDec
+		Commission1InPrice cmath.LegacyDec
 		Height             uint64
 		Timestamp          float64
 	}
@@ -417,38 +417,38 @@ func (t pairStatsRecentUpdateTask) generateStats(txs []schemas.ParsedTxWithPrice
 			return nil, errors.Wrap(err, "pairStatsRecentUpdateTask.generateStats")
 		}
 
-		decimal0 := types.NewDec(10).Power(uint64(tx.Decimals0))
-		decimal1 := types.NewDec(10).Power(uint64(tx.Decimals1))
+		decimal0 := cmath.LegacyNewDec(10).Power(uint64(tx.Decimals0))
+		decimal1 := cmath.LegacyNewDec(10).Power(uint64(tx.Decimals1))
 
-		volume0, err := types.NewDecFromStr(tx.Asset0Amount)
+		volume0, err := cmath.LegacyNewDecFromStr(tx.Asset0Amount)
 		if err != nil {
 			return nil, errors.Wrap(err, "pairStatsRecentUpdateTask.generateStats")
 		}
 		volume0InPrice := volume0.Quo(decimal0).Mul(price0)
 
-		volume1, err := types.NewDecFromStr(tx.Asset1Amount)
+		volume1, err := cmath.LegacyNewDecFromStr(tx.Asset1Amount)
 		if err != nil {
 			return nil, errors.Wrap(err, "pairStatsRecentUpdateTask.generateStats")
 		}
 		volume1InPrice := volume1.Quo(decimal1).Mul(price1)
 
-		liquidity0, err := types.NewDecFromStr(tx.Asset0Liquidity)
+		liquidity0, err := cmath.LegacyNewDecFromStr(tx.Asset0Liquidity)
 		if err != nil {
 			return nil, errors.Wrap(err, "pairStatsRecentUpdateTask.generateStats")
 		}
 
-		liquidity1, err := types.NewDecFromStr(tx.Asset1Liquidity)
+		liquidity1, err := cmath.LegacyNewDecFromStr(tx.Asset1Liquidity)
 		if err != nil {
 			return nil, errors.Wrap(err, "pairStatsRecentUpdateTask.generateStats")
 		}
 
-		commission0, err := types.NewDecFromStr(tx.Commission0Amount)
+		commission0, err := cmath.LegacyNewDecFromStr(tx.Commission0Amount)
 		if err != nil {
 			return nil, errors.Wrap(err, "pairStatsRecentUpdateTask.generateStats")
 		}
 		commission0InPrice := commission0.Quo(decimal0).Mul(price0)
 
-		commission1, err := types.NewDecFromStr(tx.Commission1Amount)
+		commission1, err := cmath.LegacyNewDecFromStr(tx.Commission1Amount)
 		if err != nil {
 			return nil, errors.Wrap(err, "pairStatsRecentUpdateTask.generateStats")
 		}
@@ -546,10 +546,10 @@ func (t pairStatsRecentUpdateTask) generateStats(txs []schemas.ParsedTxWithPrice
 	return stats, nil
 }
 
-func (t pairStatsRecentUpdateTask) searchPrice(tokenIdStr string, targetHeight uint64, priceMap map[uint64][]schemas.Price) (types.Dec, error) {
+func (t pairStatsRecentUpdateTask) searchPrice(tokenIdStr string, targetHeight uint64, priceMap map[uint64][]schemas.Price) (cmath.LegacyDec, error) {
 	tokenId, err := strconv.ParseUint(tokenIdStr, 10, 64)
 	if err != nil {
-		return types.ZeroDec(), err
+		return cmath.LegacyZeroDec(), err
 	}
 	priceStr := "0"
 	if ps, ok := priceMap[tokenId]; ok {
@@ -560,9 +560,9 @@ func (t pairStatsRecentUpdateTask) searchPrice(tokenIdStr string, targetHeight u
 			priceStr = p.Price
 		}
 	}
-	price, err := types.NewDecFromStr(priceStr)
+	price, err := cmath.LegacyNewDecFromStr(priceStr)
 	if err != nil {
-		return types.ZeroDec(), errors.Wrap(err, "pairStatsRecentUpdateTask.searchPrice")
+		return cmath.LegacyZeroDec(), errors.Wrap(err, "pairStatsRecentUpdateTask.searchPrice")
 	}
 
 	return price, nil

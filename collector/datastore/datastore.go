@@ -9,17 +9,17 @@ import (
 	"strconv"
 	"strings"
 
-	grpc1 "github.com/gogo/protobuf/grpc"
+	grpc1 "github.com/cosmos/gogoproto/grpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 
+	tendermintType "github.com/cometbft/cometbft/proto/tendermint/types"
 	grpctypes "github.com/cosmos/cosmos-sdk/types/grpc"
 	"github.com/pkg/errors"
-	tendermintType "github.com/tendermint/tendermint/proto/tendermint/types"
 
 	// cosmos.base.tendermint.v1beta1
 	wasm "github.com/CosmWasm/wasmd/x/wasm/types"
-	tmservice "github.com/cosmos/cosmos-sdk/client/grpc/tmservice"
+	tmservice "github.com/cosmos/cosmos-sdk/client/grpc/cmtservice"
 	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	cryptocodec "github.com/cosmos/cosmos-sdk/crypto/codec"
@@ -30,15 +30,15 @@ import (
 	bank "github.com/cosmos/cosmos-sdk/x/bank/types"
 
 	// v1beta1 "github.com/cosmos/cosmos-sdk/x/base/"
+	evidence "cosmossdk.io/x/evidence/types"
+	feegrant "cosmossdk.io/x/feegrant"
+	upgrade "cosmossdk.io/x/upgrade/types"
 	crisis "github.com/cosmos/cosmos-sdk/x/crisis/types"
 	distribution "github.com/cosmos/cosmos-sdk/x/distribution/types"
-	evidence "github.com/cosmos/cosmos-sdk/x/evidence/types"
-	feegrant "github.com/cosmos/cosmos-sdk/x/feegrant"
-	gov "github.com/cosmos/cosmos-sdk/x/gov/types"
+	gov "github.com/cosmos/cosmos-sdk/x/gov/types/v1"
 	proposal "github.com/cosmos/cosmos-sdk/x/params/types/proposal"
 	slashing "github.com/cosmos/cosmos-sdk/x/slashing/types"
 	staking "github.com/cosmos/cosmos-sdk/x/staking/types"
-	upgrade "github.com/cosmos/cosmos-sdk/x/upgrade/types"
 
 	"github.com/dezswap/cosmwasm-etl/configs"
 	grpcConn "github.com/dezswap/cosmwasm-etl/pkg/grpc"
@@ -133,7 +133,7 @@ func (store *dataStoreImpl) GetNodeSyncedHeight() (int64, error) {
 		return 0, errors.Wrap(err, "dataStoreImpl.GetNodeSyncedHeight")
 	}
 
-	return res.Block.Header.Height, nil
+	return res.SdkBlock.Header.Height, nil
 }
 
 // get latest processed block number

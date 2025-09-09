@@ -1,9 +1,9 @@
-ARG GO_VERSION="1.20.10"
+ARG GO_VERSION="1.21"
 ARG BASE_IMAGE="golang:${GO_VERSION}-alpine"
 
 ### BUILD
 FROM ${BASE_IMAGE} AS build
-ARG LIBWASMVM_VERSION=v1.0.0
+ARG LIBWASMVM_VERSION=v2.1.4
 # required argument: one of("aggregator", "collector", "parser/dex")
 ARG APP_PATH
 
@@ -27,8 +27,8 @@ COPY . .
 # See https://github.com/CosmWasm/wasmvm/releases
 ADD https://github.com/CosmWasm/wasmvm/releases/download/${LIBWASMVM_VERSION}/libwasmvm_muslc.aarch64.a /lib/libwasmvm_muslc.aarch64.a
 ADD https://github.com/CosmWasm/wasmvm/releases/download/${LIBWASMVM_VERSION}/libwasmvm_muslc.x86_64.a /lib/libwasmvm_muslc.x86_64.a
-RUN sha256sum /lib/libwasmvm_muslc.aarch64.a | grep 7d2239e9f25e96d0d4daba982ce92367aacf0cbd95d2facb8442268f2b1cc1fc
-RUN sha256sum /lib/libwasmvm_muslc.x86_64.a | grep f6282df732a13dec836cda1f399dd874b1e3163504dbd9607c6af915b2740479
+RUN sha256sum /lib/libwasmvm_muslc.aarch64.a | grep 090b97641157fae1ae45e7ed368a1a8c091f3fef67958d3bc7c2fa7e7c54b6b4
+RUN sha256sum /lib/libwasmvm_muslc.x86_64.a | grep a4a3d09b36fabb65b119d5ba23442c23694401fcbee4451fe6b7e22e325a4bac
 RUN cp /lib/libwasmvm_muslc.`uname -m`.a /lib/libwasmvm_muslc.a
 
 # Build the app

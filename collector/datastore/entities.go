@@ -1,10 +1,11 @@
 package datastore
 
 import (
+	"cosmossdk.io/math"
+	abcitypes "github.com/cometbft/cometbft/abci/types"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	cosmossdk "github.com/cosmos/cosmos-sdk/types"
 	txtypes "github.com/cosmos/cosmos-sdk/types/tx"
-	abcitypes "github.com/tendermint/tendermint/abci/types"
 	"sigs.k8s.io/yaml"
 )
 
@@ -140,17 +141,17 @@ func (assets *AssetInfo) GetInfo() *AssetInfoWithType {
 
 type PoolInfo struct {
 	Assets     [2]PoolAssetInfo `json:"assets"`
-	TotalShare *cosmossdk.Int   `json:"total_share"`
+	TotalShare *math.Int        `json:"total_share"`
 }
 
 type PoolAssetInfo struct {
-	Info   AssetInfo      `json:"info"`
-	Amount *cosmossdk.Int `json:"amount"`
+	Info   AssetInfo `json:"info"`
+	Amount *math.Int `json:"amount"`
 }
 
 type PoolAssetInfoWithType struct {
 	Info   *AssetInfoWithType `json:"info"`
-	Amount *cosmossdk.Int     `json:"amount"`
+	Amount *math.Int          `json:"amount"`
 }
 
 func (pool *PoolAssetInfo) GetInfo() *PoolAssetInfoWithType {
@@ -162,7 +163,7 @@ func (pool *PoolAssetInfo) GetInfo() *PoolAssetInfoWithType {
 
 type PoolInfoDTO struct {
 	Assets     [2]PoolAssetInfoWithType `json:"assets"`
-	TotalShare *cosmossdk.Int           `json:"total_share"`
+	TotalShare *math.Int                `json:"total_share"`
 }
 
 func (pool *PoolInfo) Convert() *PoolInfoDTO {

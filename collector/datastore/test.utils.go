@@ -1,9 +1,9 @@
 package datastore
 
 import (
+	"cosmossdk.io/math"
 	"math/rand"
 
-	"github.com/cosmos/cosmos-sdk/types"
 	"github.com/dezswap/cosmwasm-etl/pkg/faker"
 	"github.com/stretchr/testify/mock"
 )
@@ -21,10 +21,10 @@ func FakePoolInfoList() PoolInfoList {
 	_ = faker.FakeData(&poolInfos)
 
 	for _, pool := range poolInfos.Pairs {
-		share := types.NewInt(rand.Int63())
+		share := math.NewInt(rand.Int63())
 		pool.TotalShare = &share
 		for _, asset := range pool.Assets {
-			amount := types.NewInt(rand.Int63())
+			amount := math.NewInt(rand.Int63())
 			asset.Amount = &amount
 		}
 	}

@@ -1,13 +1,13 @@
 package price
 
 import (
+	"cosmossdk.io/math"
 	"github.com/pkg/errors"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/cosmos/cosmos-sdk/types"
 	"github.com/dezswap/cosmwasm-etl/pkg/db/schemas"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 	"github.com/dezswap/cosmwasm-etl/pkg/util"
@@ -158,14 +158,14 @@ func (p *priceImpl) updateDirectSwapPrice(tx schemas.ParsedTx) error {
 	return nil
 }
 
-func (p *priceImpl) calculatePrice(asset0Amount string, asset0Decimals int64, asset1Amount string, asset1Decimals int64, isReverse bool) (types.Dec, error) {
+func (p *priceImpl) calculatePrice(asset0Amount string, asset0Decimals int64, asset1Amount string, asset1Decimals int64, isReverse bool) (math.LegacyDec, error) {
 	asset0AmountD, err := util.StringAmountToDecimal(asset0Amount, asset0Decimals)
 	if err != nil {
-		return types.Dec{}, err
+		return math.LegacyDec{}, err
 	}
 	asset1AmountD, err := util.StringAmountToDecimal(asset1Amount, asset1Decimals)
 	if err != nil {
-		return types.Dec{}, err
+		return math.LegacyDec{}, err
 	}
 
 	if isReverse {
@@ -293,12 +293,12 @@ func (p *priceImpl) updateIndirectSwapPrice(tx schemas.ParsedTx) error {
 	return nil
 }
 
-func (p *priceImpl) optimalRoutePrice(height uint64, token string, decimals int64) ([]string, types.Dec, types.Dec, error) {
+func (p *priceImpl) optimalRoutePrice(height uint64, token string, decimals int64) ([]string, math.LegacyDec, math.LegacyDec, error) {
 	var optimalRoute []string
-	optimalPrice := types.ZeroDec()
-	optimalRouteLiquidity := types.ZeroDec()
+	optimalPrice := math.LegacyZeroDec()
+	optimalRouteLiquidity := math.LegacyZeroDec()
 
-	var optimalRouteLiquidities []types.Dec
+	var optimalRouteLiquidities []math.LegacyDec
 
 	routes, ok := p.priceRoutes[token]
 	if !ok {
@@ -308,7 +308,7 @@ func (p *priceImpl) optimalRoutePrice(height uint64, token string, decimals int6
 	for _, route := range routes {
 		price, liquidities, err := p.calculateRoutePrice(height, route, token, decimals)
 		if err != nil {
-			return nil, types.Dec{}, types.Dec{}, err
+			return nil, math.LegacyDec{}, math.LegacyDec{}, err
 		}
 		if price.IsZero() {
 			// pair exists without any liquidities
@@ -322,7 +322,7 @@ func (p *priceImpl) optimalRoutePrice(height uint64, token string, decimals int6
 			continue
 		}
 
-		var tmpLiquidities []types.Dec
+		var tmpLiquidities []math.LegacyDec
 		if len(liquidities) == len(optimalRouteLiquidities) {
 			tmpLiquidities = liquidities
 		} else {
@@ -355,9 +355,9 @@ func (p *priceImpl) optimalRoutePrice(height uint64, token string, decimals int6
 	return optimalRoute, optimalPrice, optimalRouteLiquidity, nil
 }
 
-func (p *priceImpl) calculateRoutePrice(height uint64, route []string, token string, decimals int64) (types.Dec, []types.Dec, error) {
-	liquiditiesInPriceToken := make([]types.Dec, 0)
-	price := types.OneDec()
+func (p *priceImpl) calculateRoutePrice(height uint64, route []string, token string, decimals int64) (math.LegacyDec, []math.LegacyDec, error) {
+	liquiditiesInPriceToken := make([]math.LegacyDec, 0)
+	price := math.LegacyOneDec()
 
 	decimals1 := p.tokenDecimals[p.priceToken]
 
@@ -372,34 +372,34 @@ func (p *priceImpl) calculateRoutePrice(height uint64, route []string, token str
 			var err error
 			decimals0, err = p.decimals(asset0)
 			if err != nil {
-				return types.Dec{}, nil, errors.Wrap(err, strings.Join([]string{
+				return math.LegacyDec{}, nil, errors.Wrap(err, strings.Join([]string{
 					"priceImpl.calculateRoutePrice: (Height: ", strconv.FormatUint(height, 10), ")"}, ""))
 			}
 		}
 
 		liquidity0, liquidity1, err := p.repo.Liquidity(height, asset0, asset1)
 		if err != nil {
-			return types.Dec{}, nil, errors.Wrap(err, strings.Join([]string{
+			return math.LegacyDec{}, nil, errors.Wrap(err, strings.Join([]string{
 				"priceImpl.calculateRoutePrice: (Height: ", strconv.FormatUint(height, 10), ")"}, ""))
 		}
 		liquidity0D, err := util.StringAmountToDecimal(liquidity0, decimals0)
 		if err != nil {
-			return types.Dec{}, nil, errors.Wrap(err, strings.Join([]string{
+			return math.LegacyDec{}, nil, errors.Wrap(err, strings.Join([]string{
 				"priceImpl.calculateRoutePrice: (Height: ", strconv.FormatUint(height, 10), ")"}, ""))
 		}
 		liquidity1D, err := util.StringAmountToDecimal(liquidity1, decimals1)
 		if err != nil {
-			return types.Dec{}, nil, errors.Wrap(err, strings.Join([]string{
+			return math.LegacyDec{}, nil, errors.Wrap(err, strings.Join([]string{
 				"priceImpl.calculateRoutePrice: (Height: ", strconv.FormatUint(height, 10), ")"}, ""))
 		}
 
 		if liquidity0D.LT(liquidityLowerThreshold) || liquidity1D.LT(liquidityLowerThreshold) {
-			return types.ZeroDec(), nil, nil
+			return math.LegacyZeroDec(), nil, nil
 		}
 
 		liquidityInPriceToken := liquidity1D.MulInt64(2).Mul(price)
 		price = liquidity1D.Quo(liquidity0D).Mul(price)
-		liquiditiesInPriceToken = append([]types.Dec{liquidityInPriceToken}, liquiditiesInPriceToken...)
+		liquiditiesInPriceToken = append([]math.LegacyDec{liquidityInPriceToken}, liquiditiesInPriceToken...)
 
 		decimals1 = decimals0
 	}
