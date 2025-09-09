@@ -1,10 +1,11 @@
 ARG GO_VERSION="1.20.10"
 ARG BASE_IMAGE="golang:${GO_VERSION}-alpine"
-ARG BUILD_BASE_IMAGE="deps"
 
 ### BUILD
-FROM ${BASE_IMAGE} AS deps
+FROM ${BASE_IMAGE} AS build
 ARG LIBWASMVM_VERSION=v1.0.0
+# required argument: one of("aggregator", "collector", "parser/dex")
+ARG APP_PATH
 
 WORKDIR /app
 
@@ -31,12 +32,6 @@ RUN sha256sum /lib/libwasmvm_muslc.x86_64.a | grep f6282df732a13dec836cda1f399dd
 RUN cp /lib/libwasmvm_muslc.`uname -m`.a /lib/libwasmvm_muslc.a
 
 # Build the app
-FROM ${BUILD_BASE_IMAGE} AS build
-# required argument: one of("aggregator", "collector", "parser")
-ARG APP_PATH
-ENV APP_PATH ${APP_PATH}
-COPY ./config.yaml /app/config.yaml
-
 RUN go build -mod=readonly -tags "netgo muslc" \
             -ldflags "-X github.com/cosmos/cosmos-sdk/version.BuildTags='netgo,muslc' \
             -w -s -linkmode=external -extldflags '-Wl,-z,muldefs -static'" \
@@ -48,7 +43,6 @@ WORKDIR /app
 
 # Import the user and group files to run the app as an unpriviledged user
 COPY --from=build /etc/passwd /etc/passwd
-COPY --from=build /app/config.yaml /app/config.yaml
 
 # Use an unprivileged user
 USER appuser
