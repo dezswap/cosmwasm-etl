@@ -8,16 +8,16 @@ import (
 	"testing"
 	"time"
 
-	grpc1 "github.com/gogo/protobuf/grpc"
+	grpc1 "github.com/cosmos/gogoproto/grpc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"google.golang.org/grpc"
 
 	wasm "github.com/CosmWasm/wasmd/x/wasm/types"
+	tendermintType "github.com/cometbft/cometbft/proto/tendermint/types"
 	cryptocodec "github.com/cosmos/cosmos-sdk/crypto/codec"
 	"github.com/cosmos/cosmos-sdk/types"
 	txtypes "github.com/cosmos/cosmos-sdk/types/tx"
-	tendermintType "github.com/tendermint/tendermint/proto/tendermint/types"
 
 	"github.com/dezswap/cosmwasm-etl/collector/datastore"
 	"github.com/dezswap/cosmwasm-etl/configs"
@@ -257,6 +257,34 @@ func (s *serviceClientMock) Codes(ctx context.Context, in *wasm.QueryCodesReques
 
 func (s *serviceClientMock) PinnedCodes(ctx context.Context, in *wasm.QueryPinnedCodesRequest, opts ...grpc.CallOption) (*wasm.QueryPinnedCodesResponse, error) {
 	panic("unimplemented")
+}
+
+func (s *serviceClientMock) Params(ctx context.Context, in *wasm.QueryParamsRequest, opts ...grpc.CallOption) (*wasm.QueryParamsResponse, error) {
+	panic("implement me")
+}
+
+func (s *serviceClientMock) ContractsByCreator(ctx context.Context, in *wasm.QueryContractsByCreatorRequest, opts ...grpc.CallOption) (*wasm.QueryContractsByCreatorResponse, error) {
+	panic("implement me")
+}
+
+func (s *serviceClientMock) BuildAddress(ctx context.Context, in *wasm.QueryBuildAddressRequest, opts ...grpc.CallOption) (*wasm.QueryBuildAddressResponse, error) {
+	panic("implement me")
+}
+
+func (s *serviceClientMock) TxDecode(ctx context.Context, in *txtypes.TxDecodeRequest, opts ...grpc.CallOption) (*txtypes.TxDecodeResponse, error) {
+	panic("implement me")
+}
+
+func (s *serviceClientMock) TxEncode(ctx context.Context, in *txtypes.TxEncodeRequest, opts ...grpc.CallOption) (*txtypes.TxEncodeResponse, error) {
+	panic("implement me")
+}
+
+func (s *serviceClientMock) TxEncodeAmino(ctx context.Context, in *txtypes.TxEncodeAminoRequest, opts ...grpc.CallOption) (*txtypes.TxEncodeAminoResponse, error) {
+	panic("implement me")
+}
+
+func (s *serviceClientMock) TxDecodeAmino(ctx context.Context, in *txtypes.TxDecodeAminoRequest, opts ...grpc.CallOption) (*txtypes.TxDecodeAminoResponse, error) {
+	panic("implement me")
 }
 
 type s3ClientMock struct {

@@ -2,10 +2,10 @@ package srcstore
 
 import (
 	"github.com/aws/smithy-go/time"
+	"github.com/cometbft/cometbft/abci/types"
 	"github.com/dezswap/cosmwasm-etl/collector/datastore"
 	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
-	"github.com/tendermint/tendermint/abci/types"
 )
 
 type Mapper interface {

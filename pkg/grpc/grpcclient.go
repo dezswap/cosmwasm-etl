@@ -115,7 +115,7 @@ func (c *serviceDescImpl) GetConnectionWithContext(ctx context.Context, opts ...
 	}))
 
 	logger.Info("dial [", c.alias, "]: ", dest)
-	conn, err := grpc.DialContext(ctx, dest, options...)
+	conn, err := grpc.NewClient(dest, options...)
 	if err != nil {
 		// It is very likely unreachable code under non-blocking dialing
 		logger.Panic("cannot connect to gRPC server:", err)
