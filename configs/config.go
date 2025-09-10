@@ -34,7 +34,14 @@ type Config struct {
 
 // Init is explicit initializer for Config
 func New() Config {
-	v := initViper(fileName)
+	v, err := initViper(fileName)
+	if err != nil {
+		var notFound viper.ConfigFileNotFoundError
+		if !errors.As(err, &notFound) {
+			panic(err)
+		}
+	}
+
 	envConfig = Config{
 		Aggregator: aggregatorConfig(v),
 		Collector:  collectorConfig(v),
@@ -44,11 +51,22 @@ func New() Config {
 		Rdb:        rdbConfig(v),
 		S3:         s3Config(v),
 	}
+
+	// common configuration for collector/parser/aggregator
+	// check env variables have been set when no file exists
+	if envConfig.Log.ChainId == "" || envConfig.Log.Environment == "" {
+		panic(err)
+	}
+
 	return envConfig
 }
 
 func NewWithFileName(fileName string) Config {
-	v := initViper(fileName)
+	v, err := initViper(fileName)
+	if err != nil {
+		panic(err)
+	}
+
 	envConfig = Config{
 		Aggregator: aggregatorConfig(v),
 		Collector:  collectorConfig(v),
@@ -66,23 +84,25 @@ func Get() Config {
 	return envConfig
 }
 
-func initViper(configName string) *viper.Viper {
+func initViper(configName string) (*viper.Viper, error) {
 	v := viper.New()
 	v.SetConfigName(configName)
 
 	if basepath == "" {
-		panic(errors.New("package root path is not initialized"))
+		return nil, errors.New("package root path is not initialized")
 	}
 	v.AddConfigPath(fmt.Sprintf("%s/../", basepath))
 	v.AddConfigPath(".") // optionally look for config in the working directory
-
-	if err := v.ReadInConfig(); err != nil {
-		panic(err)
-	}
 
 	v.SetEnvPrefix(envPrefix)
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	// All env vars starts with APP_
 	v.AutomaticEnv()
-	return v
+
+	if err := v.ReadInConfig(); err != nil {
+		// check read fails once loading env var load
+		return v, err
+	}
+
+	return v, nil
 }

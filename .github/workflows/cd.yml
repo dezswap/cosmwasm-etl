@@ -71,6 +71,10 @@ jobs:
           role-session-name: cosmwasm-etl-deploy
           aws-region: ${{ inputs.region }}
 
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2.0.1
+
       - name: Download Task Definition
         id: download-task-definition
         working-directory: .
@@ -83,7 +87,7 @@ jobs:
         with:
           task-definition: ./${{ env.TARGET }}.json
           container-name: ${{ env.TARGET }}
-          image: ${{ steps.login-ecr-deps.outputs.registry }}/${{ env.ECR_REPOSITORY}}/${{ github.event.inputs.app_type }}:${{ steps.check-tag.outputs.tag }}
+          image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY}}/${{ github.event.inputs.app_type }}:${{ steps.check-tag.outputs.tag }}
 
       - name: Deploy Amazon ECS task definition
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
