@@ -9,7 +9,7 @@ func TestSortAttributes(t *testing.T) {
 	tests := []struct {
 		name     string
 		attrs    Attributes
-		filter   map[string]bool
+		filter   []string
 		expected *Attributes
 	}{
 		{
@@ -19,10 +19,10 @@ func TestSortAttributes(t *testing.T) {
 				{Key: "sender", Value: "terra1abcds"},
 				{Key: "amount", Value: "100uluna"},
 			},
-			filter: map[string]bool{
-				"amount":    true,
-				"recipient": true,
-				"sender":    true,
+			filter: []string{
+				"amount",
+				"recipient",
+				"sender",
 			},
 			expected: &Attributes{
 				{Key: "amount", Value: "100uluna"},
@@ -40,10 +40,10 @@ func TestSortAttributes(t *testing.T) {
 				{Key: "amount", Value: "100uluna"},
 				{Key: "assets", Value: "0"},
 			},
-			filter: map[string]bool{
-				"amount":    true,
-				"recipient": true,
-				"sender":    true,
+			filter: []string{
+				"amount",
+				"recipient",
+				"sender",
 			},
 			expected: &Attributes{
 				{Key: "amount", Value: "100uluna"},
@@ -64,10 +64,41 @@ func TestSortAttributes(t *testing.T) {
 				{Key: "sender", Value: "terra1abcdr"},
 				{Key: "amount", Value: "1uluna"},
 			},
-			filter: map[string]bool{
-				"amount":    true,
-				"recipient": true,
-				"sender":    true,
+			filter: []string{
+				"amount",
+				"recipient",
+				"sender",
+			},
+			expected: &Attributes{
+				{Key: "amount", Value: "100uluna"},
+				{Key: "recipient", Value: "terra1abcdr"},
+				{Key: "sender", Value: "terra1abcds"},
+				{Key: "amount", Value: "100uluna"},
+				{Key: "recipient", Value: "terra1abcdr2"},
+				{Key: "sender", Value: "terra1abcdr"},
+				{Key: "amount", Value: "1uluna"},
+				{Key: "recipient", Value: "terra1abcds"},
+				{Key: "sender", Value: "terra1abcdr"},
+			},
+		},
+		{
+			// https://finder.terra-classic.hexxagon.io/mainnet/tx/4E80262C9F94E11900D903D03646D75397B92B505B0850DB1E034EFB506FF964
+			name: "tc with multiple key sets 2",
+			attrs: Attributes{
+				{Key: "amount", Value: "100uluna"},
+				{Key: "recipient", Value: "terra1abcdr"},
+				{Key: "sender", Value: "terra1abcds"},
+				{Key: "amount", Value: "100uluna"},
+				{Key: "recipient", Value: "terra1abcdr2"},
+				{Key: "sender", Value: "terra1abcdr"},
+				{Key: "recipient", Value: "terra1abcds"},
+				{Key: "sender", Value: "terra1abcdr"},
+				{Key: "amount", Value: "1uluna"},
+			},
+			filter: []string{
+				"amount",
+				"recipient",
+				"sender",
 			},
 			expected: &Attributes{
 				{Key: "amount", Value: "100uluna"},

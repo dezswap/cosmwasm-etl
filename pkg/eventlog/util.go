@@ -7,14 +7,19 @@ import (
 	"github.com/pkg/errors"
 )
 
-func SortAttributes(attrs Attributes, filter map[string]bool) (*Attributes, error) {
+func SortAttributes(attrs Attributes, filter []string) (*Attributes, error) {
 	if len(filter) == 0 {
 		return nil, errors.New("filter must be provided")
 	}
 
+	order := make(map[string]int, len(filter))
+	for i, key := range filter {
+		order[key] = i
+	}
+
 	filtered := make(Attributes, 0, len(attrs))
 	for _, attr := range attrs {
-		if _, ok := filter[attr.Key]; ok {
+		if _, ok := order[attr.Key]; ok {
 			filtered = append(filtered, attr)
 		}
 	}
@@ -23,7 +28,7 @@ func SortAttributes(attrs Attributes, filter map[string]bool) (*Attributes, erro
 	end := len(filter)
 	for end <= len(filtered) {
 		sort.Slice(filtered[idx:end], func(i, j int) bool {
-			return filtered[idx:end][i].Key < attrs[j].Key
+			return order[filtered[idx:end][i].Key] < order[filtered[idx:end][j].Key]
 		})
 		idx = end
 		end = idx + len(filter)
