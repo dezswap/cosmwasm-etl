@@ -9,6 +9,7 @@ on:
 jobs:
   tests:
     runs-on: ubuntu-latest
+    environment: CI
     services:
       cosmwasm-etl-db:
         image: postgres
@@ -38,7 +39,7 @@ jobs:
     - name: Tests
       shell: bash
       run: |
-        touch config.yaml
+        echo "${{ secrets.CONFIG }}" > config.yaml
         make test
 
     - name: Migration Tests
