@@ -133,6 +133,11 @@ func (store *dataStoreImpl) GetNodeSyncedHeight() (int64, error) {
 		return 0, errors.Wrap(err, "dataStoreImpl.GetNodeSyncedHeight")
 	}
 
+	if res.SdkBlock == nil {
+		//nolint:staticcheck // using deprecated Block for compatibility
+		return res.Block.Header.Height, nil
+	}
+
 	return res.SdkBlock.Header.Height, nil
 }
 
