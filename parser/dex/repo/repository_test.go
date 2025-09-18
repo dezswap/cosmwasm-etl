@@ -193,12 +193,12 @@ func (s *insertSuite) SetFailMock() {
 func (s *insertSuite) Test_Insert() {
 	assert := assert.New(s.T())
 	s.SetSuccessMock()
-	err := s.Repo.Insert(s.height, s.parsedTxs, s.poolInfos, s.pairs)
+	err := s.Repo.Insert(s.height-1, s.height, s.parsedTxs, s.poolInfos, s.pairs)
 	assert.NoError(err)
 
 	s.SetFailMock()
 	s.pairs[0].ContractAddr = ""
-	err = s.Repo.Insert(s.height, s.parsedTxs, s.poolInfos, s.pairs)
+	err = s.Repo.Insert(s.height-1, s.height, s.parsedTxs, s.poolInfos, s.pairs)
 	assert.Error(err)
 }
 
