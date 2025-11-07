@@ -13,6 +13,7 @@ type RdbConfig struct {
 	Database string
 	Username string
 	Password string
+	SslMode  string
 }
 
 var defaultRdbConfig = RdbConfig{
@@ -21,6 +22,7 @@ var defaultRdbConfig = RdbConfig{
 	Database: "cosmwasm_etl",
 	Username: "app",
 	Password: "appPW",
+	SslMode:  "disable",
 }
 
 func rdbConfig(v *viper.Viper) RdbConfig {
@@ -30,6 +32,7 @@ func rdbConfig(v *viper.Viper) RdbConfig {
 		Database: v.GetString("rdb.database"),
 		Username: v.GetString("rdb.username"),
 		Password: v.GetString("rdb.password"),
+		SslMode:  v.GetString("rdb.sslmode"),
 	}
 	if c.Host == "" {
 		c.Host = defaultRdbConfig.Host
@@ -45,6 +48,9 @@ func rdbConfig(v *viper.Viper) RdbConfig {
 	}
 	if c.Password == "" {
 		c.Password = defaultRdbConfig.Password
+	}
+	if c.SslMode == "" {
+		c.SslMode = defaultRdbConfig.SslMode
 	}
 	return c
 }

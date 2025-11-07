@@ -191,6 +191,7 @@ func (s *baseSuite) SetupSuite() {
 		Database: "cosmwasm_etl",
 		Username: "app",
 		Password: "appPW",
+		SslMode:  "disable",
 	}
 }
 
