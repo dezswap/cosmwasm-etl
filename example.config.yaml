@@ -14,7 +14,7 @@ collector:
 parser:
   dex:
     chainId: # string
-    factoryAddress: #(optional) it is driven by chainId except terraswap. Terra classic(columbus) network has two factories of Terraswap.
+    factoryAddress: #string
     errTolerance: # uint
     targetApp: # dezswap, terraswap
     poolSnapshotInterval: # uint save pools' status every interval default 100

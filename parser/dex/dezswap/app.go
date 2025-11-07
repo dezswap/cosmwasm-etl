@@ -24,8 +24,8 @@ type dezswapApp struct {
 
 var _ dex.TargetApp = &dezswapApp{}
 
-func New(repo dex.PairRepo, _ logging.Logger, _ configs.ParserDexConfig, chainId string) (dex.TargetApp, error) {
-	finder, err := ds.CreateCreatePairRuleFinder(chainId)
+func New(repo dex.PairRepo, _ logging.Logger, c configs.ParserDexConfig, chainId string) (dex.TargetApp, error) {
+	finder, err := ds.CreateCreatePairRuleFinder(c.FactoryAddress)
 	if err != nil {
 		return nil, errors.Wrap(err, "dezswap.New")
 	}

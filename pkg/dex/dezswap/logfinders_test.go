@@ -13,10 +13,10 @@ func Test_CreateCreateLogFinder(t *testing.T) {
 	var logFinder eventlog.LogFinder
 	var eventLogs eventlog.LogResults
 	var err error
-	setUp := func(chainId, rawLogsStr string) {
+	setUp := func(factoryAddress, rawLogsStr string) {
 		logFinder = nil
 		eventLogs = eventlog.LogResults{}
-		logFinder, err = CreateCreatePairRuleFinder(chainId)
+		logFinder, err = CreateCreatePairRuleFinder(factoryAddress)
 		if err != nil {
 			panic(err)
 		}
@@ -26,22 +26,22 @@ func Test_CreateCreateLogFinder(t *testing.T) {
 	}
 
 	tcs := []struct {
-		chainId           string
+		factoryAddress    string
 		rawLogStr         string
 		expectedResultLen int
 		errMsg            string
 	}{
-		{TestnetPrefix, CreatePairRawLogStr, 1, "must match once"},
-		{TestnetPrefix, createTwiceLogStr, 2, "must match twice"},
-		{TestnetPrefix, differentTypeLogsStr, 0, "must not match with different type"},
-		{TestnetPrefix, "[]", 0, "must not match with empty logs"},
+		{FactoryAddress[TestnetPrefix], CreatePairRawLogStr, 1, "must match once"},
+		{FactoryAddress[TestnetPrefix], createTwiceLogStr, 2, "must match twice"},
+		{FactoryAddress[TestnetPrefix], differentTypeLogsStr, 0, "must not match with different type"},
+		{FactoryAddress[TestnetPrefix], "[]", 0, "must not match with empty logs"},
 	}
 
 	for idx, tc := range tcs {
 		errMsg := fmt.Sprintf("idx(%d): %s", idx, tc.errMsg)
 		assert := assert.New(t)
 
-		setUp(tc.chainId, tc.rawLogStr)
+		setUp(tc.factoryAddress, tc.rawLogStr)
 		matchedResults := logFinder.FindFromLogs(eventLogs)
 		assert.Len(matchedResults, tc.expectedResultLen, errMsg)
 		if tc.expectedResultLen > 0 {
