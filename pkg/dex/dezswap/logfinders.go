@@ -1,21 +1,12 @@
 package dezswap
 
 import (
-	"fmt"
-
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
-	"github.com/pkg/errors"
 )
 
-func CreateCreatePairRuleFinder(chainId string) (eventlog.LogFinder, error) {
-	factoryAddr := getFactoryAddress(chainId)
-	if factoryAddr == "" {
-		errMsg := fmt.Sprintf("no factory address: chainId(%s)", chainId)
-		return nil, errors.New(errMsg)
-	}
-
+func CreateCreatePairRuleFinder(factoryAddress string) (eventlog.LogFinder, error) {
 	rule := createPairRule
-	rule.Items[FactoryAddrIdx].Filter = factoryAddr
+	rule.Items[FactoryAddrIdx].Filter = factoryAddress
 
 	return eventlog.NewLogFinder(rule)
 }
