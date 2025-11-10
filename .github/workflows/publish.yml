@@ -6,8 +6,14 @@ on:
       - 'v*'
 
 env:
+  PROJECT_ID: cosmwasm-etl
+  # AWS
   AWS_REGION: ${{ secrets.AWS_REGION }}
-  ECR_REPOSITORY: cosmwasm-etl
+  # GCP
+  GCP_GAR_REPOSITORY: ${{ vars.GCP_GAR_REPOSITORY }}
+  GCP_REGION: ${{ vars.GCP_REGION }}
+  GCP_SERVICE_ACCOUNT_EMAIL: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
+  GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
 
 permissions:
   id-token: write
@@ -48,15 +54,15 @@ jobs:
           for app_type in collector parser-dex aggregator; do
             echo "Building for $app_type"
             APP_PATH=$(echo $app_type | tr '-' '/')
-            docker build --build-arg APP_PATH=$APP_PATH --no-cache -t ${{ env.ECR_REPOSITORY }}/$app_type:${IMAGE_TAG} .
-            docker save -o ${{ runner.temp }}/${{ env.ECR_REPOSITORY }}-$app_type.tar ${{ env.ECR_REPOSITORY }}/$app_type:${IMAGE_TAG}
+            docker build --build-arg APP_PATH=$APP_PATH --no-cache -t ${{ env.PROJECT_ID }}/$app_type:${IMAGE_TAG} .
+            docker save -o ${{ runner.temp }}/${{ env.PROJECT_ID }}-$app_type.tar ${{ env.PROJECT_ID }}/$app_type:${IMAGE_TAG}
           done
 
       - name: Upload artifact
         uses: actions/upload-artifact@v5
         with:
           name: docker-images
-          path: ${{ runner.temp }}/${{ env.ECR_REPOSITORY }}-*.tar
+          path: ${{ runner.temp }}/${{ env.PROJECT_ID }}-*.tar
     
   push_to_ecr:
     name: Push images to Amazon Elastic Container Registry
@@ -88,13 +94,54 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
           # Load all saved Docker images
-          for tar in ${{ runner.temp }}/${{ env.ECR_REPOSITORY }}-*.tar; do
+          for tar in ${{ runner.temp }}/${{ env.PROJECT_ID }}-*.tar; do
             docker load -i "$tar"
           done
 
-          for image in $(docker images --format "{{.Repository}}:{{.Tag}}" | grep ^${{ env.ECR_REPOSITORY }}); do
+          for image in $(docker images --format "{{.Repository}}:{{.Tag}}" | grep ^${{ env.PROJECT_ID }}); do
             IFS=':' read -r image_name tag <<< "$image"
             docker tag $image $ECR_REGISTRY/$image
             docker tag $image $ECR_REGISTRY/$image_name:latest
             docker image push -a $ECR_REGISTRY/$image_name
+          done
+
+  push_to_gar:
+    name: Push images to Google Artifact Registry
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Authenticate to Repo
+        run: |
+          gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-images
+          path: ${{ runner.temp }}
+
+      - name: Load, tag and push image to GAR
+        env:
+          IMAGE_TAG: ${{ needs.build.outputs.tag }}
+        run: |
+          # Load all saved Docker images
+          for tar in ${{ runner.temp }}/${{ env.PROJECT_ID }}-*.tar; do
+            docker load -i "$tar"
+          done
+
+          for image in $(docker images --format "{{.Repository}}:{{.Tag}}" | grep ^${{ env.PROJECT_ID }}); do
+            IFS=':' read -r image_name tag <<< "$image"
+            image_name=${image_name//\//-}
+            docker tag $image $GCP_GAR_REPOSITORY/$image_name:$tag
+            docker push $GCP_GAR_REPOSITORY/$image_name:$tag
           done
