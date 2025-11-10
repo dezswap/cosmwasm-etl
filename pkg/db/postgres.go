@@ -13,8 +13,8 @@ type PostgresDb struct {
 }
 
 func (x *PostgresDb) Init(dbConfig configs.RdbConfig) error {
-	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
-		dbConfig.Host, dbConfig.Port, dbConfig.Username, dbConfig.Password, dbConfig.Database)
+	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+		dbConfig.Host, dbConfig.Port, dbConfig.Username, dbConfig.Password, dbConfig.Database, dbConfig.SslMode)
 
 	if x.Db != nil {
 		x.Close()

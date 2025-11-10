@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 
@@ -18,7 +19,7 @@ func main() {
 	rollBack := os.Args[1:]
 	c := configs.New().Rdb
 
-	url := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable&x-migrations-table=%s", c.Username, c.Password, c.Host, c.Port, c.Database, migTableName)
+	url := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s&x-migrations-table=%s", c.Username, url.QueryEscape(c.Password), c.Host, c.Port, c.Database, c.SslMode, migTableName)
 	m, err := migrate.New("file://db/migrations/aggregator", url)
 	if err != nil {
 		panic(err)

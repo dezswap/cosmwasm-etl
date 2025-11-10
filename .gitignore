@@ -19,6 +19,7 @@ main
 # vendor/
 # editors
 .vscode
+.idea
 
 # database
 /db/data

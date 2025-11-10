@@ -1,6 +1,3 @@
-//go:build faker
-// +build faker
-
 package faker
 
 import (
