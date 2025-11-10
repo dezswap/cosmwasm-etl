@@ -14,10 +14,9 @@ permissions:
   contents: read
 
 jobs:
-  deploy:
-    name: build and deploy the app
+  build:
+    name: build and package image
     runs-on: ubuntu-latest
-    environment: production
     steps:
       - name: checkout
         uses: actions/checkout@v5
@@ -35,15 +34,38 @@ jobs:
             # get version from tag
             GIT_TAG=$(echo "${{ github.ref }}" | sed 's|refs/tags/v||')
             echo "tag=$GIT_TAG" >> $GITHUB_OUTPUT
-            echo "run_next_job=true" >> $GITHUB_OUTPUT
           else
             echo "The tag commit is NOT on main branch. Exiting."
-            echo "run_next_job=false" >> $GITHUB_OUTPUT
+            exit 1
           fi
+      
+      - name: Build and save image
+        id: build-images
+        working-directory: .
+        env:
+          IMAGE_TAG: ${{ steps.check_branch.outputs.tag }}
+        run: |
+          for app_type in collector parser-dex aggregator; do
+            echo "Building for $app_type"
+            APP_PATH=$(echo $app_type | tr '-' '/')
+            docker build --build-arg APP_PATH=$APP_PATH --no-cache -t ${{ env.ECR_REPOSITORY }}/$app_type:${IMAGE_TAG} .
+            docker save -o ${{ runner.temp }}/${{ env.ECR_REPOSITORY }}-$app_type.tar ${{ env.ECR_REPOSITORY }}/$app_type:${IMAGE_TAG}
+          done
 
+      - name: Upload artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: docker-images
+          path: ${{ runner.temp }}/${{ env.ECR_REPOSITORY }}-*.tar
+    
+  push_to_ecr:
+    name: Push images to Amazon Elastic Container Registry
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
-        if: ${{ steps.check_branch.outputs.run_next_job == 'true' }}
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           role-session-name: cosmwasm-etl-deploy
@@ -53,19 +75,26 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2.0.1
 
-      - name: Build, tag, and push image to Amazon ECR
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-images
+          path: ${{ runner.temp }}
+
+      - name: Load, tag, and push image to Amazon ECR
         id: build-image
         working-directory: .
         env:
-          IMAGE_TAG: ${{ steps.check_branch.outputs.tag }}
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
-          for app_type in collector parser-dex aggregator; do
-            echo "Building for $app_type"
-            APP_PATH=$(echo $app_type | tr '-' '/')
-            docker build \
-            --build-arg APP_PATH=$APP_PATH --no-cache \
-            -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}/$app_type:latest \
-            -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}/$app_type:${IMAGE_TAG} .
-            docker image push -a $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}/$app_type
+          # Load all saved Docker images
+          for tar in ${{ runner.temp }}/${{ env.ECR_REPOSITORY }}-*.tar; do
+            docker load -i "$tar"
+          done
+
+          for image in $(docker images --format "{{.Repository}}:{{.Tag}}" | grep ^${{ env.ECR_REPOSITORY }}); do
+            IFS=':' read -r image_name tag <<< "$image"
+            docker tag $image $ECR_REGISTRY/$image
+            docker tag $image $ECR_REGISTRY/$image_name:latest
+            docker image push -a $ECR_REGISTRY/$image_name
           done
