@@ -221,7 +221,7 @@ func (r *srcRepoImpl) UpdateDirectPrice(height uint64, txId uint64, token string
 			"tokens.id token_id, tr.token_id price_token_id, tr.route_id").Joins(
 			"join (select t.id token_id, t.chain_id, r.asset1, r.id route_id "+
 				"from tokens t join route r on t.chain_id = r.chain_id and t.address = r.asset0 "+
-				"where t.chain_id = ? and t.address = ? and r.hop_count = 1) tr "+
+				"where t.chain_id = ? and t.address = ? and r.hop_count = 0) tr "+
 				"on tr.chain_id = tokens.chain_id and tr.asset1 = tokens.address", r.chainId, priceToken).Where(
 			"tokens.address = ?", token).Find(&res)
 	} else {
@@ -230,7 +230,7 @@ func (r *srcRepoImpl) UpdateDirectPrice(height uint64, txId uint64, token string
 			"tr.token_id, tokens.id price_token_id, tr.route_id").Joins(
 			"join (select t.id token_id, t.chain_id, r.asset1, r.id route_id "+
 				"from tokens t join route r on t.chain_id = r.chain_id and t.address = r.asset0 "+
-				"where t.chain_id = ? and t.address = ? and r.hop_count = 1) tr "+
+				"where t.chain_id = ? and t.address = ? and r.hop_count = 0) tr "+
 				"on tr.chain_id = tokens.chain_id and tr.asset1 = tokens.address", r.chainId, token).Where(
 			"tokens.address = ?", priceToken).Find(&res)
 	}
