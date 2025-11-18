@@ -106,3 +106,20 @@ func initViper(configName string) (*viper.Viper, error) {
 
 	return v, nil
 }
+
+func (c Config) Redacted() Config {
+	cp := c
+
+	// Collector
+	cp.Collector.FcdConfig.RdbConfig.Password = "***"
+	cp.S3.Secret = "***"
+
+	// Parser
+	cp.Rdb.Password = "***"
+
+	// Aggregator
+	cp.Aggregator.SrcDb.Password = "***"
+	cp.Aggregator.DestDb.Password = "***"
+
+	return cp
+}

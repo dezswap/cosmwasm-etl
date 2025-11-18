@@ -40,7 +40,7 @@ func New(c configs.Config, logger logging.Logger) Aggregator {
 	repo.Logger = logger
 
 	if c.Log.Level == logrus.DebugLevel {
-		a, err := json.Marshal(c.Aggregator)
+		a, err := json.Marshal(c.Redacted().Aggregator)
 		if err != nil {
 			panic(err)
 		}
