@@ -288,8 +288,8 @@ func (r *readRepoImpl) PairStats(startTs float64, endTs float64, priceToken stri
 select -- asset0's stats by pairs
     pair_id,
     coalesce(sum(volume) filter (where type = 'swap'),0) as volume0,
-    coalesce(sum(volume_in_price) filter (where type = 'swap'),0) as volume0_in_price,
-    avg(last_volume) as last_swap_price,
+    (coalesce(sum(volume_in_price) filter (where type = 'swap'),0))::numeric as volume0_in_price,
+    (avg(last_volume))::numeric as last_swap_price,
     sum(commission) as commission0,
     sum(commission_in_price) as commission0_in_price,
     count(distinct hash) as tx_cnt,
@@ -337,8 +337,8 @@ group by pair_id
 select -- asset1's stats by pairs
     pair_id,
     coalesce(sum(volume) filter (where type = 'swap'),0) as volume1,
-    coalesce(sum(volume_in_price) filter (where type = 'swap'),0) as volume1_in_price,
-    avg(last_volume) as last_swap_price,
+    (coalesce(sum(volume_in_price) filter (where type = 'swap'),0))::numeric as volume1_in_price,
+    (avg(last_volume))::numeric as last_swap_price,
     sum(commission) commission1,
     sum(commission_in_price) commission1_in_price
 from (select distinct -- processed asset1 values
