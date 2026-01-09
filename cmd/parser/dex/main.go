@@ -38,6 +38,17 @@ const (
 	app = "parser"
 )
 
+var (
+	defaultHttpTransport = &http.Transport{
+		MaxIdleConns:      20,
+		IdleConnTimeout:   30 * time.Second,
+		DisableKeepAlives: false,
+	}
+	defaultHttpClient = &http.Client{
+		Transport: defaultHttpTransport,
+	}
+)
+
 func getDexCollectorReadStore(c configs.Config, dc configs.ParserDexConfig) datastore.ReadStore {
 	nodeConf := dc.NodeConfig
 	if nodeConf.GrpcConfig.Host != "" {
@@ -49,14 +60,7 @@ func getDexCollectorReadStore(c configs.Config, dc configs.ParserDexConfig) data
 			panic(err)
 		}
 		if nodeConf.FailoverLcdHost != "" {
-			httpClient := &http.Client{
-				Transport: &http.Transport{
-					MaxIdleConns:      10,               // Maximum idle connections to keep open
-					IdleConnTimeout:   30 * time.Second, // Time to keep idle connections open
-					DisableKeepAlives: false,            // Use HTTP Keep-Alive
-				},
-			}
-			store, _ = datastore.New(c, serviceDesc, datastore.NewLcdClient(nodeConf.FailoverLcdHost, httpClient))
+			store, _ = datastore.New(c, serviceDesc, datastore.NewLcdClient(nodeConf.FailoverLcdHost, defaultHttpClient))
 		}
 
 		return datastore.NewReadStoreWithGrpc(dc.ChainId, store)
@@ -101,46 +105,22 @@ func dex_main(c configs.ParserDexConfig, logc configs.LogConfig, sentryc configs
 
 	var rawDataStore p_dex.SourceDataStore
 	if c.TargetApp == dex.Terraswap {
-		r := rpc.New(c.NodeConfig.RestClientConfig.RpcHost, &http.Client{
-			Transport: &http.Transport{
-				MaxIdleConns:      10,               // Maximum idle connections to keep open
-				IdleConnTimeout:   30 * time.Second, // Time to keep idle connections open
-				DisableKeepAlives: false,            // Use HTTP Keep-Alive
-			},
-		})
+		r := rpc.New(c.NodeConfig.RestClientConfig.RpcHost, defaultHttpClient)
 
 		switch dts.TerraswapFactory(c.FactoryAddress) {
 		case dts.MAINNET_FACTORY:
-			lcd := terra_cosmos45.NewLcd(c.NodeConfig.RestClientConfig.LcdHost, &http.Client{
-				Transport: &http.Transport{
-					MaxIdleConns:      10,               // Maximum idle connections to keep open
-					IdleConnTimeout:   30 * time.Second, // Time to keep idle connections open
-					DisableKeepAlives: false,            // Use HTTP Keep-Alive
-				},
-			})
+			lcd := terra_cosmos45.NewLcd(c.NodeConfig.RestClientConfig.LcdHost, defaultHttpClient)
 			terraswapQueryClient := dts_phoenix.NewPhoenixClient(lcd)
-			rawDataStore = ts_srcstore.NewCol5Store(c.FactoryAddress, r, lcd, terraswapQueryClient)
+			rawDataStore = ts_srcstore.NewPhoenixStore(c.FactoryAddress, r, lcd, terraswapQueryClient)
 		case dts.CLASSIC_V2_FACTORY:
-			lcd := terra_cosmos45.NewLcd(c.NodeConfig.RestClientConfig.LcdHost, &http.Client{
-				Transport: &http.Transport{
-					MaxIdleConns:      10,               // Maximum idle connections to keep open
-					IdleConnTimeout:   30 * time.Second, // Time to keep idle connections open
-					DisableKeepAlives: false,            // Use HTTP Keep-Alive
-				},
-			})
+			lcd := terra_cosmos45.NewLcd(c.NodeConfig.RestClientConfig.LcdHost, defaultHttpClient)
 			terraswapQueryClient := dts_colv2.NewColumbusV2Client(lcd)
 			rawDataStore = ts_srcstore.NewCol5Store(c.FactoryAddress, r, lcd, terraswapQueryClient)
 
 		case dts.PISCO_FACTORY:
 			panic(errors.New("not implemented yet"))
 		case dts.CLASSIC_V1_FACTORY:
-			lcd := col4.NewLcd(c.NodeConfig.RestClientConfig.LcdHost, &http.Client{
-				Transport: &http.Transport{
-					MaxIdleConns:      10,               // Maximum idle connections to keep open
-					IdleConnTimeout:   30 * time.Second, // Time to keep idle connections open
-					DisableKeepAlives: false,            // Use HTTP Keep-Alive
-				},
-			})
+			lcd := col4.NewLcd(c.NodeConfig.RestClientConfig.LcdHost, defaultHttpClient)
 			terraswapQueryClient := dts_colv1.NewCol4Client(lcd)
 			rawDataStore = ts_srcstore.NewCol4Store(c.FactoryAddress, r, lcd, terraswapQueryClient)
 		default:

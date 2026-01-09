@@ -38,9 +38,10 @@ type RpcBlockResultRes struct {
 	TxsResults []RpcTxResultRes `json:"txs_results"`
 }
 type RpcTxResultRes struct {
-	Code int    `json:"code"`
-	Data string `json:"data"`
-	Log  string `json:"log"` // json string of tx results, result of json.Unmarshall must be RpcEventRes
+	Code   int           `json:"code"`
+	Data   string        `json:"data"`
+	Log    string        `json:"log"` // json string of tx results, result of json.Unmarshall must be RpcEventRes
+	Events []RpcEventRes `json:"events,omitempty"`
 }
 
 type RpcEventRes struct {
