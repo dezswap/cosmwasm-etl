@@ -119,7 +119,7 @@ func dex_main(c configs.ParserDexConfig, logc configs.LogConfig, sentryc configs
 				},
 			})
 			terraswapQueryClient := dts_phoenix.NewPhoenixClient(lcd)
-			rawDataStore = ts_srcstore.NewCol5Store(c.FactoryAddress, r, lcd, terraswapQueryClient)
+			rawDataStore = ts_srcstore.NewPhoenixStore(c.FactoryAddress, r, lcd, terraswapQueryClient)
 		case dts.CLASSIC_V2_FACTORY:
 			lcd := terra_cosmos45.NewLcd(c.NodeConfig.RestClientConfig.LcdHost, &http.Client{
 				Transport: &http.Transport{
