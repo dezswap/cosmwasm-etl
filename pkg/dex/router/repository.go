@@ -77,7 +77,7 @@ func (r *srcRepoImpl) Pairs() ([]Pair, error) {
 }
 
 func (r *srcRepoImpl) UpdateRoutes(indexToAsset map[int]string, routesMap map[int]map[int][][]int) error {
-	dbRoutes := make([]schemas.Route, 0)
+	dbRoutes := make([]schemas.Route, 0) // nolint: prealloc
 	for a0, a1Routes := range routesMap {
 		for a1, routes := range a1Routes {
 			for _, route := range routes {

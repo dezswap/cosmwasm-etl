@@ -107,7 +107,7 @@ func (ri *routeInfoImpl) setPairMap(pairs []Pair) {
 
 func (ri *routeInfoImpl) setRoutesMap(repo SrcRepo) error {
 	ri.routesMap = make(map[int]map[int][][]int)
-	keys := []int{}
+	keys := make([]int, 0, len(ri.initialPairMap))
 	visited := make(map[int]bool)
 	for k := range ri.initialPairMap {
 		keys = append(keys, k)

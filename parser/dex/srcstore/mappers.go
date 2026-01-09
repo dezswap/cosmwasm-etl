@@ -21,7 +21,11 @@ func newMapper(m p_srcstore.Mapper) mapper {
 // blockToRawTxs implements mapper
 // rawPoolInfosToPoolInfos implements mapper
 func (m *mapperImpl) rawPoolInfosToPoolInfos(rawPoolInfos *datastore.PoolInfoList) []dex.PoolInfo {
-	infos := []dex.PoolInfo{}
+	if rawPoolInfos == nil {
+		return []dex.PoolInfo{}
+	}
+
+	infos := make([]dex.PoolInfo, 0, len(rawPoolInfos.Pairs))
 	for addr, rawPoolInfo := range rawPoolInfos.Pairs {
 		infos = append(infos, m.rawPoolInfoToPoolInfo(addr, rawPoolInfo))
 	}
