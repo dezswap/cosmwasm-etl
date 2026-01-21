@@ -140,11 +140,15 @@ func (m *transferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals
 		{Addr: pair.Assets[0]},
 		{Addr: pair.Assets[1]},
 	}
-	amountStrs := strings.Split(res[ds.TransferAmountIdx].Value, ",")
-	if len(amountStrs) == 0 {
-		return nil, errors.New("empty amount or wrong format(amounts separated by ,)")
+	amountValue := res[ds.TransferAmountIdx].Value
+	if amountValue == "" {
+		return nil, errors.New("empty amount")
 	}
+	amountStrs := strings.Split(amountValue, ",")
 	for _, amountStr := range amountStrs {
+		if amountStr == "" {
+			continue
+		}
 		asset, err := dex.GetAssetFromAmountAssetString(amountStr)
 		if err != nil {
 			return nil, errors.Wrap(err, "transferMapper.MatchedToParsedTx")

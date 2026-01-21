@@ -70,6 +70,15 @@ func Test_TransferMapper(t *testing.T) {
 			nil,
 			"wrong asset must return error",
 		},
+		// empty amount should return error
+		{
+			&transferMapper{pairSet: pairSet},
+			el.MatchedResult{
+				{Key: "recipient", Value: pair.ContractAddr}, {Key: "sender", Value: userAddr}, {Key: "amount", Value: ""},
+			},
+			nil,
+			"empty amount",
+		},
 		// wasm transfer
 		{
 			&wasmTransferMapper{pairSet: pairSet},
