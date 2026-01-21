@@ -72,6 +72,15 @@ func (m *wasmTransferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optio
 }
 
 func (m *wasmTransferMapper) transferMatchedToParsedTx(res eventlog.MatchedResult, _ ...interface{}) ([]*dex.ParsedTx, error) {
+	// Validate expected keys exist (filter out CW1155 transfers)
+	// see. https://explorer.xpla.io/mainnet/address/xpla18xsgaqx66wkljvnjcu57pfwq4dtjv4gay662j2pnhy46lvmzqycsxdtz54
+	if len(res) <= ds.WasmTransferToIdx {
+		return nil, nil
+	}
+	if res[ds.WasmTransferFromIdx].Key != "from" {
+		return nil, nil
+	}
+
 	from := res[ds.WasmTransferFromIdx].Value
 	to := res[ds.WasmTransferToIdx].Value
 

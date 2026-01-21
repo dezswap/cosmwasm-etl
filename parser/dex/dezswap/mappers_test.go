@@ -107,6 +107,27 @@ func Test_TransferMapper(t *testing.T) {
 			nil,
 			"wrong asset must return error",
 		},
+		// CW1155 transfer (has token_id, no from) should be filtered out
+		{
+			&wasmTransferMapper{pairSet: pairSet},
+			el.MatchedResult{
+				{Key: "_contract_address", Value: pair.Assets[0]}, {Key: "action", Value: "transfer"},
+				{Key: "token_id", Value: "NL2513010"},
+				{Key: "amount", Value: "1"}, {Key: "to", Value: pair.ContractAddr},
+			},
+			nil,
+			"",
+		},
+		// CW1155 transfer with different attribute order should be filtered out
+		{
+			&wasmTransferMapper{pairSet: pairSet},
+			el.MatchedResult{
+				{Key: "_contract_address", Value: pair.Assets[0]}, {Key: "action", Value: "transfer"},
+				{Key: "amount", Value: "1"}, {Key: "to", Value: pair.ContractAddr},
+			},
+			nil,
+			"",
+		},
 	}
 
 	for idx, tc := range tcs {
