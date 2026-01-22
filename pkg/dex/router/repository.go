@@ -97,11 +97,13 @@ func (r *srcRepoImpl) UpdateRoutes(indexToAsset map[int]string, routesMap map[in
 		}
 	}
 
+	// batchSize limits inserts to avoid PostgreSQL's 65,535 parameter limit
+	const batchSize = 10000
 	tx := r.db.Model(schemas.Route{}).Clauses(
 		clause.OnConflict{
 			Columns:   []clause.Column{{Name: "chain_id"}, {Name: "asset0"}, {Name: "asset1"}, {Name: "route"}},
 			DoNothing: true,
-		}).Create(&dbRoutes)
+		}).CreateInBatches(dbRoutes, batchSize)
 	if tx.Error != nil {
 		return errors.Wrap(tx.Error, "repo.UpdateRoutes")
 	}
