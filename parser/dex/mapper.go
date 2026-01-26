@@ -80,6 +80,11 @@ func (m *wasmCommonTransferMapper) MatchedToParsedTx(res eventlog.MatchedResult,
 	var txs []*ParsedTx
 
 	amount := matchMap[pdex.WasmTransferAmountKey].Value
+	if amount == "" {
+		// irregular transfer format is not supported, amount should exist
+		return nil, nil
+	}
+
 	if fromPair {
 		txs = append(txs, m.wasmTransferToParsedTx(fp, cw20Addr, sender, amount, true))
 	}
