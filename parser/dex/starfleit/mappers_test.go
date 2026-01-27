@@ -98,6 +98,15 @@ func Test_TransferMapper(t *testing.T) {
 			nil,
 			"wrong asset must return error",
 		},
+		{
+			// https://www.mintscan.io/fetchai/tx/C0B649ABBB5C04B8A01567C1E14635856E50CEA22B4A7BDA66F91D2CA8275BA2
+			&transferMapper{pairSet: pairSet},
+			el.MatchedResult{
+				{Key: "recipient", Value: pair.ContractAddr}, {Key: "sender", Value: userAddr}, {Key: "amount", Value: ""},
+			},
+			[]*dex.ParsedTx{},
+			"",
+		},
 	}
 
 	for idx, tc := range tcs {

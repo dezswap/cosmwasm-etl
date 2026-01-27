@@ -2,8 +2,9 @@ package starfleit
 
 import (
 	"fmt"
-	pdex "github.com/dezswap/cosmwasm-etl/pkg/dex"
 	"strings"
+
+	pdex "github.com/dezswap/cosmwasm-etl/pkg/dex"
 
 	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/parser/dex"
@@ -116,6 +117,11 @@ func (m *wasmTransferMapper) v2MatchedToParsedTx(res eventlog.MatchedResult, _ .
 // match implements mapper
 func (m *transferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) ([]*dex.ParsedTx, error) {
 	if err := m.mixin.CheckResult(res, sf.TransferMatchedLen); err != nil {
+		// skip empty value result
+		// see. https://www.mintscan.io/fetchai/tx/C0B649ABBB5C04B8A01567C1E14635856E50CEA22B4A7BDA66F91D2CA8275BA2
+		if errors.As(err, &pdex.ErrEmptyEventValue) {
+			return []*dex.ParsedTx{}, nil
+		}
 		return nil, errors.Wrap(err, "transferMapper.MatchedToParsedTx")
 	}
 	from := res[sf.TransferSenderIdx].Value
