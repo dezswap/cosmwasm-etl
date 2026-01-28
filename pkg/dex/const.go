@@ -19,6 +19,7 @@ var (
 
 var (
 	ErrQueryDifferentHeight = errors.New("query different height")
+	ErrEmptyEventValue      = errors.New("empty event value")
 )
 
 const (

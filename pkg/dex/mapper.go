@@ -2,9 +2,10 @@ package dex
 
 import (
 	"fmt"
+	"sort"
+
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 	"github.com/pkg/errors"
-	"sort"
 )
 
 type MapperMixin struct {
@@ -16,10 +17,9 @@ func (m *MapperMixin) CheckResult(res eventlog.MatchedResult, expectedLen int) e
 		return errors.New(msg)
 	}
 
-	for i, r := range res {
+	for _, r := range res {
 		if r.Value == "" {
-			msg := fmt.Sprintf("matched result(%d) must not be empty", i)
-			return errors.New(msg)
+			return ErrEmptyEventValue
 		}
 	}
 	return nil
