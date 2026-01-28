@@ -181,3 +181,30 @@ func Test_WasmTransferMapper_FlaggedPairs(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, flagged[pair.Assets[0]])
 }
+
+// e.g. https://finder.terra-classic.hexxagon.io/mainnet/tx/f38094c88c9306b00dd72e351f484ca1b3d4531726a7edc593faa9b90200e75d
+func Test_WasmTransferMapper_IrregularFormat(t *testing.T) {
+	const msgSender = "terra12wfuxr6yud2zxxxy95pq5satwy6pzfah3zcumq"
+	pair := Pair{
+		ContractAddr: "terra1f0hntn237mxjrsjfp6gfaw8ftsd4qpkyf4j42jx2cjq8km6mv9sqftezcq",
+		LpAddr:       "terra17csvyqecvdt6mhvfyt2uu07lnseh6clmzus4v4zdyuqwy8y7hmwqxucz52",
+		Assets:       []string{"terra1ctj2a7n9mld7m09em6vlpuertlg545362urxyy5faejt5m9sfegqn7rala", "uluna"}}
+	pairSet := map[string]Pair{pair.ContractAddr: pair}
+	flagged := map[string]bool{}
+
+	mapper := NewWasmTransferMapper(dex.WasmTransferCw20AddrKey, pairSet, flagged)
+	res := el.MatchedResult{
+		{Key: "_contract_address", Value: pair.Assets[0]},
+		{Key: "action", Value: "transfer"},
+		{Key: "from", Value: pair.ContractAddr},
+		{Key: "meme_amount", Value: "127570"},
+		{Key: "net_amount", Value: "114813"},
+		{Key: "spot_price", Value: "265935377749"},
+		{Key: "to", Value: msgSender},
+		{Key: "transfer_amount", Value: "99917"}, // irregular format, must be `amount`
+	}
+
+	tx, err := mapper.MatchedToParsedTx(res)
+	assert.NoError(t, err)
+	assert.Empty(t, tx)
+}
