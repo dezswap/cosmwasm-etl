@@ -313,15 +313,16 @@ from (select distinct -- processed asset0 values
                 pt.type,
                 pt.asset0_amount as volume,
                 pt.commission0_amount as commission,
-                coalesce(first_value(pr.price) over (partition by pt.height order by pr.height desc), 0) as price,
+                coalesce(pr.price, case when t.address = ? then 1 else 0 end) as price,
                 t.decimals
             from parsed_tx pt
                 join pair p on pt.chain_id = p.chain_id and pt.contract = p.contract
                 join tokens t on pt.chain_id = t.chain_id and pt.asset0 = t.address
-                left join (select height, token_id, price from price -- token prices
-                      union
-                      select 0 height, id as token_id, 1 as price from tokens where address = ?) pr
-                    on t.id = pr.token_id and pr.height <= pt.height
+                left join lateral (
+                    select price from price
+                    where token_id = t.id and height <= pt.height and chain_id = ?
+                    order by height desc limit 1
+                ) pr on true
             where pt.chain_id = ?
               and pt.timestamp >= ?
               and pt.timestamp < ?
@@ -329,7 +330,7 @@ from (select distinct -- processed asset0 values
 group by pair_id
 `
 	var asset0Stats []schemas.PairStats30m
-	if tx := r.db.Raw(query, priceToken, r.chainId, startTs, endTs).Scan(&asset0Stats); tx.Error != nil {
+	if tx := r.db.Raw(query, priceToken, r.chainId, r.chainId, startTs, endTs).Scan(&asset0Stats); tx.Error != nil {
 		return nil, errors.Wrap(tx.Error, "readRepoImpl.PairStats")
 	}
 
@@ -358,14 +359,16 @@ from (select distinct -- processed asset1 values
                 type,
                 pt.asset1_amount as volume,
                 pt.commission1_amount as commission,
-                coalesce(first_value(pr.price) over (partition by pt.height order by pr.height desc), 0) as price,
+                coalesce(pr.price, case when t.address = ? then 1 else 0 end) as price,
                 t.decimals
             from parsed_tx pt
                 join pair p on pt.chain_id = p.chain_id and pt.contract = p.contract
                 join tokens t on pt.chain_id = t.chain_id and pt.asset1 = t.address
-                left join (select height, token_id, price from price
-                      union select 0 height, id as token_id, 1 as price from tokens where address = ?) pr
-                    on t.id = pr.token_id and pr.height <= pt.height
+                left join lateral (
+                    select price from price
+                    where token_id = t.id and height <= pt.height and chain_id = ?
+                    order by height desc limit 1
+                ) pr on true
             where pt.chain_id = ?
               and pt.timestamp >= ?
               and pt.timestamp < ?
@@ -373,7 +376,7 @@ from (select distinct -- processed asset1 values
 group by pair_id
 `
 	var asset1Stats []schemas.PairStats30m
-	if tx := r.db.Raw(query, priceToken, r.chainId, startTs, endTs).Scan(&asset1Stats); tx.Error != nil {
+	if tx := r.db.Raw(query, priceToken, r.chainId, r.chainId, startTs, endTs).Scan(&asset1Stats); tx.Error != nil {
 		return nil, errors.Wrap(tx.Error, "readRepoImpl.PairStats")
 	}
 	asset1StatsMap := make(map[uint64]schemas.PairStats30m)
