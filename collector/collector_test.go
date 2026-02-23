@@ -171,7 +171,7 @@ func setUp() {
 	testServiceDesc := grpcConn.ServiceDescMock{}
 	testServiceDesc.On("GetConnection", mock.Anything).Return(&grpc.ClientConn{})
 	lcdMock := lcdClientMock{}
-	store, err = datastore.New(testconf, &testServiceDesc, &lcdMock)
+	store, err = datastore.New(testconf, &testServiceDesc, &lcdMock, false)
 	if err != nil {
 		panic(err)
 	}

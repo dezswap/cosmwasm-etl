@@ -11,7 +11,9 @@ import (
 
 	grpc1 "github.com/cosmos/gogoproto/grpc"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 
 	tendermintType "github.com/cometbft/cometbft/proto/tendermint/types"
 	grpctypes "github.com/cosmos/cosmos-sdk/types/grpc"
@@ -91,6 +93,14 @@ type dataStoreImpl struct {
 	interfaceRegistry      codectypes.InterfaceRegistry
 	chainId                string
 	FactoryContractAddress string
+	// skipUnknownCode, when true, silently skips transactions that return a gRPC
+	// codes.Unknown status during block processing instead of treating them as errors.
+	//
+	// On XPLA Chain, EVM transactions (MsgEthereumTx) cause cosmos-sdk GetTx to fail
+	// tx parsing and respond with codes.Unknown:
+	//   codespace sdk code 2: tx parse error: errUnknownField "*types.MsgEthereumTx":
+	//   {TagNum: 1, WireType:"bytes"}
+	skipUnknownCode bool
 
 	serviceDesc grpcConn.ServiceDesc
 	s3Client    s3client.S3ClientInterface
@@ -104,17 +114,20 @@ type dataStoreImpl struct {
 
 var _ DataStore = &dataStoreImpl{}
 
-func New(c configs.Config, serviceDesc grpcConn.ServiceDesc, lcd LcdClient) (DataStore, error) {
+func New(c configs.Config, serviceDesc grpcConn.ServiceDesc, lcd LcdClient, skipUnknownCode bool) (DataStore, error) {
 	dataStoreService := &dataStoreImpl{
-		serviceDesc: serviceDesc,
-		lcdClient:   lcd,
-	}
+		chainId:                c.Collector.ChainId,
+		FactoryContractAddress: c.Collector.PairFactoryContractAddress,
+		skipUnknownCode:        skipUnknownCode,
 
-	dataStoreService.newServiceClientFunc = txtypes.NewServiceClient
-	dataStoreService.newS3ClientFunc = s3client.NewClient
-	dataStoreService.newQueryClientFunc = wasm.NewQueryClient
-	dataStoreService.chainId = c.Collector.ChainId
-	dataStoreService.FactoryContractAddress = c.Collector.PairFactoryContractAddress
+		serviceDesc: serviceDesc,
+
+		lcdClient: lcd,
+
+		newServiceClientFunc: txtypes.NewServiceClient,
+		newS3ClientFunc:      s3client.NewClient,
+		newQueryClientFunc:   wasm.NewQueryClient,
+	}
 
 	dataStoreService.initInterfaceRegistry()
 
@@ -409,6 +422,14 @@ func (store *dataStoreImpl) getTxResultFromTxHash(txHash string) (*txtypes.GetTx
 
 	resp, err := client.GetTx(context.Background(), req)
 	if err != nil {
+		st, ok := status.FromError(err)
+		if ok {
+			// codes.Unknown is returned when the SDK fails to parse the tx (e.g., EVM txs on XPLA Chain).
+			if st.Code() == codes.Unknown {
+				return nil, ErrGrpcUnknownCode
+			}
+		}
+
 		// failover with lcd
 		if store.lcdClient != nil {
 			resp, err = store.lcdClient.GetTx(txHash)
@@ -432,6 +453,9 @@ func (store *dataStoreImpl) extractTxMsgs(block *tendermintType.Block) ([]TxRaw,
 
 		resp, err := store.getTxResultFromTxHash(txHash)
 		if err != nil {
+			if store.skipUnknownCode && errors.Is(err, ErrGrpcUnknownCode) {
+				continue
+			}
 			err = errors.Wrap(err, "extractTxMsgs, getTxResultFromTxHash")
 			return nil, err
 		}

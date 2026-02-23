@@ -12,6 +12,9 @@ package main
 
 import (
 	"flag"
+	"net/http"
+	"time"
+
 	"github.com/dezswap/cosmwasm-etl/collector/datastore"
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/parser/checkpoint"
@@ -28,9 +31,8 @@ import (
 	"github.com/dezswap/cosmwasm-etl/pkg/terra/col4"
 	"github.com/dezswap/cosmwasm-etl/pkg/terra/cosmos45"
 	"github.com/dezswap/cosmwasm-etl/pkg/terra/rpc"
+	"github.com/dezswap/cosmwasm-etl/pkg/util"
 	"github.com/pkg/errors"
-	"net/http"
-	"time"
 )
 
 func main() {
@@ -99,8 +101,8 @@ func NewReadStore(c configs.Config, chainId string, httpClient *http.Client) dat
 	if nc.FailoverLcdHost != "" {
 		lcdClient = datastore.NewLcdClient(nc.FailoverLcdHost, httpClient)
 	}
-
-	store, err := datastore.New(c, serviceDesc, lcdClient)
+	isXplaChain := util.NetworkNameByChainID(c.Collector.ChainId) == util.NetworkXpla
+	store, err := datastore.New(c, serviceDesc, lcdClient, isXplaChain)
 	if err != nil {
 		panic(err)
 	}

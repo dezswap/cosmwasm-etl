@@ -25,6 +25,7 @@ import (
 	dts_colv1 "github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap/columbusv1"
 	dts_colv2 "github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap/columbusv2"
 	dts_phoenix "github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap/phoenix"
+	"github.com/dezswap/cosmwasm-etl/pkg/util"
 
 	"github.com/dezswap/cosmwasm-etl/pkg/grpc"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
@@ -55,12 +56,13 @@ func getDexCollectorReadStore(c configs.Config, dc configs.ParserDexConfig) data
 		nodeConf := dc.NodeConfig
 		serviceDesc := grpc.GetServiceDesc("collector", nodeConf.GrpcConfig)
 
-		store, err := datastore.New(c, serviceDesc, nil)
+		isXplaChain := util.NetworkNameByChainID(dc.ChainId) == util.NetworkXpla
+		store, err := datastore.New(c, serviceDesc, nil, isXplaChain)
 		if err != nil {
 			panic(err)
 		}
 		if nodeConf.FailoverLcdHost != "" {
-			store, _ = datastore.New(c, serviceDesc, datastore.NewLcdClient(nodeConf.FailoverLcdHost, defaultHttpClient))
+			store, _ = datastore.New(c, serviceDesc, datastore.NewLcdClient(nodeConf.FailoverLcdHost, defaultHttpClient), isXplaChain)
 		}
 
 		return datastore.NewReadStoreWithGrpc(dc.ChainId, store)

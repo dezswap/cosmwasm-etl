@@ -13,6 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	cryptocodec "github.com/cosmos/cosmos-sdk/crypto/codec"
 	"github.com/cosmos/cosmos-sdk/types"
@@ -325,6 +327,41 @@ func Test13UploadPoolInfoBinary(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func Test14ExtractTxMsgsSkipUnknownCode(t *testing.T) {
+	makeTxByte()
+
+	grpcUnknownErr := status.Error(codes.Unknown, "codespace sdk code 2: tx parse error: errUnknownField")
+	m := serviceClientMock{}
+	m.On("GetTx", mock.Anything, mock.Anything).Return((*txtypes.GetTxResponse)(nil), grpcUnknownErr)
+	mockFunc := func(cc grpc1.ClientConn) txtypes.ServiceClient {
+		return &m
+	}
+
+	testBlock := &tendermintType.Block{
+		Data: tendermintType.Data{
+			Txs: [][]byte{testRawTxByte},
+		},
+	}
+
+	// skipUnknownCode=true: skip and return empty slice
+	testconf := configs.New()
+	serviceDesc := grpcConn.ServiceDescMock{}
+	serviceDesc.On("GetConnection", mock.Anything).Return(&grpc.ClientConn{})
+	lcdMock := lcdClientMock{}
+	skipStore, _ := New(testconf, &serviceDesc, &lcdMock, true)
+	skipStore.(*dataStoreImpl).newServiceClientFunc = mockFunc
+
+	resp, err := skipStore.(*dataStoreImpl).extractTxMsgs(testBlock)
+	assert.NoError(t, err)
+	assert.Empty(t, resp)
+
+	// skipUnknownCode=false: return error
+	storeimpl.newServiceClientFunc = mockFunc
+	resp, err = storeimpl.extractTxMsgs(testBlock)
+	assert.ErrorIs(t, err, ErrGrpcUnknownCode)
+	assert.Nil(t, resp)
+}
+
 func TestMain(m *testing.M) {
 	setUp()
 	code := m.Run()
@@ -338,7 +375,7 @@ func setUp() {
 	serviceDesc.On("GetConnection", mock.Anything).Return(&grpc.ClientConn{})
 	lcdMock := lcdClientMock{}
 
-	storeimplTemp, _ := New(testconf, &serviceDesc, &lcdMock)
+	storeimplTemp, _ := New(testconf, &serviceDesc, &lcdMock, false)
 	storeimpl = storeimplTemp.(*dataStoreImpl)
 
 	time.Sleep(time.Second * 1)

@@ -13,6 +13,7 @@ import (
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/pkg/grpc"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
+	"github.com/dezswap/cosmwasm-etl/pkg/util"
 )
 
 const (
@@ -56,7 +57,8 @@ func main() {
 	}
 
 	failoverClient := datastore.NewLcdClient(nodeConf.FailoverLcdHost, httpClient)
-	col, err := datastore.New(c, serviceDesc, failoverClient)
+	isXplaChain := util.NetworkNameByChainID(c.Collector.ChainId) == util.NetworkXpla
+	col, err := datastore.New(c, serviceDesc, failoverClient, isXplaChain)
 	if err != nil {
 		logger.Panic(err)
 	}
