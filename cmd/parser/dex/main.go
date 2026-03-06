@@ -68,7 +68,7 @@ func getDexCollectorReadStore(c configs.Config, dc configs.ParserDexConfig) data
 		return datastore.NewReadStoreWithGrpc(dc.ChainId, store)
 	}
 
-	s3Client, err := s3client.NewClient()
+	s3Client, err := s3client.NewClient(c.S3)
 	if err != nil {
 		panic(err)
 	}
@@ -154,11 +154,11 @@ func main() {
 	grpc.SetLogConfig(c.Log)
 	logger := logging.New("parser", c.Log)
 	defer catch(logger)
-	if c.Parser.DexConfig == nil {
-		panic("dex config is nil")
+	if err := c.Parser.DexConfig.Validate(); err != nil {
+		panic(fmt.Errorf("dex config is nil: %w", err))
 	}
 
-	dc := *c.Parser.DexConfig
+	dc := c.Parser.DexConfig
 	var readstore datastore.ReadStore
 	switch dc.TargetApp {
 	case dex.Terraswap:

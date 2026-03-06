@@ -12,6 +12,9 @@ package main
 
 import (
 	"flag"
+	"net/http"
+	"time"
+
 	"github.com/dezswap/cosmwasm-etl/collector/datastore"
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/parser/checkpoint"
@@ -29,8 +32,6 @@ import (
 	"github.com/dezswap/cosmwasm-etl/pkg/terra/cosmos45"
 	"github.com/dezswap/cosmwasm-etl/pkg/terra/rpc"
 	"github.com/pkg/errors"
-	"net/http"
-	"time"
 )
 
 func main() {
@@ -62,7 +63,7 @@ func run(c configs.Config, targetHeight uint64) error {
 }
 
 func NewSourceDataStore(c configs.Config, httpClient *http.Client) pdex.SourceDataStore {
-	dc := *c.Parser.DexConfig
+	dc := c.Parser.DexConfig
 
 	if dc.TargetApp == dex.Terraswap {
 		r := rpc.New(dc.NodeConfig.RestClientConfig.RpcHost, httpClient)

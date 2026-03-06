@@ -12,7 +12,7 @@ func init() {
 	logger = logging.New(
 		"grpc",
 		configs.LogConfig{
-			Level:      logrus.InfoLevel,
+			Level:      logrus.InfoLevel.String(),
 			FormatJSON: true,
 		},
 	)

@@ -61,9 +61,7 @@ type s3ClientInfo struct {
 
 var _ S3ClientInterface = &s3ClientInfo{}
 
-func NewClient() (S3ClientInterface, error) {
-	s3Config = configs.Get().S3
-
+func NewClient(s3Cfg configs.S3Config) (S3ClientInterface, error) {
 	cred := credentials.NewStaticCredentialsProvider(
 		s3Config.Key,    // user,
 		s3Config.Secret, // key,

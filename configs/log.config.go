@@ -1,35 +1,24 @@
 package configs
 
-import (
-	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
-	"github.com/spf13/viper"
-)
+import "github.com/sirupsen/logrus"
+
+const defaultLogLevel = logrus.InfoLevel
 
 type LogConfig struct {
 	// Log level for the global `Logger`
-	Level logrus.Level
+	Level string `mapstructure:"level"`
 	// Should log-messages be printed as JSON?
-	FormatJSON bool
+	FormatJSON bool `mapstructure:"formatjson"`
 	// The environment the service is currently running in, e.g. local/development/staging
-	Environment string
-	ChainId     string
+	Environment string `mapstructure:"env"`
+	ChainId     string `mapstructure:"chainid"`
 }
 
-func logConfig(v *viper.Viper) LogConfig {
-	logLevel := v.GetString("log.level")
-	if logLevel == "" {
-		logLevel = "info"
-	}
-	level, err := logrus.ParseLevel(logLevel)
+func (c LogConfig) ParsedLevel() logrus.Level {
+	l, err := logrus.ParseLevel(c.Level)
 	if err != nil {
-		panic(errors.Wrap(err, "could not parse log level"))
+		return defaultLogLevel
 	}
 
-	return LogConfig{
-		Level:       level,
-		FormatJSON:  v.GetBool("log.formatJson"),
-		Environment: v.GetString("log.env"),
-		ChainId:     v.GetString("log.chainId"),
-	}
+	return l
 }

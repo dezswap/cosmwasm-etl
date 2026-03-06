@@ -145,7 +145,7 @@ func Test01DoCollect(t *testing.T) {
 
 	lcdMock.On("GetTx", mock.Anything).Return(nil, nil)
 
-	mockS3ClientCreateFunc := func() (s3client.S3ClientInterface, error) {
+	mockS3ClientCreateFunc := func(configs.S3Config) (s3client.S3ClientInterface, error) {
 		return &mockS3Client, nil
 	}
 

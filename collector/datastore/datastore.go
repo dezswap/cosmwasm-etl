@@ -48,7 +48,7 @@ import (
 type DataStore interface {
 	// testing purpose
 	SetNewServiceClientFunc(func(cc grpc1.ClientConn) txtypes.ServiceClient)
-	SetNewS3ClientFunc(func() (s3client.S3ClientInterface, error))
+	SetNewS3ClientFunc(func(configs.S3Config) (s3client.S3ClientInterface, error))
 	SetNewQueryClientFunc(func(cc grpc1.ClientConn) wasm.QueryClient)
 
 	// additional wrapper for Collector module usage
@@ -91,6 +91,7 @@ type dataStoreImpl struct {
 	interfaceRegistry      codectypes.InterfaceRegistry
 	chainId                string
 	FactoryContractAddress string
+	s3Cfg                  configs.S3Config
 
 	serviceDesc grpcConn.ServiceDesc
 	s3Client    s3client.S3ClientInterface
@@ -99,7 +100,7 @@ type dataStoreImpl struct {
 
 	newServiceClientFunc func(cc grpc1.ClientConn) txtypes.ServiceClient
 	newQueryClientFunc   func(cc grpc1.ClientConn) wasm.QueryClient
-	newS3ClientFunc      func() (s3client.S3ClientInterface, error)
+	newS3ClientFunc      func(configs.S3Config) (s3client.S3ClientInterface, error)
 }
 
 var _ DataStore = &dataStoreImpl{}
@@ -115,6 +116,7 @@ func New(c configs.Config, serviceDesc grpcConn.ServiceDesc, lcd LcdClient) (Dat
 	dataStoreService.newQueryClientFunc = wasm.NewQueryClient
 	dataStoreService.chainId = c.Collector.ChainId
 	dataStoreService.FactoryContractAddress = c.Collector.PairFactoryContractAddress
+	dataStoreService.s3Cfg = c.S3
 
 	dataStoreService.initInterfaceRegistry()
 
@@ -145,7 +147,7 @@ func (store *dataStoreImpl) GetNodeSyncedHeight() (int64, error) {
 // you may crawl from the next number of this return
 func (store *dataStoreImpl) GetLatestProcessedBlockNumber(folderPath ...string) (int64, error) {
 	var err error
-	store.s3Client, err = store.newS3ClientFunc()
+	store.s3Client, err = store.newS3ClientFunc(store.s3Cfg)
 	if err != nil {
 		err = errors.Wrap(err, "GetLatestProcessedBlockNumber, S3 client create")
 		return -1, err
@@ -280,7 +282,7 @@ func (store *dataStoreImpl) GetCurrentPoolStatusOfAllPairs(height int64) (*PoolI
 // From S3
 func (store *dataStoreImpl) GetPoolStatusOfAllPairsByHeight(height int64, folderPath ...string) (*PoolInfoList, error) {
 	var err error
-	store.s3Client, err = store.newS3ClientFunc()
+	store.s3Client, err = store.newS3ClientFunc(store.s3Cfg)
 	if err != nil {
 		err = errors.Wrap(err, "GetPoolStatusOfAllPairsByHeight, S3 client create")
 		return nil, err
@@ -324,7 +326,7 @@ func (store *dataStoreImpl) ChangeLatestBlock(height int64, folderPath ...string
 	}
 
 	var err error
-	store.s3Client, err = store.newS3ClientFunc()
+	store.s3Client, err = store.newS3ClientFunc(store.s3Cfg)
 	if err != nil {
 		err = errors.Wrap(err, "GetLatestProcessedBlockNumber, S3 client create")
 		return err
@@ -341,7 +343,7 @@ func (store *dataStoreImpl) ChangeLatestBlock(height int64, folderPath ...string
 
 func (store *dataStoreImpl) UploadBlockBinary(height int64, data []byte, folderPath ...string) error {
 	var err error
-	store.s3Client, err = store.newS3ClientFunc()
+	store.s3Client, err = store.newS3ClientFunc(store.s3Cfg)
 	if err != nil {
 		err = errors.Wrap(err, "GetLatestProcessedBlockNumber, S3 client create")
 		return err
@@ -357,7 +359,7 @@ func (store *dataStoreImpl) UploadBlockBinary(height int64, data []byte, folderP
 
 func (store *dataStoreImpl) UploadPoolInfoBinary(height int64, data []byte, folderPath ...string) error {
 	var err error
-	store.s3Client, err = store.newS3ClientFunc()
+	store.s3Client, err = store.newS3ClientFunc(store.s3Cfg)
 	if err != nil {
 		err = errors.Wrap(err, "GetLatestProcessedBlockNumber, S3 client create")
 		return err
@@ -391,7 +393,7 @@ func (store *dataStoreImpl) SetNewServiceClientFunc(clientFunc func(cc grpc1.Cli
 	store.newServiceClientFunc = clientFunc
 }
 
-func (store *dataStoreImpl) SetNewS3ClientFunc(s3Func func() (s3client.S3ClientInterface, error)) {
+func (store *dataStoreImpl) SetNewS3ClientFunc(s3Func func(configs.S3Config) (s3client.S3ClientInterface, error)) {
 	store.newS3ClientFunc = s3Func
 }
 

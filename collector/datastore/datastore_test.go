@@ -42,7 +42,7 @@ func Test01GetChainId(t *testing.T) {
 func Test02GetLatestProcessedBlockNumber(t *testing.T) {
 	mockS3Client := s3ClientMock{}
 	mockS3Client.On("GetLatestProcessedBlockNumber", mock.Anything, mock.Anything).Return(startBlock, nil)
-	mockS3ClientCreateFunc := func() (s3client.S3ClientInterface, error) {
+	mockS3ClientCreateFunc := func(configs.S3Config) (s3client.S3ClientInterface, error) {
 		return &mockS3Client, nil
 	}
 	storeimpl.newS3ClientFunc = mockS3ClientCreateFunc
@@ -117,7 +117,7 @@ func Test05GetBlockTxsFromHeight(t *testing.T) {
 func Test06UnmarkLatestBlock(t *testing.T) {
 	mockS3Client := s3ClientMock{}
 	mockS3Client.On("UnmarkLatestBlock", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	mockS3ClientCreateFunc := func() (s3client.S3ClientInterface, error) {
+	mockS3ClientCreateFunc := func(configs.S3Config) (s3client.S3ClientInterface, error) {
 		return &mockS3Client, nil
 	}
 	storeimpl.newS3ClientFunc = mockS3ClientCreateFunc
@@ -129,7 +129,7 @@ func Test06UnmarkLatestBlock(t *testing.T) {
 func Test07UploadBlockBinaryAsLatest(t *testing.T) {
 	mockS3Client := s3ClientMock{}
 	mockS3Client.On("UploadBlockBinaryAsLatest", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	mockS3ClientCreateFunc := func() (s3client.S3ClientInterface, error) {
+	mockS3ClientCreateFunc := func(configs.S3Config) (s3client.S3ClientInterface, error) {
 		return &mockS3Client, nil
 	}
 	storeimpl.newS3ClientFunc = mockS3ClientCreateFunc
@@ -269,7 +269,7 @@ func Test10GetCurrentPoolStatusOfAllPairs(t *testing.T) {
 func Test11GetPoolStatusOfUnitPairByHeight(t *testing.T) {
 	mockS3Client := s3ClientMock{}
 	mockS3Client.On("GetFileFromS3", mock.Anything).Return([]byte(lightWholePoolResp), nil)
-	mockS3ClientCreateFunc := func() (s3client.S3ClientInterface, error) {
+	mockS3ClientCreateFunc := func(configs.S3Config) (s3client.S3ClientInterface, error) {
 		return &mockS3Client, nil
 	}
 
@@ -291,7 +291,7 @@ func Test11GetPoolStatusOfUnitPairByHeight(t *testing.T) {
 func Test12GetPoolStatusOfAllPairsByHeight(t *testing.T) {
 	mockS3Client := s3ClientMock{}
 	mockS3Client.On("GetFileFromS3", mock.Anything).Return([]byte(poolStatusFromS3), nil)
-	mockS3ClientCreateFunc := func() (s3client.S3ClientInterface, error) {
+	mockS3ClientCreateFunc := func(configs.S3Config) (s3client.S3ClientInterface, error) {
 		return &mockS3Client, nil
 	}
 
@@ -313,7 +313,7 @@ func Test12GetPoolStatusOfAllPairsByHeight(t *testing.T) {
 func Test13UploadPoolInfoBinary(t *testing.T) {
 	mockS3Client := s3ClientMock{}
 	mockS3Client.On("UploadFileToS3", mock.Anything, mock.Anything).Return(nil)
-	mockS3ClientCreateFunc := func() (s3client.S3ClientInterface, error) {
+	mockS3ClientCreateFunc := func(configs.S3Config) (s3client.S3ClientInterface, error) {
 		return &mockS3Client, nil
 	}
 

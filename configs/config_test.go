@@ -20,7 +20,7 @@ func Test_LogConfig_EnvVars(t *testing.T) {
 	cfg := New()
 	require.Equal(t, "staging", cfg.Log.Environment)
 	require.Equal(t, "columbus-5", cfg.Log.ChainId)
-	require.Equal(t, logrus.DebugLevel, cfg.Log.Level)
+	require.Equal(t, logrus.DebugLevel.String(), cfg.Log.Level)
 	require.True(t, cfg.Log.FormatJSON)
 }
 
@@ -227,8 +227,8 @@ func Test_HttpClientConfig_EnvVars(t *testing.T) {
 	http := cfg.Parser.DexConfig.NodeConfig.HttpClientConfig
 	require.Equal(t, 50, http.MaxIdleConns)
 	require.Equal(t, 10, http.MaxIdleConnsPerHost)
-	require.Equal(t, Duration{60 * time.Second}, http.IdleConnTimeout)
-	require.Equal(t, Duration{30 * time.Second}, http.Timeout)
+	require.Equal(t, &Duration{60 * time.Second}, http.IdleConnTimeout)
+	require.Equal(t, &Duration{30 * time.Second}, http.Timeout)
 }
 
 func Test_HttpClientConfig_Defaults(t *testing.T) {
@@ -239,11 +239,17 @@ func Test_HttpClientConfig_Defaults(t *testing.T) {
 	defer withTestBasepath(t, tmp)()
 
 	cfg := New()
-	http := cfg.Parser.DexConfig.NodeConfig.HttpClientConfig
-	require.Equal(t, 20, http.MaxIdleConns)
-	require.Equal(t, 5, http.MaxIdleConnsPerHost)
-	require.Equal(t, Duration{30 * time.Second}, http.IdleConnTimeout)
-	require.Equal(t, Duration{0}, http.Timeout)
+	http := cfg.Collector.NodeConfig.HttpClientConfig
+	require.Equal(t, defaultHttpClientConfig.MaxIdleConns, http.MaxIdleConns)
+	require.Equal(t, defaultHttpClientConfig.MaxIdleConnsPerHost, http.MaxIdleConnsPerHost)
+	require.Equal(t, defaultHttpClientConfig.IdleConnTimeout, http.IdleConnTimeout)
+	require.Equal(t, defaultHttpClientConfig.Timeout, http.Timeout)
+
+	http = cfg.Parser.DexConfig.NodeConfig.HttpClientConfig
+	require.Equal(t, defaultHttpClientConfig.MaxIdleConns, http.MaxIdleConns)
+	require.Equal(t, defaultHttpClientConfig.MaxIdleConnsPerHost, http.MaxIdleConnsPerHost)
+	require.Equal(t, defaultHttpClientConfig.IdleConnTimeout, http.IdleConnTimeout)
+	require.Equal(t, defaultHttpClientConfig.Timeout, http.Timeout)
 }
 
 func withTestBasepath(t *testing.T, dir string) func() {
