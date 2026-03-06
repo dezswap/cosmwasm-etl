@@ -57,6 +57,7 @@ func parserDexConfig(v *viper.Viper) *ParserDexConfig {
 				LcdHost: v.GetString("parser.dex.node.rest.lcd"),
 				RpcHost: v.GetString("parser.dex.node.rest.rpc"),
 			},
+			HttpClientConfig: httpClientConfig(v, "parser.dex.node"),
 		},
 	}
 }

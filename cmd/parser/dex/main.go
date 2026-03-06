@@ -38,16 +38,18 @@ const (
 	app = "parser"
 )
 
-var (
-	defaultHttpTransport = &http.Transport{
-		MaxIdleConns:      20,
-		IdleConnTimeout:   30 * time.Second,
-		DisableKeepAlives: false,
+func newHttpClient(c configs.HttpClientConfig) *http.Client {
+	return &http.Client{
+		Timeout: c.Timeout.Duration,
+		Transport: &http.Transport{
+			MaxIdleConns:        c.MaxIdleConns,
+			MaxIdleConnsPerHost: c.MaxIdleConnsPerHost,
+			IdleConnTimeout:     c.IdleConnTimeout.Duration,
+			DisableKeepAlives:   c.DisableKeepAlives,
+			ForceAttemptHTTP2:   c.ForceAttemptHTTP2,
+		},
 	}
-	defaultHttpClient = &http.Client{
-		Transport: defaultHttpTransport,
-	}
-)
+}
 
 func getDexCollectorReadStore(c configs.Config, dc configs.ParserDexConfig) datastore.ReadStore {
 	nodeConf := dc.NodeConfig
@@ -60,7 +62,7 @@ func getDexCollectorReadStore(c configs.Config, dc configs.ParserDexConfig) data
 			panic(err)
 		}
 		if nodeConf.FailoverLcdHost != "" {
-			store, _ = datastore.New(c, serviceDesc, datastore.NewLcdClient(nodeConf.FailoverLcdHost, defaultHttpClient))
+			store, _ = datastore.New(c, serviceDesc, datastore.NewLcdClient(nodeConf.FailoverLcdHost, newHttpClient(dc.NodeConfig.HttpClientConfig)))
 		}
 
 		return datastore.NewReadStoreWithGrpc(dc.ChainId, store)
@@ -105,22 +107,23 @@ func dex_main(c configs.ParserDexConfig, logc configs.LogConfig, sentryc configs
 
 	var rawDataStore p_dex.SourceDataStore
 	if c.TargetApp == dex.Terraswap {
-		r := rpc.New(c.NodeConfig.RestClientConfig.RpcHost, defaultHttpClient)
+		httpClient := newHttpClient(c.NodeConfig.HttpClientConfig)
+		r := rpc.New(c.NodeConfig.RestClientConfig.RpcHost, httpClient)
 
 		switch dts.TerraswapFactory(c.FactoryAddress) {
 		case dts.MAINNET_FACTORY:
-			lcd := terra_cosmos45.NewLcd(c.NodeConfig.RestClientConfig.LcdHost, defaultHttpClient)
+			lcd := terra_cosmos45.NewLcd(c.NodeConfig.RestClientConfig.LcdHost, httpClient)
 			terraswapQueryClient := dts_phoenix.NewPhoenixClient(lcd)
 			rawDataStore = ts_srcstore.NewPhoenixStore(c.FactoryAddress, r, lcd, terraswapQueryClient)
 		case dts.CLASSIC_V2_FACTORY:
-			lcd := terra_cosmos45.NewLcd(c.NodeConfig.RestClientConfig.LcdHost, defaultHttpClient)
+			lcd := terra_cosmos45.NewLcd(c.NodeConfig.RestClientConfig.LcdHost, httpClient)
 			terraswapQueryClient := dts_colv2.NewColumbusV2Client(lcd)
 			rawDataStore = ts_srcstore.NewCol5Store(c.FactoryAddress, r, lcd, terraswapQueryClient)
 
 		case dts.PISCO_FACTORY:
 			panic(errors.New("not implemented yet"))
 		case dts.CLASSIC_V1_FACTORY:
-			lcd := col4.NewLcd(c.NodeConfig.RestClientConfig.LcdHost, defaultHttpClient)
+			lcd := col4.NewLcd(c.NodeConfig.RestClientConfig.LcdHost, httpClient)
 			terraswapQueryClient := dts_colv1.NewCol4Client(lcd)
 			rawDataStore = ts_srcstore.NewCol4Store(c.FactoryAddress, r, lcd, terraswapQueryClient)
 		default:

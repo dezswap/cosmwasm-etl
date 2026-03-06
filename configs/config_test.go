@@ -2,9 +2,46 @@ package configs
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
+
+func Test_HttpClientConfig_EnvVars(t *testing.T) {
+	t.Setenv("APP_PARSER_DEX_NODE_HTTP_MAXIDLECONNS", "50")
+	t.Setenv("APP_PARSER_DEX_NODE_HTTP_MAXIDLECONNSPERHOST", "10")
+	t.Setenv("APP_PARSER_DEX_NODE_HTTP_IDLECONNTIMEOUT", "60s")
+	t.Setenv("APP_PARSER_DEX_NODE_HTTP_TIMEOUT", "30s")
+
+	// required fields to prevent panic
+	t.Setenv("APP_LOG_ENV", "local")
+	t.Setenv("APP_LOG_CHAINID", "testnet-1")
+
+	tmp := t.TempDir()
+	defer withTestBasepath(t, tmp)()
+
+	cfg := New()
+	http := cfg.Parser.DexConfig.NodeConfig.HttpClientConfig
+	require.Equal(t, 50, http.MaxIdleConns)
+	require.Equal(t, 10, http.MaxIdleConnsPerHost)
+	require.Equal(t, Duration{60 * time.Second}, http.IdleConnTimeout)
+	require.Equal(t, Duration{30 * time.Second}, http.Timeout)
+}
+
+func Test_HttpClientConfig_Defaults(t *testing.T) {
+	t.Setenv("APP_LOG_ENV", "local")
+	t.Setenv("APP_LOG_CHAINID", "testnet-1")
+
+	tmp := t.TempDir()
+	defer withTestBasepath(t, tmp)()
+
+	cfg := New()
+	http := cfg.Parser.DexConfig.NodeConfig.HttpClientConfig
+	require.Equal(t, 20, http.MaxIdleConns)
+	require.Equal(t, 5, http.MaxIdleConnsPerHost)
+	require.Equal(t, Duration{30 * time.Second}, http.IdleConnTimeout)
+	require.Equal(t, Duration{0}, http.Timeout)
+}
 
 func withTestBasepath(t *testing.T, dir string) func() {
 	t.Helper()
@@ -19,6 +56,7 @@ func Test_New_EnvOnly(t *testing.T) {
 
 	t.Setenv("APP_LOG_ENV", expectedEnv)
 	t.Setenv("APP_LOG_CHAINID", expectedChainID)
+	t.Setenv("APP_AGGREGATOR_SRCDB_SSLMODE", "require")
 
 	tmp := t.TempDir()
 	defer withTestBasepath(t, tmp)()
@@ -26,6 +64,7 @@ func Test_New_EnvOnly(t *testing.T) {
 	cfg := New()
 	require.Equal(t, expectedEnv, cfg.Log.Environment)
 	require.Equal(t, expectedChainID, cfg.Log.ChainId)
+	require.Equal(t, "require", cfg.Aggregator.SrcDb.SslMode)
 }
 
 func Test_New_NoFile_NoEnv(t *testing.T) {
