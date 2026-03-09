@@ -23,7 +23,7 @@ func NewMapper() Mapper {
 
 // BlockToRawTxs implements mapper
 func (m *mapperImpl) BlockToRawTxs(block *datastore.BlockTxsDTO) parser.RawTxs {
-	rawTxs := parser.RawTxs{}
+	rawTxs := make(parser.RawTxs, 0, len(block.Txs))
 	for _, tx := range block.Txs {
 		rawTxs = append(rawTxs, m.TxToParserRawTx(tx))
 	}
