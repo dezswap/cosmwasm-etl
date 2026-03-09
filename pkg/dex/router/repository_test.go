@@ -59,9 +59,6 @@ func TestUpdateRoutes_EmptyRoutes(t *testing.T) {
 	indexToAsset := map[int]string{}
 	routesMap := map[int]map[int][][]int{}
 
-	mock.ExpectBegin()
-	mock.ExpectCommit()
-
 	err := repo.UpdateRoutes(indexToAsset, routesMap)
 
 	assert.NoError(t, err)

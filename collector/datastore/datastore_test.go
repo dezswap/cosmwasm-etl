@@ -227,14 +227,14 @@ func Test10GetCurrentPoolStatusOfAllPairs(t *testing.T) {
 	m.On("SmartContractState",
 		mock.Anything,
 		&wasm.QuerySmartContractStateRequest{
-			Address:   "",
+			Address:   storeimpl.FactoryContractAddress,
 			QueryData: []byte(`{"pairs":{"start_after":[{"token":{"contract_addr":"terra1qj5hs3e86qn4vm9dvtgtlkdp550r0rayk9wpay44mfw3gn3tr8nq5jw3dg"}},{"native_token":{"denom":"uluna"}}]}}`),
 		}).Once().Return(&wasm.QuerySmartContractStateResponse{
 		Data: []byte(`{"pairs":[]}`),
 	}, nil)
 	m.On("SmartContractState", mock.Anything,
 		&wasm.QuerySmartContractStateRequest{
-			Address:   "",
+			Address:   storeimpl.FactoryContractAddress,
 			QueryData: []byte(`{"pairs":{}}`),
 		}).Once().Return(&wasm.QuerySmartContractStateResponse{
 		Data: []byte(lightFactoryResp),

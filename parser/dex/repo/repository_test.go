@@ -172,11 +172,8 @@ func (s *insertSuite) SetSuccessMock() {
 	}
 
 	s.Mock.ExpectBegin()
-	s.Mock.ExpectExec("SAVEPOINT (.*)").WillReturnResult(sqlmock.NewResult(0, 0))
 	s.Mock.ExpectExec(`INSERT INTO "pair" (.*)`).WillReturnResult(sqlmock.NewResult(pairLen, pairLen))
-	s.Mock.ExpectExec("SAVEPOINT (.*)").WillReturnResult(sqlmock.NewResult(0, 0))
 	s.Mock.ExpectQuery(`INSERT INTO "parsed_tx" (.*)`).WillReturnRows(parsedTxIds)
-	s.Mock.ExpectExec("SAVEPOINT (.*)").WillReturnResult(sqlmock.NewResult(0, 0))
 	s.Mock.ExpectExec(`INSERT INTO "pool_info" (.*)`).WillReturnResult(sqlmock.NewResult(poolInfosLen, poolInfosLen))
 	s.Mock.ExpectExec(`UPDATE "synced_height" SET "height"=\$1 WHERE chain\_id = \$2 AND height = \$3`).WithArgs(s.height, s.Repo.chainId, s.height-1).WillReturnResult(sqlmock.NewResult(1, 1))
 	s.Mock.ExpectCommit()
@@ -185,7 +182,6 @@ func (s *insertSuite) SetSuccessMock() {
 
 func (s *insertSuite) SetFailMock() {
 	s.Mock.ExpectBegin()
-	s.Mock.ExpectExec("SAVEPOINT (.*)").WillReturnResult(sqlmock.NewResult(0, 0))
 	s.Mock.ExpectExec(`INSERT INTO "pair" (.*)`).WillReturnError(errors.New("contract cannot be empty"))
 	s.Mock.ExpectRollback()
 
