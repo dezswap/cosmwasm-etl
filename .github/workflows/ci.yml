@@ -51,3 +51,29 @@ jobs:
 
     - name: Build all
       run: make build-all
+
+  docker-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Get changed files
+        id: changed
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            docker:
+              - 'Dockerfile'
+              - 'go.mod'
+              - 'go.sum'
+
+      - name: Validate Dockerfile (syntax check)
+        run: |
+          GO_VERSION=$(grep '^go ' go.mod | awk '{print $2}')
+          docker build --check --build-arg APP_PATH=parser/dex --build-arg GO_VERSION=$GO_VERSION .
+
+      - name: Full build check (Dockerfile/go.mod changed)
+        if: steps.changed.outputs.docker == 'true'
+        run: |
+          GO_VERSION=$(grep '^go ' go.mod | awk '{print $2}')
+          docker build --build-arg APP_PATH=parser/dex --build-arg GO_VERSION=$GO_VERSION .
