@@ -8,12 +8,12 @@ import (
 
 // db contains configs for other services
 type RdbConfig struct {
-	Host     string
-	Port     int
-	Database string
-	Username string
-	Password string
-	SslMode  string
+	Host     string `mapstructure:"host"`
+	Port     int    `mapstructure:"port"`
+	Database string `mapstructure:"database"`
+	Username string `mapstructure:"username"`
+	Password string `mapstructure:"password"`
+	SslMode  string `mapstructure:"sslmode"`
 }
 
 var defaultRdbConfig = RdbConfig{
@@ -25,36 +25,15 @@ var defaultRdbConfig = RdbConfig{
 	SslMode:  "disable",
 }
 
-func rdbConfig(v *viper.Viper) RdbConfig {
-	c := RdbConfig{
-		Host:     v.GetString("rdb.host"),
-		Port:     v.GetInt("rdb.port"),
-		Database: v.GetString("rdb.database"),
-		Username: v.GetString("rdb.username"),
-		Password: v.GetString("rdb.password"),
-		SslMode:  v.GetString("rdb.sslmode"),
-	}
-	if c.Host == "" {
-		c.Host = defaultRdbConfig.Host
-	}
-	if c.Port == 0 {
-		c.Port = defaultRdbConfig.Port
-	}
-	if c.Database == "" {
-		c.Database = defaultRdbConfig.Database
-	}
-	if c.Username == "" {
-		c.Username = defaultRdbConfig.Username
-	}
-	if c.Password == "" {
-		c.Password = defaultRdbConfig.Password
-	}
-	if c.SslMode == "" {
-		c.SslMode = defaultRdbConfig.SslMode
-	}
-	return c
-}
-
 func (c RdbConfig) Endpoint() string {
 	return c.Host + ":" + strconv.Itoa(c.Port)
+}
+
+func SetDefaultRdbConfig(v *viper.Viper) {
+	v.SetDefault("rdb.host", defaultRdbConfig.Host)
+	v.SetDefault("rdb.port", defaultRdbConfig.Port)
+	v.SetDefault("rdb.database", defaultRdbConfig.Database)
+	v.SetDefault("rdb.username", defaultRdbConfig.Username)
+	v.SetDefault("rdb.password", defaultRdbConfig.Password)
+	v.SetDefault("rdb.sslmode", defaultRdbConfig.SslMode)
 }

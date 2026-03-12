@@ -37,7 +37,7 @@ func New(name string, config configs.LogConfig) Logger {
 		}
 	}
 
-	logger.SetLevel(config.Level)
+	logger.SetLevel(config.ParsedLevel())
 	// Logrus default output channel is stderr
 	logger.SetOutput(os.Stdout)
 

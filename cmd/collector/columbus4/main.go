@@ -49,8 +49,9 @@ var columbus4_pairs = []string{
 
 // TerraSwap Columbus-4 network-specific transaction collector from the FCD server.
 func main() {
-	cfg := configs.New().Collector.FcdConfig
-	dbCon := cfg.RdbConfig
+	cfg := configs.New()
+	fcdCfg := cfg.Collector.FcdConfig
+	dbCon := fcdCfg.RdbConfig
 	dbDsn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", dbCon.Host, dbCon.Port, dbCon.Username, dbCon.Password, dbCon.Database)
 	writer := io.MultiWriter(os.Stdout)
 	db, err := gorm.Open(postgres.Open(dbDsn), &gorm.Config{
@@ -72,7 +73,7 @@ func main() {
 	}
 	store := fcd_collector.NewPermanentStore(db)
 
-	fcdIns := fcd.New(cfg.Url, &http.Client{
+	fcdIns := fcd.New(fcdCfg.Url, &http.Client{
 		Transport: &http.Transport{
 			MaxIdleConns:      10,               // Maximum idle connections to keep open
 			IdleConnTimeout:   30 * time.Second, // Time to keep idle connections open
@@ -83,10 +84,10 @@ func main() {
 
 	// default setting is for columbus-4 network
 	targets := columbus4_pairs
-	cfg.UntilHeight = terraswap.COLUMBUS_4_END_HEIGHT
+	fcdCfg.UntilHeight = terraswap.COLUMBUS_4_END_HEIGHT
 
 	app := fcd_collector.New(repo, store)
-	logger := logging.New("col4_collector", configs.Get().Log)
+	logger := logging.New("col4_collector", cfg.Log)
 	defer catch(logger)
 
 	errTolerance := 3
@@ -94,7 +95,7 @@ func main() {
 	for _, addr := range targets {
 		logger.Infof("start collecting addr(%s)", addr)
 		for errCount := uint(0); errCount <= uint(errTolerance); {
-			if err := app.Collect(addr, uint32(cfg.UntilHeight)); err != nil {
+			if err := app.Collect(addr, uint32(fcdCfg.UntilHeight)); err != nil {
 				errCount++
 				logger.Errorf("errCount: %d, err: %s", errCount, err)
 			} else {

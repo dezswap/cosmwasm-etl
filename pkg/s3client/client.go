@@ -21,8 +21,6 @@ const latestTag string = "latest"
 const blockTag string = "block"
 const latestFilename string = latestTag + ".txt"
 
-var s3Config configs.S3Config
-
 // Interface for actual S3 usage within this module
 type s3Interfaces interface {
 	PutObject(context.Context, *s3.PutObjectInput, ...func(*s3.Options)) (*s3.PutObjectOutput, error)
@@ -61,19 +59,17 @@ type s3ClientInfo struct {
 
 var _ S3ClientInterface = &s3ClientInfo{}
 
-func NewClient() (S3ClientInterface, error) {
-	s3Config = configs.Get().S3
-
+func NewClient(s3Cfg configs.S3Config) (S3ClientInterface, error) {
 	cred := credentials.NewStaticCredentialsProvider(
-		s3Config.Key,    // user,
-		s3Config.Secret, // key,
-		"",              // let it be empty
+		s3Cfg.Key,    // user,
+		s3Cfg.Secret, // key,
+		"",           // let it be empty
 	)
 
 	cfg, err := s3sdkconfig.LoadDefaultConfig(
 		context.TODO(),
 		s3sdkconfig.WithCredentialsProvider(cred),
-		s3sdkconfig.WithRegion(s3Config.Region),
+		s3sdkconfig.WithRegion(s3Cfg.Region),
 	)
 
 	if err != nil {
@@ -83,7 +79,7 @@ func NewClient() (S3ClientInterface, error) {
 
 	ret := &s3ClientInfo{
 		s3Client: s3.NewFromConfig(cfg),
-		bucket:   s3Config.Bucket,
+		bucket:   s3Cfg.Bucket,
 	}
 
 	return ret, nil

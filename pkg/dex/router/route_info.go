@@ -169,7 +169,7 @@ func (ri *routeInfoImpl) findAllRoutes(start, current int, route []int, visited 
 			ri.routesMap[start][to] = make([][]int, 0)
 		}
 
-		copiedRoute := make([]int, len(route))
+		copiedRoute := make([]int, len(route), len(route)+1)
 		copy(copiedRoute, route)
 		newRoute := append(copiedRoute, to)
 		routes := ri.routesMap[start][to]

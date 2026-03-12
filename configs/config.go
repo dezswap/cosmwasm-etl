@@ -1,21 +1,38 @@
 package configs
 
 import (
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"runtime"
 	"strings"
 
+	"github.com/go-viper/mapstructure/v2"
 	"github.com/pkg/errors"
 	"github.com/spf13/viper"
 )
 
 const (
-	fileName  = "config"
-	envPrefix = "app"
+	defaultConfigFileName = "config"
+	envPrefix             = "app"
 )
 
-var envConfig Config
+var defaultConfig = Config{
+	Collector: CollectorConfig{
+		NodeConfig: NodeConfig{
+			HttpClientConfig: defaultHttpClientConfig,
+		},
+	},
+	Parser: ParserConfig{
+		DexConfig: ParserDexConfig{
+			NodeConfig: NodeConfig{
+				HttpClientConfig: defaultHttpClientConfig,
+			},
+		},
+	},
+	Rdb: defaultRdbConfig,
+}
+
 var (
 	_, b, _, _ = runtime.Caller(0)
 	basepath   = filepath.Dir(b)
@@ -23,18 +40,18 @@ var (
 
 // Config aggregation
 type Config struct {
-	Aggregator AggregatorConfig
-	Collector  CollectorConfig
-	Parser     ParserConfig
-	Log        LogConfig
-	Sentry     SentryConfig
-	Rdb        RdbConfig
-	S3         S3Config
+	Aggregator AggregatorConfig `mapstructure:"aggregator"`
+	Collector  CollectorConfig  `mapstructure:"collector"`
+	Parser     ParserConfig     `mapstructure:"parser"`
+	Log        LogConfig        `mapstructure:"log"`
+	Sentry     SentryConfig     `mapstructure:"sentry"`
+	Rdb        RdbConfig        `mapstructure:"rdb"`
+	S3         S3Config         `mapstructure:"s3"`
 }
 
 // Init is explicit initializer for Config
 func New() Config {
-	v, err := initViper(fileName)
+	v, err := initViper(defaultConfigFileName)
 	if err != nil {
 		var notFound viper.ConfigFileNotFoundError
 		if !errors.As(err, &notFound) {
@@ -42,23 +59,22 @@ func New() Config {
 		}
 	}
 
-	envConfig = Config{
-		Aggregator: aggregatorConfig(v),
-		Collector:  collectorConfig(v),
-		Parser:     parserConfig(v),
-		Log:        logConfig(v),
-		Sentry:     sentryConfig(v),
-		Rdb:        rdbConfig(v),
-		S3:         s3Config(v),
+	var cfg = defaultConfig
+	if err = v.Unmarshal(&cfg, viper.DecodeHook(
+		mapstructure.ComposeDecodeHookFunc(
+			mapstructure.TextUnmarshallerHookFunc(),
+		),
+	)); err != nil {
+		panic(fmt.Errorf("unmarshal config: %w", err))
 	}
 
 	// common configuration for collector/parser/aggregator
 	// check env variables have been set when no file exists
-	if envConfig.Log.ChainId == "" || envConfig.Log.Environment == "" {
-		panic(err)
+	if cfg.Log.ChainId == "" || cfg.Log.Environment == "" {
+		panic(fmt.Errorf("APP_LOG_CHAINID or APP_LOG_ENV is not set"))
 	}
 
-	return envConfig
+	return cfg
 }
 
 func NewWithFileName(fileName string) Config {
@@ -67,25 +83,21 @@ func NewWithFileName(fileName string) Config {
 		panic(err)
 	}
 
-	envConfig = Config{
-		Aggregator: aggregatorConfig(v),
-		Collector:  collectorConfig(v),
-		Parser:     parserConfig(v),
-		Log:        logConfig(v),
-		Sentry:     sentryConfig(v),
-		Rdb:        rdbConfig(v),
-		S3:         s3Config(v),
+	var cfg = defaultConfig
+	if err = v.Unmarshal(&cfg, viper.DecodeHook(
+		mapstructure.ComposeDecodeHookFunc(
+			mapstructure.TextUnmarshallerHookFunc(),
+		),
+	)); err != nil {
+		panic(fmt.Errorf("unmarshal config: %w", err))
 	}
-	return envConfig
-}
 
-// Get returns Config object
-func Get() Config {
-	return envConfig
+	return cfg
 }
 
 func initViper(configName string) (*viper.Viper, error) {
-	v := viper.New()
+	v := viper.NewWithOptions(viper.ExperimentalBindStruct())
+
 	v.SetConfigName(configName)
 
 	if basepath == "" {
@@ -122,4 +134,12 @@ func (c Config) Redacted() Config {
 	cp.Aggregator.DestDb.Password = "***"
 
 	return cp
+}
+
+func (cfg Config) Pretty() string {
+	b, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return fmt.Sprintf("config(marshal_error=%v)", err)
+	}
+	return string(b)
 }

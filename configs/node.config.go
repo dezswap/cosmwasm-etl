@@ -1,49 +1,59 @@
 package configs
 
 import (
-	"fmt"
 	"time"
-
-	"github.com/spf13/viper"
 )
 
 type NodeConfig struct {
-	GrpcConfig      GrpcConfig
-	FailoverLcdHost string
+	GrpcConfig       GrpcConfig       `mapstructure:"grpc"`
+	FailoverLcdHost  string           `mapstructure:"failover_lcd_host"`
+	RestClientConfig RestClientConfig `mapstructure:"rest"`
+	HttpClientConfig HttpClientConfig `mapstructure:"http"`
+}
 
-	RestClientConfig RestClientConfig
+type HttpClientConfig struct {
+	MaxIdleConns        int       `mapstructure:"maxidleconns"`
+	MaxIdleConnsPerHost int       `mapstructure:"maxidleconnsperhost"`
+	IdleConnTimeout     *Duration `mapstructure:"idleconntimeout"`
+	DisableKeepAlives   bool      `mapstructure:"disablekeepalives"`
+	ForceAttemptHTTP2   bool      `mapstructure:"forceattempthttp2"`
+	Timeout             *Duration `mapstructure:"timeout"`
 }
 
 type GrpcConfig struct {
-	Host         string
-	Port         int
-	BackoffDelay Duration
-	NoTLS        bool
+	Host         string   `mapstructure:"host"`
+	Port         int      `mapstructure:"port"`
+	BackoffDelay Duration `mapstructure:"backoffdelay"`
+	NoTLS        bool     `mapstructure:"notls"`
 }
 
 type RestClientConfig struct {
-	LcdHost string
-	RpcHost string
+	LcdHost string `mapstructure:"lcd"`
+	RpcHost string `mapstructure:"rpc"`
 }
 
-// Duration is wrapper type for custom unmarshalling
+// Duration is a wrapper type for automatic string → time.Duration unmarshalling via mapstructure.
 type Duration struct {
 	time.Duration
 }
 
-func grpcConfig(v *viper.Viper, prefix string) GrpcConfig {
-	if prefix != "" {
-		prefix += "."
+func (d *Duration) UnmarshalText(text []byte) error {
+	s := string(text)
+	if s == "" {
+		d.Duration = 0
+		return nil
 	}
-
-	backoffDelay, err := time.ParseDuration(v.GetString(fmt.Sprint(prefix, "grpc.backoffdelay")))
+	dur, err := time.ParseDuration(s)
 	if err != nil {
-		backoffDelay, _ = time.ParseDuration("3s")
+		return err
 	}
-	return GrpcConfig{
-		Host:         v.GetString(fmt.Sprint(prefix, "grpc.host")),
-		Port:         v.GetInt(fmt.Sprint(prefix, "grpc.port")),
-		BackoffDelay: Duration{backoffDelay},
-		NoTLS:        v.GetBool(fmt.Sprint(prefix, "grpc.noTLS")),
-	}
+	d.Duration = dur
+	return nil
+}
+
+var defaultHttpClientConfig = HttpClientConfig{
+	MaxIdleConns:        20,
+	MaxIdleConnsPerHost: 5,
+	IdleConnTimeout:     &Duration{time.Second * 30},
+	Timeout:             &Duration{},
 }
