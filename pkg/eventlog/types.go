@@ -10,6 +10,9 @@ const (
 
 	//columbus 4
 	FromContract LogType = "from_contract"
+
+	// columbus 5
+	TaxPaymentType LogType = "tax_payment"
 )
 
 type Attribute struct {

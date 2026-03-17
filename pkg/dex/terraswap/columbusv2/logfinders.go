@@ -51,6 +51,11 @@ func CreateSortedTransferRuleFinder(pairs map[string]bool) (eventlog.LogFinder, 
 	return eventlog.NewLogFinder(rule)
 }
 
+// CreateTaxPaymentRuleFinder finds tax_payment type logs
+func CreateTaxPaymentRuleFinder() (eventlog.LogFinder, error) {
+	return eventlog.NewLogFinder(taxPaymentRule)
+}
+
 var createPairRule = eventlog.Rule{Type: eventlog.WasmType, Items: eventlog.RuleItems{
 	eventlog.RuleItem{Key: "_contract_address", Filter: nil},
 	eventlog.RuleItem{Key: "action", Filter: "create_pair"},
@@ -77,4 +82,9 @@ var sortedTransferRule = eventlog.Rule{Type: eventlog.TransferType, Items: event
 	eventlog.RuleItem{Key: "amount", Filter: nil},
 	eventlog.RuleItem{Key: "recipient", Filter: nil},
 	eventlog.RuleItem{Key: "sender", Filter: nil},
+}}
+
+var taxPaymentRule = eventlog.Rule{Type: eventlog.TaxPaymentType, Items: eventlog.RuleItems{
+	eventlog.RuleItem{Key: "reverse_charge", Filter: nil},
+	eventlog.RuleItem{Key: "tax_amount", Filter: nil},
 }}

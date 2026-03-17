@@ -62,7 +62,9 @@ func Test_parseTxs(t *testing.T) {
 			pairMap[p.ContractAddr] = p
 		}
 
-		app := terraswapApp{&repo, &dex.PairParsers{CreatePairParser: &createPairParser}, dex.DexMixin{}, pairMap, make(map[string]bool)}
+		taxPaymentParser := dex.ParserMock{}
+		taxPaymentParser.On("parse", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*dex.ParsedTx{}, nil)
+		app := terraswapApp{&repo, &dex.PairParsers{CreatePairParser: &createPairParser, TaxPaymentParser: &taxPaymentParser}, dex.DexMixin{}, pairMap, make(map[string]bool)}
 		dexApp := dex.NewDexApp(&app, &rawStore, &repo, logging.New("test", configs.LogConfig{}), configs.ParserDexConfig{FactoryAddress: factoryAddr})
 
 		createTxs = []*dex.ParsedTx{}
@@ -111,6 +113,35 @@ func Test_parseTxs(t *testing.T) {
 			assert.Equal(append(expected, tc.expected...), txs, msg, err)
 		}
 	}
+}
+
+func Test_taxDeduction(t *testing.T) {
+	assert := assert.New(t)
+	app := &terraswapApp{}
+
+	// swap: Asset0 inflow 1000, Asset1 outflow -1000
+	pairTx := &dex.ParsedTx{
+		Type:         dex.Swap,
+		ContractAddr: "PAIR_ADDR",
+		Assets:       [2]dex.Asset{{"Asset0", "1000"}, {"Asset1", "-1000"}},
+	}
+
+	// tax_payment log: tax of 10 Asset1
+	taxTx := &dex.ParsedTx{
+		Type:   dex.TaxPayment,
+		Assets: [2]dex.Asset{{Addr: "Asset1", Amount: "10"}, {}},
+	}
+
+	// pair transfer: net outflow of -990 Asset1 (gross 1000 - tax 10)
+	pairTransferTx := &dex.ParsedTx{
+		Type:         dex.Transfer,
+		ContractAddr: "PAIR_ADDR",
+		Assets:       [2]dex.Asset{{Addr: "Asset0", Amount: ""}, {Addr: "Asset1", Amount: "-990"}},
+	}
+
+	result := app.deductTaxFromPairTxs([]*dex.ParsedTx{taxTx}, []*dex.ParsedTx{pairTransferTx}, []*dex.ParsedTx{pairTx})
+	assert.Equal("1000", result[0].Assets[0].Amount, "Asset0 inflow should be unchanged")
+	assert.Equal("-990", result[0].Assets[1].Amount, "Asset1 outflow: net -990 applied from pairTransferTx")
 }
 
 func rawLogs(logStr string) eventlog.LogResults {

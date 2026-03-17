@@ -15,6 +15,7 @@ type PairParsers struct {
 	PairActionParser parser.Parser[ParsedTx]
 	InitialProvide   parser.Parser[ParsedTx]
 	WasmTransfer     parser.Parser[ParsedTx]
+	TaxPaymentParser parser.Parser[ParsedTx]
 	Transfer         parser.Parser[ParsedTx]
 }
 
