@@ -52,6 +52,55 @@ func Test_LogFinders(t *testing.T) {
 
 }
 
+func Test_BurnLogFinder(t *testing.T) {
+	tcs := []struct {
+		rawLogStr         string
+		expectedResultLen int
+		matchedLen        int
+		errMsg            string
+	}{
+		{PairLpBurnRawLogStr, 1, BurnMatchedLen, "must match once"},
+		{PairInitialProvideRawLogStr, 0, 0, "must not match non-burn log"},
+	}
+
+	for idx, tc := range tcs {
+		errMsg := fmt.Sprintf("idx(%d): %s", idx, tc.errMsg)
+		assert := assert.New(t)
+
+		var eventLogs eventlog.LogResults
+		if err := json.Unmarshal([]byte(tc.rawLogStr), &eventLogs); err != nil {
+			panic(err)
+		}
+		logFinder, err := CreateBurnRuleFinder()
+		if err != nil {
+			panic(err)
+		}
+		matchedResults := logFinder.FindFromLogs(eventLogs)
+		assert.Len(matchedResults, tc.expectedResultLen, errMsg)
+		if tc.expectedResultLen > 0 {
+			assert.Len(matchedResults[0], tc.matchedLen, "must return all matched value")
+		}
+	}
+}
+
+const PairLpBurnRawLogStr = `[
+    {"type":"execute","attributes":[
+        {"key":"_contract_address","value":"xpla1aye7rggr2w0dgpwuwul0y6nyxau2k5jjrpmrxtkcvsd7nlx2nz0su357u5"},
+        {"key":"_contract_address","value":"xpla1ng9mj65a5cunzvkdqctgsv3pewgrx2hvk9tnrww77v3tk2lp7c9qllk0xh"}
+    ]},
+    {"type":"message","attributes":[
+        {"key":"action","value":"/cosmwasm.wasm.v1.MsgExecuteContract"},
+        {"key":"module","value":"wasm"},
+        {"key":"sender","value":"xpla1s4gljj0ksjkhh5vsk3lvw2s9rpflyq6k7e575x"}
+    ]},
+    {"type":"wasm","attributes":[
+        {"key":"_contract_address","value":"xpla1aye7rggr2w0dgpwuwul0y6nyxau2k5jjrpmrxtkcvsd7nlx2nz0su357u5"},
+        {"key":"action","value":"burn"},
+        {"key":"amount","value":"1098669138945462355"},
+        {"key":"from","value":"xpla1ng9mj65a5cunzvkdqctgsv3pewgrx2hvk9tnrww77v3tk2lp7c9qllk0xh"}
+    ]}
+]`
+
 const PairInitialProvideRawLogStr = `[
     {"type":"execute","attributes":[{"key":"_contract_address","value":"xpla10x8w4n9cvg4f63fjrm0yc6c54a4p3csuk0uv0hskz8g3aljufl6qlrs6gp"},{"key":"_contract_address","value":"xpla1p3dsd5k7cl0p0jhtj0s00vrf45s4c6j3wtjsaaalatmr2jwl7p0sy3sd26"},{"key":"_contract_address","value":"xpla1r57m20afwdhkwy67520p8vzdchzecesmlmc8k8w2z7t3h9aevjvs35x4r5"},{"key":"_contract_address","value":"xpla1he85n9h0mcnzhpegj76wwcyjv626tced0zkp58wakjc7d3fm50xq8sywg6"},{"key":"_contract_address","value":"xpla1p3dsd5k7cl0p0jhtj0s00vrf45s4c6j3wtjsaaalatmr2jwl7p0sy3sd26"}]},
     {"type":"message","attributes":[{"key":"action","value":"/cosmwasm.wasm.v1.MsgExecuteContract"},{"key":"module","value":"wasm"},{"key":"sender","value":"xpla1g8hkzkgfa3uq0cg9d6h99jk5nlg92lwx2jme2l"}]},

@@ -16,6 +16,7 @@ const (
 	Withdraw       TxType = "withdraw"
 	Transfer       TxType = "transfer"
 	TaxPayment     TxType = "tax_payment"
+	LpBurn         TxType = "lp_burn"
 )
 
 type Asset struct {
