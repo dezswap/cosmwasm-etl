@@ -15,6 +15,7 @@ const (
 	InitialProvide TxType = "initial_provide"
 	Withdraw       TxType = "withdraw"
 	Transfer       TxType = "transfer"
+	TaxPayment     TxType = "tax_payment"
 )
 
 type Asset struct {

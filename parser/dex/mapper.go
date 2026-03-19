@@ -23,6 +23,8 @@ type wasmCommonTransferMapper struct {
 
 type initialProvideMapper struct{ pdex.MapperMixin }
 
+type taxPaymentMapper struct{ pdex.MapperMixin }
+
 func NewFactoryMapper() parser.Mapper[ParsedTx] {
 	return &factoryMapper{pdex.MapperMixin{}}
 }
@@ -221,5 +223,30 @@ func (m *initialProvideMapper) MatchedToParsedTx(res eventlog.MatchedResult, opt
 		LpAddr:       matchMap[pdex.PairInitialProvideAddrKey].Value,
 		LpAmount:     matchMap[pdex.PairInitialProvideAmountKey].Value,
 		Meta:         nil,
+	}}, nil
+}
+
+func NewTaxPaymentMapper() parser.Mapper[ParsedTx] {
+	return &taxPaymentMapper{pdex.MapperMixin{}}
+}
+
+func (m *taxPaymentMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) ([]*ParsedTx, error) {
+	if err := m.CheckResult(res, pdex.PairTaxPaymentTaxMatchedLen); err != nil {
+		return nil, errors.Wrap(err, "taxPaymentMapper.MatchedToParsedTx")
+	}
+	matchMap, err := eventlog.ResultToItemMap(res)
+	if err != nil {
+		return nil, errors.Wrap(err, "taxPaymentMapper.MatchedToParsedTx")
+	}
+
+	asset, err := GetAssetFromAmountAssetString(matchMap[pdex.PairTaxPaymentTaxAmountKey].Value)
+	if err != nil {
+		return nil, errors.Wrap(err, "taxPaymentMapper.MatchedToParsedTx")
+	}
+
+	return []*ParsedTx{{
+		Type:   TaxPayment,
+		Sender: "",
+		Assets: [2]Asset{asset, {}},
 	}}, nil
 }

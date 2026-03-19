@@ -7,9 +7,10 @@ import (
 )
 
 var ParsableRules = map[string]bool{
-	string(eventlog.TransferType): true,
-	string(eventlog.FromContract): true,
-	string(eventlog.WasmType):     true,
+	string(eventlog.TransferType):   true,
+	string(eventlog.FromContract):   true,
+	string(eventlog.WasmType):       true,
+	string(eventlog.TaxPaymentType): true,
 }
 
 var (
@@ -69,4 +70,15 @@ const (
 	PairInitialProvideActionKey = "action"
 	PairInitialProvideAmountKey = "amount"
 	PairInitialProvideToKey     = "to"
+)
+
+const (
+	PairTaxPaymentReverseChargeIdx = iota
+	PairTaxPaymentTaxAmountIdx
+	PairTaxPaymentTaxMatchedLen
+)
+
+const (
+	PairTaxPaymentReverseChargeKey = "reverse_charge"
+	PairTaxPaymentTaxAmountKey     = "tax_amount"
 )
