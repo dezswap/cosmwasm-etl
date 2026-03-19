@@ -5,6 +5,7 @@ import (
 
 	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/parser/dex"
+	pdex "github.com/dezswap/cosmwasm-etl/pkg/dex"
 	"github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap/columbusv2"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 	"github.com/dezswap/cosmwasm-etl/pkg/terra"
@@ -46,7 +47,7 @@ func (m *pairMapper) swapMatchedToParsedTx(res eventlog.MatchedResult, pair dex.
 		return nil, errors.Wrap(err, "pairMapper.swapMatchedToParsedTx")
 	}
 
-	offerAsset := matchMap[columbusv2.PairSwapOfferAssetKey].Value
+	offerAsset := matchMap[pdex.PairSwapOfferAssetKey].Value
 	offerIdx := 0
 	if pair.Assets[1] == offerAsset {
 		offerIdx = 1
@@ -58,10 +59,10 @@ func (m *pairMapper) swapMatchedToParsedTx(res eventlog.MatchedResult, pair dex.
 		{Addr: pair.Assets[1]},
 	}
 
-	assets[offerIdx].Amount = matchMap[columbusv2.PairSwapOfferAmountKey].Value
-	assets[returnIdx].Amount = fmt.Sprintf("-%s", matchMap[columbusv2.PairSwapReturnAmountKey].Value)
+	assets[offerIdx].Amount = matchMap[pdex.PairSwapOfferAmountKey].Value
+	assets[returnIdx].Amount = fmt.Sprintf("-%s", matchMap[pdex.PairSwapReturnAmountKey].Value)
 
-	tax, ok := matchMap[columbusv2.PairSwapTaxAmountKey]
+	tax, ok := matchMap[pdex.PairSwapTaxAmountKey]
 	if ok {
 		if assets[returnIdx].Amount, err = dex.AmountAdd(assets[returnIdx].Amount, tax.Value); err != nil {
 			return nil, errors.Wrap(err, "pairMapper.swapMatchedToParsedTx")
@@ -71,9 +72,9 @@ func (m *pairMapper) swapMatchedToParsedTx(res eventlog.MatchedResult, pair dex.
 	return []*dex.ParsedTx{{
 		Type:             dex.Swap,
 		ContractAddr:     matchMap[columbusv2.PairAddrKey].Value,
-		Sender:           matchMap[columbusv2.PairSwapSenderKey].Value,
+		Sender:           matchMap[pdex.PairSwapSenderKey].Value,
 		Assets:           assets,
-		CommissionAmount: matchMap[columbusv2.PairSwapCommissionAmountKey].Value,
+		CommissionAmount: matchMap[pdex.PairSwapCommissionAmountKey].Value,
 		Meta:             nil,
 	}}, nil
 }

@@ -29,18 +29,6 @@ const (
 )
 
 const (
-	PairSwapAskAssetKey         = "ask_asset"
-	PairSwapCommissionAmountKey = "commission_amount"
-	PairSwapOfferAmountKey      = "offer_amount"
-	PairSwapOfferAssetKey       = "offer_asset"
-	PairSwapReceiverKey         = "receiver"
-	PairSwapReturnAmountKey     = "return_amount"
-	PairSwapTaxAmountKey        = "tax_amount"
-	PairSwapSenderKey           = "sender"
-	PairSwapSpreadAmountKey     = "spread_amount"
-)
-
-const (
 	SortedTransferAmountKey    = "amount"
 	SortedTransferRecipientKey = "recipient"
 	SortedTransferSenderKey    = "sender"

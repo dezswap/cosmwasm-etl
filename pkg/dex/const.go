@@ -97,3 +97,15 @@ const (
 	BurnAmountKey = "amount"
 	BurnFromKey   = "from"
 )
+
+const (
+	PairSwapAskAssetKey         = "ask_asset"
+	PairSwapCommissionAmountKey = "commission_amount"
+	PairSwapOfferAmountKey      = "offer_amount"
+	PairSwapOfferAssetKey       = "offer_asset"
+	PairSwapReceiverKey         = "receiver"
+	PairSwapReturnAmountKey     = "return_amount"
+	PairSwapTaxAmountKey        = "tax_amount" // columbus-5
+	PairSwapSenderKey           = "sender"
+	PairSwapSpreadAmountKey     = "spread_amount"
+)
