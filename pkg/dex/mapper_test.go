@@ -32,10 +32,9 @@ func Test_CheckResult(t *testing.T) {
 		{
 			eventlog.MatchedResult{
 				{Key: "recipient", Value: "Pair"}, {Key: "sender", Value: "A"},
-				{Key: "amount", Value: "1000Asset1"}, {Key: "WRONG_MATCHED_LENGTH", Value: "LENGTH"},
 			},
 			3,
-			"must return error when matched result length is not equal to expected",
+			"must return error when matched result length is less than expected",
 		},
 		{
 			eventlog.MatchedResult{

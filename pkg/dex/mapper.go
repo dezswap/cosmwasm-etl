@@ -11,9 +11,9 @@ import (
 type MapperMixin struct {
 }
 
-func (m *MapperMixin) CheckResult(res eventlog.MatchedResult, expectedLen int) error {
-	if len(res) != expectedLen {
-		msg := fmt.Sprintf("expected results length(%d)", expectedLen)
+func (m *MapperMixin) CheckResult(res eventlog.MatchedResult, minLen int) error {
+	if len(res) < minLen {
+		msg := fmt.Sprintf("expected results length at least (%d)", minLen)
 		return errors.New(msg)
 	}
 

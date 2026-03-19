@@ -93,12 +93,17 @@ func (m *pairMapperMixin) getPair(addr string) (dex.Pair, error) {
 
 func (m *pairMapperMixin) swapMatchedToParsedTx(res eventlog.MatchedResult, pair dex.Pair) ([]*dex.ParsedTx, error) {
 	if err := m.CheckResult(res, ds.PairSwapMatchedLen); err != nil {
-		return nil, errors.Wrap(err, "pairMapper.swapMatchedToParsedTx")
+		return nil, errors.Wrap(err, "pairMapperMixin.swapMatchedToParsedTx")
 	}
 
-	offerAsset := res[ds.PairSwapOfferAssetIdx].Value
+	matchMap, err := eventlog.ResultToItemMap(res)
+	if err != nil {
+		return nil, errors.Wrap(err, "pairMapperMixin.swapMatchedToParsedTx")
+	}
+
+	offerAsset := matchMap[pdex.PairSwapOfferAssetKey]
 	offerIdx := 0
-	if pair.Assets[1] == offerAsset {
+	if pair.Assets[1] == offerAsset.Value {
 		offerIdx = 1
 	}
 	returnIdx := (offerIdx + 1) % 2
@@ -108,15 +113,15 @@ func (m *pairMapperMixin) swapMatchedToParsedTx(res eventlog.MatchedResult, pair
 		{Addr: pair.Assets[1]},
 	}
 
-	assets[offerIdx].Amount = res[ds.PairSwapOfferAmountIdx].Value
-	assets[returnIdx].Amount = fmt.Sprintf("-%s", res[ds.PairSwapReturnAmountIdx].Value)
+	assets[offerIdx].Amount = matchMap[pdex.PairSwapOfferAmountKey].Value
+	assets[returnIdx].Amount = fmt.Sprintf("-%s", matchMap[pdex.PairSwapReturnAmountKey].Value)
 
 	return []*dex.ParsedTx{{
 		Type:             dex.Swap,
-		Sender:           res[ds.PairSwapSenderIdx].Value,
+		Sender:           matchMap[pdex.PairSwapSenderKey].Value,
 		ContractAddr:     res[ds.PairAddrIdx].Value,
 		Assets:           assets,
-		CommissionAmount: res[ds.PairSwapCommissionAmountIdx].Value,
+		CommissionAmount: matchMap[pdex.PairSwapCommissionAmountKey].Value,
 	}}, nil
 }
 

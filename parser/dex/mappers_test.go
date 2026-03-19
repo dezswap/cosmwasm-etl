@@ -127,19 +127,22 @@ func Test_InitialProvideMapper(t *testing.T) {
 		{
 			&initialProvideMapper{dex.MapperMixin{}},
 			el.MatchedResult{
-				{Key: "_contract_address", Value: pair.LpAddr}, {Key: "action", Value: "mint"},
-				{Key: "amount", Value: "1000"}, {Key: "to", Value: pair.ContractAddr},
+				{Key: "_contract_address", Value: pair.LpAddr},
+				{Key: "action", Value: "mint"},
+				{Key: "amount", Value: "1000"},
+				{Key: "to", Value: pair.ContractAddr},
 			},
 			[]*ParsedTx{{"", time.Time{}, InitialProvide, "", pair.ContractAddr, [2]Asset{}, pair.LpAddr, "1000", "", nil}},
 			"",
 		},
 		{
 			&initialProvideMapper{dex.MapperMixin{}}, el.MatchedResult{
-				{Key: "_contract_address", Value: pair.LpAddr}, {Key: "action", Value: "mint"},
-				{Key: "amount", Value: "1000"}, {Key: "to", Value: pair.ContractAddr}, {Key: "sender", Value: pair.ContractAddr},
+				{Key: "_contract_address", Value: pair.LpAddr},
+				{Key: "action", Value: "mint"},
+				{Key: "amount", Value: "1000"},
 			},
 			nil,
-			"Wrong format of matched must return error",
+			"must return error when matched result length is less than expected",
 		},
 	}
 

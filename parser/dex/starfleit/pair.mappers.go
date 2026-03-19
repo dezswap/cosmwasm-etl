@@ -2,8 +2,9 @@ package starfleit
 
 import (
 	"fmt"
-	pdex "github.com/dezswap/cosmwasm-etl/pkg/dex"
 	"strings"
+
+	pdex "github.com/dezswap/cosmwasm-etl/pkg/dex"
 
 	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/parser/dex"
@@ -95,9 +96,14 @@ func (m *pairMapperMixin) swapMatchedToParsedTx(res eventlog.MatchedResult, pair
 		return nil, errors.Wrap(err, "pairMapper.swapMatchedToParsedTx")
 	}
 
-	offerAsset := res[sf.PairSwapOfferAssetIdx].Value
+	matchMap, err := eventlog.ResultToItemMap(res)
+	if err != nil {
+		return nil, errors.Wrap(err, "pairMapperMixin.swapMatchedToParsedTx")
+	}
+
+	offerAsset := matchMap[pdex.PairSwapOfferAssetKey]
 	offerIdx := 0
-	if pair.Assets[1] == offerAsset {
+	if pair.Assets[1] == offerAsset.Value {
 		offerIdx = 1
 	}
 	returnIdx := (offerIdx + 1) % 2
@@ -107,15 +113,15 @@ func (m *pairMapperMixin) swapMatchedToParsedTx(res eventlog.MatchedResult, pair
 		{Addr: pair.Assets[1]},
 	}
 
-	assets[offerIdx].Amount = res[sf.PairSwapOfferAmountIdx].Value
-	assets[returnIdx].Amount = fmt.Sprintf("-%s", res[sf.PairSwapReturnAmountIdx].Value)
+	assets[offerIdx].Amount = matchMap[pdex.PairSwapOfferAmountKey].Value
+	assets[returnIdx].Amount = fmt.Sprintf("-%s", matchMap[pdex.PairSwapReturnAmountKey].Value)
 
 	return []*dex.ParsedTx{{
 		Type:             dex.Swap,
-		Sender:           res[sf.PairSwapSenderIdx].Value,
+		Sender:           matchMap[pdex.PairSwapSenderKey].Value,
 		ContractAddr:     res[sf.PairAddrIdx].Value,
 		Assets:           assets,
-		CommissionAmount: res[sf.PairSwapCommissionAmountIdx].Value,
+		CommissionAmount: matchMap[pdex.PairSwapCommissionAmountKey].Value,
 	}}, nil
 }
 
