@@ -17,6 +17,7 @@ type PairParsers struct {
 	WasmTransfer     parser.Parser[ParsedTx]
 	TaxPaymentParser parser.Parser[ParsedTx]
 	Transfer         parser.Parser[ParsedTx]
+	BurnParser       parser.Parser[ParsedTx]
 }
 
 // common mixin logic for all dex apps

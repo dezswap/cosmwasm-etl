@@ -82,3 +82,18 @@ const (
 	PairTaxPaymentReverseChargeKey = "reverse_charge"
 	PairTaxPaymentTaxAmountKey     = "tax_amount"
 )
+
+const (
+	BurnAddrIdx = iota
+	BurnActionIdx
+	BurnAmountIdx
+	BurnFromIdx
+	BurnMatchedLen
+)
+
+const (
+	BurnAddrKey   = "_contract_address"
+	BurnActionKey = "action"
+	BurnAmountKey = "amount"
+	BurnFromKey   = "from"
+)

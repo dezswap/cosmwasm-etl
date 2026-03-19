@@ -24,3 +24,16 @@ var initialProvideRule = eventlog.Rule{Type: eventlog.WasmType, Items: eventlog.
 	eventlog.RuleItem{Key: "amount", Filter: nil},
 	eventlog.RuleItem{Key: "to", Filter: nil},
 }}
+
+func CreateBurnRuleFinder() (eventlog.LogFinder, error) {
+	return eventlog.NewLogFinder(burnRule)
+}
+
+var burnRule = eventlog.Rule{Type: eventlog.WasmType, Items: eventlog.RuleItems{
+	eventlog.RuleItem{Key: BurnAddrKey, Filter: nil},
+	eventlog.RuleItem{Key: BurnActionKey, Filter: func(v string) bool {
+		return v == "burn"
+	}},
+	eventlog.RuleItem{Key: BurnAmountKey, Filter: nil},
+	eventlog.RuleItem{Key: BurnFromKey, Filter: nil},
+}}

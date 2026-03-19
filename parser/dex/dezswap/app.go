@@ -19,7 +19,8 @@ type dezswapApp struct {
 	chainId string
 
 	// state
-	pairs map[string]dex.Pair
+	pairs       map[string]dex.Pair
+	lpPairAddrs map[string]string
 }
 
 var _ dex.TargetApp = &dezswapApp{}
@@ -43,7 +44,12 @@ func New(repo dex.PairRepo, _ logging.Logger, c configs.ParserDexConfig, chainId
 		return nil, errors.Wrap(err, "dezswap.New")
 	}
 
-	return &dezswapApp{repo, parsers, dex.DexMixin{}, chainId, pairs}, nil
+	lpPairAddrs := make(map[string]string)
+	for _, p := range pairs {
+		lpPairAddrs[p.LpAddr] = p.ContractAddr
+	}
+
+	return &dezswapApp{repo, parsers, dex.DexMixin{}, chainId, pairs, lpPairAddrs}, nil
 }
 
 func (p *dezswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx, error) {
@@ -58,6 +64,7 @@ func (p *dezswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx, e
 			LpAddr:       ctx.LpAddr,
 			Assets:       []string{ctx.Assets[0].Addr, ctx.Assets[1].Addr},
 		}
+		p.lpPairAddrs[ctx.LpAddr] = ctx.ContractAddr
 		ctx.Sender = tx.Sender
 		txDtos = append(txDtos, *ctx)
 	}
@@ -69,6 +76,7 @@ func (p *dezswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx, e
 	pairTxs := []*dex.ParsedTx{}
 	wasmTransferTxs := []*dex.ParsedTx{}
 	transferTxs := []*dex.ParsedTx{}
+	burnTxs := []*dex.ParsedTx{}
 	for _, raw := range tx.LogResults {
 		ptxs, err := p.Parsers.PairActionParser.Parse(eventlog.LogResults{raw}, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
 		if err != nil {
@@ -96,7 +104,14 @@ func (p *dezswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx, e
 			return nil, errors.Wrap(err, "parseTxs")
 		}
 		transferTxs = append(transferTxs, transfers...)
+
+		burns, err := p.Parsers.BurnParser.Parse(eventlog.LogResults{raw}, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
+		if err != nil {
+			return nil, errors.Wrap(err, "parseTxs")
+		}
+		burnTxs = append(burnTxs, burns...)
 	}
+
 	for _, ptx := range pairTxs {
 		ptx.Sender = tx.Sender
 		txDtos = append(txDtos, *ptx)
@@ -104,8 +119,24 @@ func (p *dezswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx, e
 
 	txDtos = append(txDtos, p.RemoveDuplicatedTxs(pairTxs, wasmTransferTxs)...)
 	txDtos = append(txDtos, p.RemoveDuplicatedTxs(pairTxs, transferTxs)...)
+	txDtos = append(txDtos, p.collectLpBurnTxs(burnTxs)...)
 
 	return txDtos, nil
+}
+
+// collectLpBurnTxs collects LP burn events and associates them with their pair contract.
+// LP tokens can be burned directly (outside of withdraw_liquidity), so we need to track
+// these burns separately and subtract the burned amount to keep pool calculations accurate.
+func (p *dezswapApp) collectLpBurnTxs(burnTxs []*dex.ParsedTx) []dex.ParsedTx {
+	lpBurnTxs := []dex.ParsedTx{}
+	for _, t := range burnTxs {
+		if pairAddr, ok := p.lpPairAddrs[t.LpAddr]; ok {
+			t.ContractAddr = pairAddr
+			lpBurnTxs = append(lpBurnTxs, *t)
+		}
+	}
+
+	return lpBurnTxs
 }
 
 func (p *dezswapApp) IsValidationExceptionCandidate(contractAddress string) bool {
@@ -129,7 +160,7 @@ func (p *dezswapApp) updateParsers(pairs map[string]dex.Pair, height uint64) err
 		if err != nil {
 			return errors.Wrap(err, "updateParsers")
 		}
-		p.Parsers.PairActionParser = parser.NewParser[dex.ParsedTx](pairFinder, pairMapper)
+		p.Parsers.PairActionParser = parser.NewParser(pairFinder, pairMapper)
 	}
 
 	// initial provide parser
@@ -138,7 +169,7 @@ func (p *dezswapApp) updateParsers(pairs map[string]dex.Pair, height uint64) err
 		if err != nil {
 			return errors.Wrap(err, "updateParsers")
 		}
-		p.Parsers.InitialProvide = parser.NewParser[dex.ParsedTx](initialProvideFinder, dex.NewInitialProvideMapper())
+		p.Parsers.InitialProvide = parser.NewParser(initialProvideFinder, dex.NewInitialProvideMapper())
 	}
 
 	// wasm transfer parser
@@ -147,7 +178,7 @@ func (p *dezswapApp) updateParsers(pairs map[string]dex.Pair, height uint64) err
 		if err != nil {
 			return errors.Wrap(err, "updateParsers")
 		}
-		p.Parsers.WasmTransfer = parser.NewParser[dex.ParsedTx](
+		p.Parsers.WasmTransfer = parser.NewParser(
 			wasmTransferFinder, &wasmTransferMapper{mixin: transferMapperMixin{pdex.MapperMixin{}}, pairSet: pairs})
 	}
 
@@ -157,7 +188,16 @@ func (p *dezswapApp) updateParsers(pairs map[string]dex.Pair, height uint64) err
 		if err != nil {
 			return errors.Wrap(err, "updateParsers")
 		}
-		p.Parsers.Transfer = parser.NewParser[dex.ParsedTx](transferRule, &transferMapper{pairSet: pairs})
+		p.Parsers.Transfer = parser.NewParser(transferRule, &transferMapper{pairSet: pairs})
+	}
+
+	// burn parser - to collect and parse LP burn event
+	{
+		burnRule, err := pdex.CreateBurnRuleFinder()
+		if err != nil {
+			return errors.Wrap(err, "updateParser")
+		}
+		p.Parsers.BurnParser = parser.NewParser(burnRule, dex.NewBurnMapper())
 	}
 
 	return nil

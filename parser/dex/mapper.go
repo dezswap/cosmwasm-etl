@@ -25,6 +25,8 @@ type initialProvideMapper struct{ pdex.MapperMixin }
 
 type taxPaymentMapper struct{ pdex.MapperMixin }
 
+type burnMapper struct{ pdex.MapperMixin }
+
 func NewFactoryMapper() parser.Mapper[ParsedTx] {
 	return &factoryMapper{pdex.MapperMixin{}}
 }
@@ -248,5 +250,35 @@ func (m *taxPaymentMapper) MatchedToParsedTx(res eventlog.MatchedResult, optiona
 		Type:   TaxPayment,
 		Sender: "",
 		Assets: [2]Asset{asset, {}},
+	}}, nil
+}
+
+func NewBurnMapper() parser.Mapper[ParsedTx] {
+	return &burnMapper{pdex.MapperMixin{}}
+}
+
+func (m *burnMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) ([]*ParsedTx, error) {
+	if err := m.CheckResult(res, pdex.BurnMatchedLen); err != nil {
+		return nil, errors.Wrap(err, "burnMapper.MatchedToParsedTx")
+	}
+	matchMap, err := eventlog.ResultToItemMap(res)
+	if err != nil {
+		return nil, errors.Wrap(err, "burnMapper.MatchedToParsedTx")
+	}
+
+	lpAmount := matchMap[pdex.BurnAmountKey].Value
+	if lpAmount == "" {
+		return nil, errors.New("burnMapper.MatchedToParsedTx: empty amount")
+	}
+	if !strings.HasPrefix(lpAmount, "-") {
+		lpAmount = "-" + lpAmount
+	}
+
+	return []*ParsedTx{{
+		Type:     LpBurn,
+		Sender:   matchMap[pdex.BurnFromKey].Value,
+		LpAddr:   matchMap[pdex.BurnAddrKey].Value,
+		Assets:   [2]Asset{{}, {}},
+		LpAmount: lpAmount,
 	}}, nil
 }
