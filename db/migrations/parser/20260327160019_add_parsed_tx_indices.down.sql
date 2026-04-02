@@ -1,0 +1,6 @@
+DROP INDEX parsed_tx_type_timestamp_idx;
+
+DROP INDEX parsed_tx_contract_type_timestamp_idx;
+
+DROP INDEX parsed_tx_asset0_type_timestamp_idx;
+DROP INDEX parsed_tx_asset1_type_timestamp_idx;
