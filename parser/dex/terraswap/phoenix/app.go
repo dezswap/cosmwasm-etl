@@ -19,6 +19,7 @@ type terraswapApp struct {
 
 	// state
 	pairs         map[string]dex.Pair
+	lpPairAddrs   map[string]string
 	flaggedAssets map[string]bool
 }
 
@@ -43,7 +44,12 @@ func New(repo dex.PairRepo, logger logging.Logger, c configs.ParserDexConfig) (d
 		return nil, errors.Wrap(err, "phoenix.New")
 	}
 
-	return &terraswapApp{repo, &parsers, dex.DexMixin{}, pairs, make(map[string]bool)}, nil
+	lpPairAddrs := make(map[string]string)
+	for _, p := range pairs {
+		lpPairAddrs[p.LpAddr] = p.ContractAddr
+	}
+
+	return &terraswapApp{repo, &parsers, dex.DexMixin{}, pairs, lpPairAddrs, make(map[string]bool)}, nil
 }
 
 func (p *terraswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx, error) {
@@ -58,6 +64,7 @@ func (p *terraswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx,
 			LpAddr:       ctx.LpAddr,
 			Assets:       []string{ctx.Assets[0].Addr, ctx.Assets[1].Addr},
 		}
+		p.lpPairAddrs[ctx.LpAddr] = ctx.ContractAddr
 		ctx.Sender = tx.Sender
 		txDtos = append(txDtos, *ctx)
 	}
@@ -69,6 +76,7 @@ func (p *terraswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx,
 	pairTxs := []*dex.ParsedTx{}
 	wasmTxs := []*dex.ParsedTx{}
 	transferTxs := []*dex.ParsedTx{}
+	burnTxs := []*dex.ParsedTx{}
 	for _, raw := range tx.LogResults {
 		if !pdex.ParsableRules[string(raw.Type)] {
 			continue
@@ -110,6 +118,12 @@ func (p *terraswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx,
 			return nil, errors.Wrap(err, "phoenix.terraswapApp.ParseTxs")
 		}
 		transferTxs = append(transferTxs, transfers...)
+
+		burns, err := p.Parsers.BurnParser.Parse(eventlog.LogResults{raw}, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
+		if err != nil {
+			return nil, errors.Wrap(err, "phoenix.terraswapApp.ParseTxs")
+		}
+		burnTxs = append(burnTxs, burns...)
 	}
 	for _, ptx := range pairTxs {
 		ptx.Sender = tx.Sender
@@ -118,6 +132,7 @@ func (p *terraswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx,
 
 	txDtos = append(txDtos, p.RemoveDuplicatedTxs(pairTxs, wasmTxs)...)
 	txDtos = append(txDtos, p.RemoveDuplicatedTxs(pairTxs, transferTxs)...)
+	txDtos = append(txDtos, dex.CollectLpBurnTxs(burnTxs, p.lpPairAddrs)...)
 
 	return txDtos, nil
 }
@@ -154,5 +169,15 @@ func (p *terraswapApp) updateParsers(pairs map[string]dex.Pair) error {
 		return errors.Wrap(err, "updateParsers")
 	}
 	p.Parsers.Transfer = parser.NewParser[dex.ParsedTx](transferRule, dex.NewTransferMapper(pairs))
+
+	// burn parser - to collect and parse LP burn event
+	{
+		burnRule, err := pdex.CreateBurnRuleFinder()
+		if err != nil {
+			return errors.Wrap(err, "updateParser")
+		}
+		p.Parsers.BurnParser = parser.NewParser(burnRule, dex.NewBurnMapper())
+	}
+
 	return nil
 }

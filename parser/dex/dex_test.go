@@ -165,3 +165,32 @@ var (
 	withdrawTx = ParsedTx{"", time.Time{}, Withdraw, "sender", "PAIR_ADDR", [2]Asset{{"Asset0", "-1000"}, {"Asset1", "-1000"}}, "Lp", "1000", "", nil}
 	transferTx = ParsedTx{"", time.Time{}, Transfer, "sender", "PAIR_ADDR", [2]Asset{{"Asset0", ""}, {"Asset1", "1000"}}, "", "", "", nil}
 )
+
+func Test_collectLpBurnTxs(t *testing.T) {
+	lpPairAddrs := map[string]string{
+		"LpToken": "PairContract",
+	}
+
+	tcs := []struct {
+		burnTxs  []*ParsedTx
+		expected []ParsedTx
+		errMsg   string
+	}{
+		{
+			burnTxs:  []*ParsedTx{{LpAddr: "LpToken", LpAmount: "-1000"}},
+			expected: []ParsedTx{{LpAddr: "LpToken", ContractAddr: "PairContract", LpAmount: "-1000"}},
+			errMsg:   "known LP addr must be collected with pair contract addr assigned",
+		},
+		{
+			burnTxs:  []*ParsedTx{{LpAddr: "UnknownLpToken", LpAmount: "-1000"}},
+			expected: []ParsedTx{},
+			errMsg:   "unknown LP addr must be filtered out",
+		},
+	}
+
+	for _, tc := range tcs {
+		assert := assert.New(t)
+		result := CollectLpBurnTxs(tc.burnTxs, lpPairAddrs)
+		assert.Equal(tc.expected, result, tc.errMsg)
+	}
+}

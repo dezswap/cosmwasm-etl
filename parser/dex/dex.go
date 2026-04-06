@@ -262,6 +262,20 @@ func (app *dexApp) comparePair(actual PoolInfo, expected PoolInfo) error {
 	return errors.New(strings.Join(diffs, "; "))
 }
 
+// CollectLpBurnTxs collects LP burn events and associates them with their pair contract.
+// LP tokens can be burned directly (outside of withdraw_liquidity), so we need to track
+// these burns separately and subtract the burned amount to keep pool calculations accurate.
+func CollectLpBurnTxs(burnTxs []*ParsedTx, lpPairAddrs map[string]string) []ParsedTx {
+	lpBurnTxs := []ParsedTx{}
+	for _, t := range burnTxs {
+		if pairAddr, ok := lpPairAddrs[t.LpAddr]; ok {
+			t.ContractAddr = pairAddr
+			lpBurnTxs = append(lpBurnTxs, *t)
+		}
+	}
+	return lpBurnTxs
+}
+
 func (mixin *DexMixin) HasProvide(pairTxs []*ParsedTx) bool {
 	for _, tx := range pairTxs {
 		if tx.Type == Provide {

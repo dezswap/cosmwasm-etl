@@ -64,7 +64,7 @@ func Test_parseTxs(t *testing.T) {
 
 		taxPaymentParser := dex.ParserMock{}
 		taxPaymentParser.On("parse", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*dex.ParsedTx{}, nil)
-		app := terraswapApp{&repo, &dex.PairParsers{CreatePairParser: &createPairParser, TaxPaymentParser: &taxPaymentParser}, dex.DexMixin{}, pairMap, make(map[string]bool)}
+		app := terraswapApp{&repo, &dex.PairParsers{CreatePairParser: &createPairParser, TaxPaymentParser: &taxPaymentParser}, dex.DexMixin{}, pairMap, make(map[string]string), make(map[string]bool)}
 		dexApp := dex.NewDexApp(&app, &rawStore, &repo, logging.New("test", configs.LogConfig{}), configs.ParserDexConfig{FactoryAddress: factoryAddr})
 
 		createTxs = []*dex.ParsedTx{}

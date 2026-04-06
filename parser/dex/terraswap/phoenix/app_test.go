@@ -61,7 +61,7 @@ func Test_parseTxs(t *testing.T) {
 			pairMap[p.ContractAddr] = p
 		}
 
-		app := terraswapApp{&repo, &dex.PairParsers{CreatePairParser: &createPairParser}, dex.DexMixin{}, pairMap, make(map[string]bool)}
+		app := terraswapApp{&repo, &dex.PairParsers{CreatePairParser: &createPairParser}, dex.DexMixin{}, pairMap, make(map[string]string), make(map[string]bool)}
 		dexApp := dex.NewDexApp(&app, &rawStore, &repo, logging.New("test", configs.LogConfig{}), configs.ParserDexConfig{FactoryAddress: factoryAddr})
 
 		createTxs = []*dex.ParsedTx{}
