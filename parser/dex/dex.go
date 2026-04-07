@@ -1,6 +1,7 @@
 package dex
 
 import (
+	stdErr "errors"
 	"fmt"
 	"strings"
 
@@ -9,6 +10,11 @@ import (
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 	"github.com/pkg/errors"
 )
+
+// ErrNoNewHeight is returned when the remote node height has not advanced for
+// sameHeightTolerance consecutive checks. Callers should treat this as a
+// transient "wait for next block" condition, not a hard error.
+var ErrNoNewHeight = stdErr.New("no new height")
 
 type PairParsers struct {
 	CreatePairParser parser.Parser[ParsedTx]
@@ -160,8 +166,7 @@ func (app *dexApp) checkRemoteHeight(srcHeight uint64) error {
 	if srcHeight == app.lastSrcHeight {
 		app.sameHeightCount++
 		if app.sameHeightCount > app.sameHeightTolerance {
-			errMsg := fmt.Sprintf("remote node height(%d) remains the same for %d consecutive times", srcHeight, app.sameHeightCount)
-			return errors.New(errMsg)
+			return fmt.Errorf("remote node height(%d) remains the same for %d consecutive times: %w", srcHeight, app.sameHeightCount, ErrNoNewHeight)
 		}
 	} else {
 		app.sameHeightCount = 0

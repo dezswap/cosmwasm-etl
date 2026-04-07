@@ -1,6 +1,7 @@
 package main
 
 import (
+	stdErr "errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -138,8 +139,12 @@ func dex_main(c configs.ParserDexConfig, logc configs.LogConfig, sentryc configs
 	const BLOCK_SECONDS = 5 * time.Second
 	for errCount := uint(0); errCount <= c.ErrTolerance; {
 		if err := runner.Run(); err != nil {
-			errCount++
-			logger.Errorf("errCount: %d, err: %s", errCount, err)
+			if stdErr.Is(err, p_dex.ErrNoNewHeight) {
+				logger.Infof("no new block yet: %s", err)
+			} else {
+				errCount++
+				logger.Errorf("errCount: %d, err: %s", errCount, err)
+			}
 		} else {
 			errCount = 0
 		}
