@@ -186,6 +186,11 @@ func Test_collectLpBurnTxs(t *testing.T) {
 			expected: []ParsedTx{},
 			errMsg:   "unknown LP addr must be filtered out",
 		},
+		{
+			burnTxs:  []*ParsedTx{{LpAddr: "LpToken", Sender: "PairContract", LpAmount: "-1000"}},
+			expected: []ParsedTx{},
+			errMsg:   "burn from pair contract itself (withdraw lp burn) must be filtered out",
+		},
 	}
 
 	for _, tc := range tcs {

@@ -77,8 +77,8 @@ func Test_ParseTxs(t *testing.T) {
 		},
 		{
 			logStrs:  []string{withdrawLogStr},
-			expected: []dex.ParsedTx{withdrawTx, lpBurnTx},
-			desc:     "withdraw log produces withdraw tx and lp burn tx",
+			expected: []dex.ParsedTx{withdrawTx},
+			desc:     "withdraw log produces withdraw tx; lp burn from pair contract is filtered out",
 		},
 	}
 
@@ -110,35 +110,6 @@ func Test_IsValidationExceptionCandidate(t *testing.T) {
 	assert.False(t, app.IsValidationExceptionCandidate(""))
 }
 
-func Test_CollectLpBurnTxs(t *testing.T) {
-	tcs := []struct {
-		burnTxs  []*dex.ParsedTx
-		expected []dex.ParsedTx
-		desc     string
-	}{
-		{
-			burnTxs:  []*dex.ParsedTx{{LpAddr: lpAddr, LpAmount: "-1000"}},
-			expected: []dex.ParsedTx{{LpAddr: lpAddr, ContractAddr: pairAddr, LpAmount: "-1000"}},
-			desc:     "known LP addr → pair contract addr assigned",
-		},
-		{
-			burnTxs:  []*dex.ParsedTx{{LpAddr: "unknown_lp", LpAmount: "-1000"}},
-			expected: []dex.ParsedTx{},
-			desc:     "unknown LP addr → filtered out",
-		},
-		{
-			burnTxs:  []*dex.ParsedTx{},
-			expected: []dex.ParsedTx{},
-			desc:     "empty input → empty output",
-		},
-	}
-
-	lpPairAddrs := map[string]string{lpAddr: pairAddr}
-	for _, tc := range tcs {
-		assert.Equal(t, tc.expected, dex.CollectLpBurnTxs(tc.burnTxs, lpPairAddrs), tc.desc)
-	}
-}
-
 var (
 	swapTx = dex.ParsedTx{
 		Hash: txHash, Timestamp: time.Time{},
@@ -166,13 +137,6 @@ var (
 			{Addr: asset2, Amount: "-1097303402006688516"},
 		},
 		LpAddr: lpAddr, LpAmount: "1098669138945462355",
-	}
-	// burn event inside the withdraw log: LP tokens destroyed at the pair contract
-	lpBurnTx = dex.ParsedTx{
-		Hash: txHash, Timestamp: time.Time{},
-		Type: dex.LpBurn, Sender: pairAddr, ContractAddr: pairAddr,
-		Assets: [2]dex.Asset{{}, {}},
-		LpAddr: lpAddr, LpAmount: "-1098669138945462355",
 	}
 )
 

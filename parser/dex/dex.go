@@ -268,10 +268,13 @@ func (app *dexApp) comparePair(actual PoolInfo, expected PoolInfo) error {
 func CollectLpBurnTxs(burnTxs []*ParsedTx, lpPairAddrs map[string]string) []ParsedTx {
 	lpBurnTxs := []ParsedTx{}
 	for _, t := range burnTxs {
-		if pairAddr, ok := lpPairAddrs[t.LpAddr]; ok {
-			t.ContractAddr = pairAddr
-			lpBurnTxs = append(lpBurnTxs, *t)
+		pairAddr, ok := lpPairAddrs[t.LpAddr]
+		if !ok || t.Sender == pairAddr { // filter out withdraw lp burn
+			continue
 		}
+
+		t.ContractAddr = pairAddr
+		lpBurnTxs = append(lpBurnTxs, *t)
 	}
 	return lpBurnTxs
 }
