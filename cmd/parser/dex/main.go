@@ -1,7 +1,7 @@
 package main
 
 import (
-	stdErr "errors"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -13,8 +13,6 @@ import (
 	"github.com/dezswap/cosmwasm-etl/collector/datastore"
 	"github.com/dezswap/cosmwasm-etl/configs"
 	p_dex "github.com/dezswap/cosmwasm-etl/parser/dex"
-	"github.com/pkg/errors"
-
 	pds "github.com/dezswap/cosmwasm-etl/parser/dex/dezswap"
 	"github.com/dezswap/cosmwasm-etl/parser/dex/repo"
 	"github.com/dezswap/cosmwasm-etl/parser/dex/srcstore"
@@ -128,7 +126,7 @@ func dex_main(c configs.ParserDexConfig, logc configs.LogConfig, sentryc configs
 			terraswapQueryClient := dts_colv1.NewCol4Client(lcd)
 			rawDataStore = ts_srcstore.NewCol4Store(c.FactoryAddress, r, lcd, terraswapQueryClient)
 		default:
-			panic(errors.Errorf("invalid factory address: %s", c.FactoryAddress))
+			panic(fmt.Errorf("invalid factory address: %s", c.FactoryAddress))
 		}
 	} else {
 		rawDataStore = srcstore.New(readStore)
@@ -139,7 +137,7 @@ func dex_main(c configs.ParserDexConfig, logc configs.LogConfig, sentryc configs
 	const BLOCK_SECONDS = 5 * time.Second
 	for errCount := uint(0); errCount <= c.ErrTolerance; {
 		if err := runner.Run(); err != nil {
-			if stdErr.Is(err, p_dex.ErrNoNewHeight) {
+			if errors.Is(err, p_dex.ErrNoNewHeight) {
 				logger.Infof("no new block yet: %s", err)
 			} else {
 				errCount++
