@@ -1,14 +1,19 @@
 package dex
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
-	"github.com/pkg/errors"
 )
+
+// ErrNoNewHeight is returned when the remote node height has not advanced for
+// sameHeightTolerance consecutive checks. Callers should treat this as a
+// transient "wait for next block" condition, not a hard error.
+var ErrNoNewHeight = errors.New("no new height")
 
 type PairParsers struct {
 	CreatePairParser parser.Parser[ParsedTx]
@@ -57,12 +62,12 @@ func NewDexApp(app TargetApp, srcStore SourceDataStore, repo Repo, logger loggin
 func (app *dexApp) Run() error {
 	localSynced, err := app.GetSyncedHeight()
 	if err != nil {
-		return errors.Wrap(err, "app.Run")
+		return fmt.Errorf("app.Run: %w", err)
 	}
 
 	srcHeight, err := app.GetSourceSyncedHeight()
 	if err != nil {
-		return errors.Wrap(err, "app.Run")
+		return fmt.Errorf("app.Run: %w", err)
 	}
 
 	if srcHeight < localSynced {
@@ -70,17 +75,17 @@ func (app *dexApp) Run() error {
 	}
 
 	if err := app.checkRemoteHeight(srcHeight); err != nil {
-		return errors.Wrap(err, "app.Run")
+		return fmt.Errorf("app.Run: %w", err)
 	}
 
 	// to avoid skipping validation error
 	if (localSynced % uint64(app.validationInterval)) == 0 {
 		poolInfos, err := app.GetPoolInfos((localSynced))
 		if err != nil {
-			return errors.Wrap(err, "app.Run")
+			return fmt.Errorf("app.Run: %w", err)
 		}
 		if err := app.validate(0, (localSynced), poolInfos); err != nil {
-			return errors.Wrap(err, "app.Run")
+			return fmt.Errorf("app.Run: %w", err)
 		}
 	}
 
@@ -92,14 +97,14 @@ func (app *dexApp) Run() error {
 				app.logger.Infof("remote node is indexing tx_results, skip")
 				return nil
 			}
-			return errors.Wrap(err, "app.Run")
+			return fmt.Errorf("app.Run: %w", err)
 		}
 
 		parsedTxs := []ParsedTx{}
 		for _, tx := range txs {
 			txs, err := app.ParseTxs(tx, cur)
 			if err != nil {
-				return errors.Wrap(err, "app.Run")
+				return fmt.Errorf("app.Run: %w", err)
 			}
 			parsedTxs = append(parsedTxs, txs...)
 		}
@@ -108,23 +113,23 @@ func (app *dexApp) Run() error {
 		if (cur % uint64(app.poolSnapshotInterval)) == 0 {
 			poolInfos, err = app.GetPoolInfos(cur)
 			if err != nil {
-				return errors.Wrap(err, "app.Run")
+				return fmt.Errorf("app.Run: %w", err)
 			}
 		}
 
 		if err := app.insert(cur-1, cur, parsedTxs, poolInfos); err != nil {
-			return errors.Wrap(err, "app.Run")
+			return fmt.Errorf("app.Run: %w", err)
 		}
 
 		if (cur % uint64(app.validationInterval)) == 0 {
 			if len(poolInfos) == 0 {
 				poolInfos, err = app.GetPoolInfos(cur)
 				if err != nil {
-					return errors.Wrap(err, "app.Run")
+					return fmt.Errorf("app.Run: %w", err)
 				}
 			}
 			if err := app.validate(0, cur, poolInfos); err != nil {
-				return errors.Wrap(err, "app.Run")
+				return fmt.Errorf("app.Run: %w", err)
 			}
 		}
 	}
@@ -149,7 +154,7 @@ func (app *dexApp) insert(srcHeight uint64, targetHeight uint64, txs []ParsedTx,
 
 	err := app.Insert(srcHeight, targetHeight, txs, pools, pairDtos)
 	if err != nil {
-		return errors.Wrap(err, "insert")
+		return fmt.Errorf("insert: %w", err)
 	}
 
 	return nil
@@ -160,8 +165,7 @@ func (app *dexApp) checkRemoteHeight(srcHeight uint64) error {
 	if srcHeight == app.lastSrcHeight {
 		app.sameHeightCount++
 		if app.sameHeightCount > app.sameHeightTolerance {
-			errMsg := fmt.Sprintf("remote node height(%d) remains the same for %d consecutive times", srcHeight, app.sameHeightCount)
-			return errors.New(errMsg)
+			return fmt.Errorf("remote node height(%d) remains the same for %d consecutive times: %w", srcHeight, app.sameHeightCount, ErrNoNewHeight)
 		}
 	} else {
 		app.sameHeightCount = 0
@@ -180,7 +184,7 @@ func (app *dexApp) validate(from, to uint64, expected []PoolInfo) error {
 	// e.g.) expected pools can be difference between pool of height 1000 and 900
 	actual, err := app.ParsedPoolsInfo(from, to)
 	if err != nil {
-		return errors.Wrap(err, "dexApp.validate")
+		return fmt.Errorf("dexApp.validate: %w", err)
 	}
 
 	expectedPool := make(map[string]PoolInfo)
@@ -190,7 +194,7 @@ func (app *dexApp) validate(from, to uint64, expected []PoolInfo) error {
 
 	exceptions, err := app.ValidationExceptionList()
 	if err != nil {
-		return errors.Wrap(err, "dexApp.validate")
+		return fmt.Errorf("dexApp.validate: %w", err)
 	}
 	exceptionMap := make(map[string]bool)
 	for _, addr := range exceptions {
@@ -204,7 +208,7 @@ func (app *dexApp) validate(from, to uint64, expected []PoolInfo) error {
 		}
 		exp, ok := expectedPool[pool.ContractAddr]
 		if !ok {
-			return errors.New(fmt.Sprintf("unexpected pool(%s) found", pool.ContractAddr))
+			return fmt.Errorf("unexpected pool(%s) found", pool.ContractAddr)
 		}
 		if err := app.comparePair(pool, exp); err != nil {
 			return err
@@ -217,7 +221,7 @@ func (app *dexApp) validate(from, to uint64, expected []PoolInfo) error {
 		for _, pool := range expectedPool {
 			addrs = append(addrs, pool.ContractAddr)
 		}
-		return errors.New(fmt.Sprintf("expected pools(%s) not found", addrs))
+		return fmt.Errorf("expected pools(%s) not found", addrs)
 	}
 	return nil
 }
