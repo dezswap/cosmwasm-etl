@@ -88,3 +88,16 @@ var taxPaymentRule = eventlog.Rule{Type: eventlog.TaxPaymentType, Items: eventlo
 	eventlog.RuleItem{Key: "reverse_charge", Filter: nil},
 	eventlog.RuleItem{Key: "tax_amount", Filter: nil},
 }}
+
+func CreateBurnRuleFinder() (eventlog.LogFinder, error) {
+	return eventlog.NewLogFinder(burnRule)
+}
+
+var burnRule = eventlog.Rule{Type: eventlog.WasmType, Items: eventlog.RuleItems{
+	eventlog.RuleItem{Key: dex.BurnAddrKey, Filter: nil},
+	eventlog.RuleItem{Key: dex.BurnActionKey, Filter: func(v string) bool {
+		return v == "burn"
+	}},
+	eventlog.RuleItem{Key: dex.BurnFromKey, Filter: nil},
+	eventlog.RuleItem{Key: dex.BurnAmountKey, Filter: nil},
+}}

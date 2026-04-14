@@ -119,24 +119,9 @@ func (p *dezswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx, e
 
 	txDtos = append(txDtos, p.RemoveDuplicatedTxs(pairTxs, wasmTransferTxs)...)
 	txDtos = append(txDtos, p.RemoveDuplicatedTxs(pairTxs, transferTxs)...)
-	txDtos = append(txDtos, p.collectLpBurnTxs(burnTxs)...)
+	txDtos = append(txDtos, dex.CollectLpBurnTxs(burnTxs, p.lpPairAddrs)...)
 
 	return txDtos, nil
-}
-
-// collectLpBurnTxs collects LP burn events and associates them with their pair contract.
-// LP tokens can be burned directly (outside of withdraw_liquidity), so we need to track
-// these burns separately and subtract the burned amount to keep pool calculations accurate.
-func (p *dezswapApp) collectLpBurnTxs(burnTxs []*dex.ParsedTx) []dex.ParsedTx {
-	lpBurnTxs := []dex.ParsedTx{}
-	for _, t := range burnTxs {
-		if pairAddr, ok := p.lpPairAddrs[t.LpAddr]; ok {
-			t.ContractAddr = pairAddr
-			lpBurnTxs = append(lpBurnTxs, *t)
-		}
-	}
-
-	return lpBurnTxs
 }
 
 func (p *dezswapApp) IsValidationExceptionCandidate(contractAddress string) bool {

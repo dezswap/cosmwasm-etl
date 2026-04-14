@@ -1,0 +1,1 @@
+ALTER TYPE tx_type ADD VALUE 'lp_burn';
