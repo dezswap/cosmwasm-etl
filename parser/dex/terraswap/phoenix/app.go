@@ -69,10 +69,6 @@ func (p *terraswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx,
 		txDtos = append(txDtos, *ctx)
 	}
 
-	if err := p.updateParsers(p.pairs); err != nil {
-		return nil, errors.Wrap(err, "phoenix.terraswapApp.ParseTxs")
-	}
-
 	pairTxs := []*dex.ParsedTx{}
 	wasmTxs := []*dex.ParsedTx{}
 	transferTxs := []*dex.ParsedTx{}
@@ -141,9 +137,9 @@ func (p *terraswapApp) IsValidationExceptionCandidate(contractAddress string) bo
 	return p.flaggedAssets[contractAddress]
 }
 
-func (p *terraswapApp) updateParsers(pairs map[string]dex.Pair) error {
+func (p *terraswapApp) UpdateParsers(tokenExceptions map[string]bool, height uint64) error {
 	pairFilter := make(map[string]bool)
-	for k := range pairs {
+	for k := range p.pairs {
 		pairFilter[k] = true
 	}
 
@@ -151,7 +147,7 @@ func (p *terraswapApp) updateParsers(pairs map[string]dex.Pair) error {
 	if err != nil {
 		return errors.Wrap(err, "updateParsers")
 	}
-	p.Parsers.PairActionParser = parser.NewParser[dex.ParsedTx](pairFinder, &pairMapper{pairSet: pairs})
+	p.Parsers.PairActionParser = parser.NewParser[dex.ParsedTx](pairFinder, &pairMapper{pairSet: p.pairs})
 	initialProvideFinder, err := pdex.CreatePairInitialProvideRuleFinder(pairFilter)
 	if err != nil {
 		return errors.Wrap(err, "updateParsers")
@@ -162,13 +158,21 @@ func (p *terraswapApp) updateParsers(pairs map[string]dex.Pair) error {
 	if err != nil {
 		return errors.Wrap(err, "updateParsers")
 	}
-	p.Parsers.WasmTransfer = parser.NewParser[dex.ParsedTx](wasmTransferFinder, dex.NewWasmTransferMapper(pdex.WasmTransferCw20AddrKey, pairs, p.flaggedAssets))
+	p.Parsers.WasmTransfer = parser.NewParser[dex.ParsedTx](
+		wasmTransferFinder,
+		dex.NewWasmTransferMapper(
+			pdex.WasmTransferCw20AddrKey,
+			p.pairs,
+			p.flaggedAssets,
+			tokenExceptions,
+		),
+	)
 
 	transferRule, err := phoenix.CreateSortedTransferRuleFinder(nil)
 	if err != nil {
 		return errors.Wrap(err, "updateParsers")
 	}
-	p.Parsers.Transfer = parser.NewParser[dex.ParsedTx](transferRule, dex.NewTransferMapper(pairs))
+	p.Parsers.Transfer = parser.NewParser[dex.ParsedTx](transferRule, dex.NewTransferMapper(p.pairs))
 
 	// burn parser - to collect and parse LP burn event
 	{

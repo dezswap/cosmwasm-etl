@@ -56,3 +56,8 @@ type PairValidationException struct {
 	ChainId  string `json:"chainId"`
 	Contract string `json:"contract"`
 }
+
+type TokenParseException struct {
+	ChainId  string `json:"chainId"`
+	Contract string `json:"contract"`
+}

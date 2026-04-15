@@ -1,6 +1,8 @@
 package dex
 
-import "github.com/dezswap/cosmwasm-etl/parser"
+import (
+	"github.com/dezswap/cosmwasm-etl/parser"
+)
 
 type DexParserApp interface {
 	Run() error
@@ -12,6 +14,7 @@ type DexParserApp interface {
 type TargetApp interface {
 	parser.TargetApp[ParsedTx]
 	IsValidationExceptionCandidate(contractAddress string) bool
+	UpdateParsers(tokenExceptions map[string]bool, height uint64) error
 }
 
 type Repo interface {

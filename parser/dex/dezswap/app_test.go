@@ -98,6 +98,10 @@ func Test_ParseTxs(t *testing.T) {
 		}
 
 		tx := parser.RawTx{Sender: txSender, Hash: txHash, LogResults: logs}
+
+		err := app.UpdateParsers(make(map[string]bool), uint64(height))
+		assert.NoError(err)
+
 		txs, err := app.ParseTxs(tx, height)
 		assert.NoError(err, msg)
 		assert.Equal(tc.expected, txs, msg)

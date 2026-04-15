@@ -22,6 +22,9 @@ func (SyncedHeight) TableName() string {
 func (PairValidationException) TableName() string {
 	return "pair_validation_exception"
 }
+func (TokenParseException) TableName() string {
+	return "token_parse_exception"
+}
 
 func (Meta) GormDataType() string {
 	return "json"

@@ -26,8 +26,9 @@ type transferMapper struct {
 	pairSet map[string]dex.Pair
 }
 type wasmTransferMapper struct {
-	mixin   transferMapperMixin
-	pairSet map[string]dex.Pair
+	mixin           transferMapperMixin
+	pairSet         map[string]dex.Pair
+	tokenExceptions map[string]bool
 }
 
 // match implements mapper
@@ -58,6 +59,15 @@ func (m *createPairMapper) MatchedToParsedTx(res eventlog.MatchedResult, optiona
 // match implements mapper
 func (m *wasmTransferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) ([]*dex.ParsedTx, error) {
 	m.mixin.SortResult(res)
+
+	var cw20Addr string
+	if len(res) > ds.WasmCommonTransferCw20AddrIdx {
+		cw20Addr = res[ds.WasmCommonTransferCw20AddrIdx].Value
+		if m.tokenExceptions[cw20Addr] {
+			return nil, nil
+		}
+	}
+
 	action := res[ds.WasmCommonTransferActionIdx]
 
 	switch action.Value {

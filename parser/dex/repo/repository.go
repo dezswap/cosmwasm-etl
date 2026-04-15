@@ -160,6 +160,20 @@ func (r *repoImpl) ParsedPoolsInfo(from, to uint64) ([]dex.PoolInfo, error) {
 	return results, nil
 }
 
+// GetTokenExceptions implements dex.PairRepo.
+func (r *repoImpl) GetTokenExceptions() (map[string]bool, error) {
+	var rows []schemas.TokenParseException
+	result := r.db.Where("chain_id = ?", r.chainId).Find(&rows)
+	if result.Error != nil {
+		return nil, errors.Wrap(result.Error, "repo.GetTokenExceptions")
+	}
+	m := make(map[string]bool, len(rows))
+	for _, row := range rows {
+		m[row.Contract] = true
+	}
+	return m, nil
+}
+
 // ValidationExceptionList implements dex.Repo.
 func (r *repoImpl) ValidationExceptionList() ([]string, error) {
 	exceptions := []string{}

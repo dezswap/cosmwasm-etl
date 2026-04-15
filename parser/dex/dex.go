@@ -60,6 +60,11 @@ func NewDexApp(app TargetApp, srcStore SourceDataStore, repo Repo, logger loggin
 }
 
 func (app *dexApp) Run() error {
+	tokenExceptions, err := app.GetTokenExceptions()
+	if err != nil {
+		return fmt.Errorf("app.Run: %w", err)
+	}
+
 	localSynced, err := app.GetSyncedHeight()
 	if err != nil {
 		return fmt.Errorf("app.Run: %w", err)
@@ -97,6 +102,10 @@ func (app *dexApp) Run() error {
 				app.logger.Infof("remote node is indexing tx_results, skip")
 				return nil
 			}
+			return fmt.Errorf("app.Run: %w", err)
+		}
+
+		if err := app.UpdateParsers(tokenExceptions, cur); err != nil {
 			return fmt.Errorf("app.Run: %w", err)
 		}
 

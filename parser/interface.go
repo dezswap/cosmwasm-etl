@@ -14,6 +14,7 @@ type TargetApp[T any] interface {
 type Repo[T any] interface {
 	Insert(srcHeight uint64, targetHeight uint64, txs []T, arg ...interface{}) error
 	GetSyncedHeight() (uint64, error)
+	GetTokenExceptions() (map[string]bool, error)
 }
 
 type SourceDataStore interface {

@@ -170,7 +170,7 @@ func Test_WasmTransferMapper_FlaggedPairs(t *testing.T) {
 	pairSet := map[string]Pair{pair.ContractAddr: pair}
 	flagged := map[string]bool{}
 
-	mapper := NewWasmTransferMapper(dex.WasmTransferCw20AddrKey, pairSet, flagged)
+	mapper := NewWasmTransferMapper(dex.WasmTransferCw20AddrKey, pairSet, flagged, nil)
 	res := el.MatchedResult{
 		{Key: "_contract_address", Value: pair.Assets[0]},
 		{Key: "action", Value: "transfer"},
@@ -195,7 +195,7 @@ func Test_WasmTransferMapper_IrregularFormat(t *testing.T) {
 	pairSet := map[string]Pair{pair.ContractAddr: pair}
 	flagged := map[string]bool{}
 
-	mapper := NewWasmTransferMapper(dex.WasmTransferCw20AddrKey, pairSet, flagged)
+	mapper := NewWasmTransferMapper(dex.WasmTransferCw20AddrKey, pairSet, flagged, nil)
 	res := el.MatchedResult{
 		{Key: "_contract_address", Value: pair.Assets[0]},
 		{Key: "action", Value: "transfer"},
