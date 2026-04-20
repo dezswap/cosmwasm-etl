@@ -1,12 +1,13 @@
 package checkpoint
 
 import (
-	"github.com/dezswap/cosmwasm-etl/parser"
-	"github.com/dezswap/cosmwasm-etl/parser/dex"
-	"github.com/stretchr/testify/assert"
 	"math/big"
 	"testing"
 	"time"
+
+	"github.com/dezswap/cosmwasm-etl/parser"
+	"github.com/dezswap/cosmwasm-etl/parser/dex"
+	"github.com/stretchr/testify/assert"
 )
 
 // MockRepo implements pdex.Repo for testing
@@ -33,6 +34,10 @@ func (m *MockRepo) InsertPairValidationException(_ string, _ string) error {
 
 func (m *MockRepo) GetPairs() (map[string]dex.Pair, error) {
 	return nil, nil
+}
+
+func (m *MockRepo) GetTokenExceptions() (map[string]bool, error) {
+	return map[string]bool{}, nil
 }
 
 func (m *MockRepo) ValidationExceptionList() ([]string, error) {

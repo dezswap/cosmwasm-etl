@@ -99,6 +99,9 @@ func Test_parseTxs(t *testing.T) {
 		msg := fmt.Sprintf("tc(%d): %s", idx, tc.errMsg)
 		app := setUp(tc)
 
+		err := app.UpdateParsers(make(map[string]bool), uint64(height))
+		assert.NoError(err)
+
 		txs, err := app.ParseTxs(tx, uint64(height))
 		if tc.errMsg != "" {
 			assert.Error(err, msg, err)

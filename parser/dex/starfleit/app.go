@@ -68,10 +68,6 @@ func (p *starfleitApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx,
 		txDtos = append(txDtos, *ctx)
 	}
 
-	if err := p.updateParsers(p.pairs, height); err != nil {
-		return nil, errors.Wrap(err, "starfleit.starfleitApp.ParseTxs")
-	}
-
 	pairTxs := []*dex.ParsedTx{}
 	wasmTxs := []*dex.ParsedTx{}
 	transferTxs := []*dex.ParsedTx{}
@@ -126,9 +122,9 @@ func (p *starfleitApp) IsValidationExceptionCandidate(contractAddress string) bo
 	return false
 }
 
-func (p *starfleitApp) updateParsers(pairs map[string]dex.Pair, height uint64) error {
+func (p *starfleitApp) UpdateParsers(tokenExceptions map[string]bool, height uint64) error {
 	pairFilter := make(map[string]bool)
-	for k := range pairs {
+	for k := range p.pairs {
 		pairFilter[k] = true
 	}
 
@@ -137,7 +133,7 @@ func (p *starfleitApp) updateParsers(pairs map[string]dex.Pair, height uint64) e
 		return errors.Wrap(err, "updateParsers")
 	}
 
-	pairMapper, err := pairMapperBy(p.chainId, height, pairs)
+	pairMapper, err := pairMapperBy(p.chainId, height, p.pairs)
 	if err != nil {
 		return errors.Wrap(err, "updateParsers")
 	}
@@ -153,13 +149,19 @@ func (p *starfleitApp) updateParsers(pairs map[string]dex.Pair, height uint64) e
 	if err != nil {
 		return errors.Wrap(err, "updateParsers")
 	}
-	p.Parsers.WasmTransfer = parser.NewParser[dex.ParsedTx](wasmTransferFinder, &wasmTransferMapper{pairSet: pairs})
+	p.Parsers.WasmTransfer = parser.NewParser[dex.ParsedTx](
+		wasmTransferFinder,
+		&wasmTransferMapper{
+			pairSet:         p.pairs,
+			tokenExceptions: tokenExceptions,
+		},
+	)
 
 	transferRule, err := sf.CreateTransferRuleFinder()
 	if err != nil {
 		return errors.Wrap(err, "updateParsers")
 	}
-	p.Parsers.Transfer = parser.NewParser[dex.ParsedTx](transferRule, &transferMapper{pairSet: pairs})
+	p.Parsers.Transfer = parser.NewParser[dex.ParsedTx](transferRule, &transferMapper{pairSet: p.pairs})
 
 	// burn parser - to collect and parse LP burn event
 	{

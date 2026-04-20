@@ -55,6 +55,12 @@ func (m *RepoMock) GetPairs() (map[string]Pair, error) {
 	return args.Get(0).(map[string]Pair), args.Error(1)
 }
 
+// GetTokenExceptions implements Repo
+func (m *RepoMock) GetTokenExceptions() (map[string]bool, error) {
+	args := m.MethodCalled("GetTokenExceptions")
+	return args.Get(0).(map[string]bool), args.Error(1)
+}
+
 // GetSyncedHeight implements Repo
 func (m *RepoMock) GetSyncedHeight() (uint64, error) {
 	args := m.MethodCalled("GetSyncedHeight")

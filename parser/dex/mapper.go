@@ -16,9 +16,10 @@ type transferMapper struct {
 	pairSet map[string]Pair
 }
 type wasmCommonTransferMapper struct {
-	cw20AddrKey  string
-	pairSet      map[string]Pair
-	flaggedPairs map[string]bool
+	cw20AddrKey     string
+	pairSet         map[string]Pair
+	flaggedPairs    map[string]bool
+	tokenExceptions map[string]bool
 }
 
 type initialProvideMapper struct{ pdex.MapperMixin }
@@ -56,18 +57,22 @@ func (m *factoryMapper) MatchedToParsedTx(res eventlog.MatchedResult, optional .
 	}}, nil
 }
 
-func NewWasmTransferMapper(cw20AddrKey string, pairSet map[string]Pair, flaggedPairs map[string]bool) parser.Mapper[ParsedTx] {
-	return &wasmCommonTransferMapper{cw20AddrKey, pairSet, flaggedPairs}
+func NewWasmTransferMapper(cw20AddrKey string, pairSet map[string]Pair, flaggedPairs map[string]bool, tokenExceptions map[string]bool) parser.Mapper[ParsedTx] {
+	return &wasmCommonTransferMapper{cw20AddrKey, pairSet, flaggedPairs, tokenExceptions}
 }
 
 // match implements mapper
 func (m *wasmCommonTransferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) ([]*ParsedTx, error) {
-	matchMap, err := eventlog.ResultToItemMap(res)
-	if err != nil {
-		return nil, errors.Wrap(err, "transferMapper.MatchedToParsedTx")
+	cw20Addr := firstValueInResult(res, m.cw20AddrKey)
+	if m.tokenExceptions[cw20Addr] {
+		return nil, nil
 	}
 
-	cw20Addr := matchMap[m.cw20AddrKey].Value
+	matchMap, err := eventlog.ResultToItemMap(res)
+	if err != nil {
+		return nil, fmt.Errorf("transferMapper.MatchedToParsedTx: %w (cw20=%s)", err, cw20Addr)
+	}
+
 	for _, r := range res {
 		if strings.Contains(strings.ToLower(r.Key), pdex.WasmTransferTaxFlagPatternKey) {
 			m.flaggedPairs[cw20Addr] = true
@@ -97,6 +102,15 @@ func (m *wasmCommonTransferMapper) MatchedToParsedTx(res eventlog.MatchedResult,
 	}
 
 	return txs, nil
+}
+
+func firstValueInResult(res eventlog.MatchedResult, key string) string {
+	for _, item := range res {
+		if item.Key == key {
+			return item.Value
+		}
+	}
+	return ""
 }
 
 func (m *wasmCommonTransferMapper) wasmTransferToParsedTx(pair Pair, cw20Addr, from, amount string, fromPair bool) *ParsedTx {

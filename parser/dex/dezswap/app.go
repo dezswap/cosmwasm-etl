@@ -69,10 +69,6 @@ func (p *dezswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx, e
 		txDtos = append(txDtos, *ctx)
 	}
 
-	if err := p.updateParsers(p.pairs, height); err != nil {
-		return nil, errors.Wrap(err, "parseTxs")
-	}
-
 	pairTxs := []*dex.ParsedTx{}
 	wasmTransferTxs := []*dex.ParsedTx{}
 	transferTxs := []*dex.ParsedTx{}
@@ -128,9 +124,9 @@ func (p *dezswapApp) IsValidationExceptionCandidate(contractAddress string) bool
 	return false
 }
 
-func (p *dezswapApp) updateParsers(pairs map[string]dex.Pair, height uint64) error {
+func (p *dezswapApp) UpdateParsers(tokenExceptions map[string]bool, height uint64) error {
 	pairFilter := make(map[string]bool)
-	for k := range pairs {
+	for k := range p.pairs {
 		pairFilter[k] = true
 	}
 
@@ -141,7 +137,7 @@ func (p *dezswapApp) updateParsers(pairs map[string]dex.Pair, height uint64) err
 			return errors.Wrap(err, "updateParsers")
 		}
 
-		pairMapper, err := pairMapperBy(p.chainId, height, pairs)
+		pairMapper, err := pairMapperBy(p.chainId, height, p.pairs)
 		if err != nil {
 			return errors.Wrap(err, "updateParsers")
 		}
@@ -164,7 +160,13 @@ func (p *dezswapApp) updateParsers(pairs map[string]dex.Pair, height uint64) err
 			return errors.Wrap(err, "updateParsers")
 		}
 		p.Parsers.WasmTransfer = parser.NewParser(
-			wasmTransferFinder, &wasmTransferMapper{mixin: transferMapperMixin{pdex.MapperMixin{}}, pairSet: pairs})
+			wasmTransferFinder,
+			&wasmTransferMapper{
+				mixin:           transferMapperMixin{pdex.MapperMixin{}},
+				pairSet:         p.pairs,
+				tokenExceptions: tokenExceptions,
+			},
+		)
 	}
 
 	// transfer parser
@@ -173,7 +175,7 @@ func (p *dezswapApp) updateParsers(pairs map[string]dex.Pair, height uint64) err
 		if err != nil {
 			return errors.Wrap(err, "updateParsers")
 		}
-		p.Parsers.Transfer = parser.NewParser(transferRule, &transferMapper{pairSet: pairs})
+		p.Parsers.Transfer = parser.NewParser(transferRule, &transferMapper{pairSet: p.pairs})
 	}
 
 	// burn parser - to collect and parse LP burn event
