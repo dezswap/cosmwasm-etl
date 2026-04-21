@@ -1,4 +1,4 @@
-ARG GO_VERSION="1.24"
+ARG GO_VERSION="1.25"
 ARG BASE_IMAGE="golang:${GO_VERSION}-alpine"
 
 ### BUILD
