@@ -15,7 +15,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.27.1
 	github.com/aws/smithy-go v1.15.0
 	github.com/bxcodec/faker/v3 v3.8.0
-	github.com/cometbft/cometbft v0.38.19
+	github.com/cometbft/cometbft v0.38.21
 	github.com/cosmos/cosmos-sdk v0.53.5-0.20251030204916-768cb210885c
 	github.com/cosmos/gogoproto v1.7.2
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
