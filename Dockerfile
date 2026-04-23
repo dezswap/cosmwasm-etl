@@ -6,6 +6,7 @@ FROM ${BASE_IMAGE} AS build
 ARG LIBWASMVM_VERSION=v2.1.4
 # required argument: one of("aggregator", "collector", "parser/dex")
 ARG APP_PATH
+ARG VERSION
 
 WORKDIR /app
 
@@ -33,7 +34,8 @@ RUN cp /lib/libwasmvm_muslc.`uname -m`.a /lib/libwasmvm_muslc.a
 
 # Build the app
 RUN go build -mod=readonly -tags "netgo muslc" \
-            -ldflags "-X github.com/cosmos/cosmos-sdk/version.BuildTags='netgo,muslc' \
+            -ldflags "${VERSION:+-X main.version=${VERSION} }\
+            -X github.com/cosmos/cosmos-sdk/version.BuildTags='netgo,muslc' \
             -w -s -linkmode=external -extldflags '-Wl,-z,muldefs -static'" \
             -trimpath -o ./main ./cmd/${APP_PATH}
 

@@ -106,9 +106,16 @@ prune-deps:
 	go mod tidy
 
 # Create the service docker image
+# Usage: make image APP_PATH=aggregator  (or collector, parser/dex, parser/checkpoint)
+IMAGE_VERSION := $(shell git describe --tags --always --dirty 2>/dev/null)
 .PHONY: image
 image:
-	docker build --force-rm -t dezswap/cosmwasm-etl .
+	docker build --force-rm \
+		--build-arg APP_PATH=$(APP_PATH) \
+		--build-arg VERSION=$(IMAGE_VERSION) \
+		-t cosmwasm-etl-$(subst /,-,$(APP_PATH)):$(if $(IMAGE_VERSION),$(IMAGE_VERSION),dev) \
+		-t cosmwasm-etl-$(subst /,-,$(APP_PATH)):latest \
+		.
 
 # Migrate database.
 .PHONY: parser-migrate-test parser-migrate-up parser-migrate-down parser-generate-migration \
