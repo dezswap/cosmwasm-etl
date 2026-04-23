@@ -28,11 +28,14 @@ import (
 	"github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap/columbusv2"
 	"github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap/phoenix"
 	"github.com/dezswap/cosmwasm-etl/pkg/grpc"
+	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 	"github.com/dezswap/cosmwasm-etl/pkg/terra/col4"
 	"github.com/dezswap/cosmwasm-etl/pkg/terra/cosmos45"
 	"github.com/dezswap/cosmwasm-etl/pkg/terra/rpc"
 	"github.com/pkg/errors"
 )
+
+var version = "dev" // overridden via -ldflags "-X main.version=v1.2.3"
 
 func main() {
 	c := configs.New()
@@ -41,6 +44,9 @@ func main() {
 	var targetHeight uint64
 	flag.Uint64Var(&targetHeight, "height", 0, "target block height")
 	flag.Parse()
+
+	logger := logging.New("checkpoint", c.Log)
+	logger.WithField("version", version).Info("starting checkpoint")
 
 	if err := run(c, targetHeight); err != nil {
 		panic(err)

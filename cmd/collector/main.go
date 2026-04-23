@@ -20,6 +20,8 @@ const (
 	app                 = "collector"
 )
 
+var version = "dev" // overridden via -ldflags "-X main.version=v1.2.3"
+
 func main() {
 	c := configs.New()
 	nodeConf := c.Collector.NodeConfig
@@ -38,6 +40,8 @@ func main() {
 	}
 
 	defer catch(logger)
+
+	logger.WithField("version", version).Info("starting collector")
 
 	grpc.SetLogConfig(c.Log)
 	serviceDesc := grpc.GetServiceDesc("collector", nodeConf.GrpcConfig)

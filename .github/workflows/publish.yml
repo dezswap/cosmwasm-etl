@@ -54,7 +54,7 @@ jobs:
           for app_type in collector parser-dex aggregator; do
             echo "Building for $app_type"
             APP_PATH=$(echo $app_type | tr '-' '/')
-            docker build --build-arg APP_PATH=$APP_PATH --no-cache -t ${{ env.PROJECT_ID }}/$app_type:${IMAGE_TAG} .
+            docker build --build-arg APP_PATH=$APP_PATH --build-arg VERSION=$(IMAGE_TAG) --no-cache -t ${{ env.PROJECT_ID }}/$app_type:${IMAGE_TAG} .
             docker save -o ${{ runner.temp }}/${{ env.PROJECT_ID }}-$app_type.tar ${{ env.PROJECT_ID }}/$app_type:${IMAGE_TAG}
           done
 
