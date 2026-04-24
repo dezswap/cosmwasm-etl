@@ -93,8 +93,7 @@ func (p *terraswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]p_dex.ParsedT
 		txDtos = append(txDtos, *ptx)
 	}
 
-	txDtos = append(txDtos, p.RemoveDuplicatedTxs(pairTxs, wasmTxs)...)
-	txDtos = append(txDtos, p.RemoveDuplicatedTxs(pairTxs, transferTxs)...)
+	txDtos = append(txDtos, p.RemoveDuplicatedTxs(pairTxs, append(wasmTxs, transferTxs...))...)
 
 	return txDtos, nil
 }

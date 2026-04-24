@@ -301,24 +301,65 @@ func (mixin *DexMixin) HasProvide(pairTxs []*ParsedTx) bool {
 	return false
 }
 
+type transferPopEntry struct {
+	pairAddr  string
+	assetAddr string
+	amount    string
+}
+
+// RemoveDuplicatedTxs removes transfer events already captured by pair action events.
+// By building popList from pairTxs (one per asset) and matching each transfer 1:1,
+// it prevents a single pair action from consuming more transfers than it produced.
 func (mixin *DexMixin) RemoveDuplicatedTxs(pairTxs []*ParsedTx, transferTxs []*ParsedTx) []ParsedTx {
-	txs := []ParsedTx{}
-	for idx, tx := range transferTxs {
-		duplicated := false
-		for i := 0; i < len(pairTxs) && !duplicated; i++ {
-			duplicated = mixin.isDuplicatedTx(pairTxs[i], tx)
+	popList := []transferPopEntry{}
+	for _, ptx := range pairTxs {
+		for _, asset := range ptx.Assets {
+			if asset.Amount != "" {
+				popList = append(popList, transferPopEntry{ptx.ContractAddr, asset.Addr, asset.Amount})
+			}
 		}
-		if !duplicated {
-			txs = append(txs, *transferTxs[idx])
+	}
+
+	consumed := make([]bool, len(transferTxs))
+	for i, tx := range transferTxs {
+		for j, entry := range popList {
+			if mixin.matchesPairTransferEntry(entry, tx) {
+				consumed[i] = true
+				popList = append(popList[:j], popList[j+1:]...)
+				break
+			}
+		}
+	}
+
+	txs := []ParsedTx{}
+	for i, tx := range transferTxs {
+		if !consumed[i] {
+			txs = append(txs, *tx)
 		}
 	}
 	return txs
 }
 
-// TODO: more specific logic
-func (mixin *DexMixin) isDuplicatedTx(ptx *ParsedTx, transfer *ParsedTx) bool {
-	isSameAssetAmount := func(a1, a2 Asset) bool {
-		return a1.Addr == a2.Addr && a1.Amount == a2.Amount
+// matchesPairTransferEntry reports whether tx corresponds to a transfer entry.
+func (mixin *DexMixin) matchesPairTransferEntry(entry transferPopEntry, transferTx *ParsedTx) bool {
+	if transferTx.ContractAddr != entry.pairAddr && transferTx.Sender != entry.pairAddr {
+		return false
 	}
-	return (ptx.ContractAddr == transfer.ContractAddr || ptx.ContractAddr == transfer.Sender) && (isSameAssetAmount(ptx.Assets[0], transfer.Assets[0]) || isSameAssetAmount(ptx.Assets[1], transfer.Assets[1]))
+
+	for _, asset := range transferTx.Assets {
+		if asset.Addr != entry.assetAddr || asset.Amount == "" {
+			continue
+		}
+
+		// For pair->user transfers (transferTx.Sender == entry.pairAddr), only the asset address is checked:
+		// unknown attributes from token contract may cause the received amount to differ from the pair's recorded amount.
+		// e.g. columbus-5 14829F480097AF38ECED3079ACD06BAA0AC0583E6BFCC85375A018617B13BBCB
+		// For user->pair transfers, the asset amount must match exactly (asset.Amount == entry.amount),
+		// to avoid consuming unrelated same-asset transfers within the same tx.
+		if transferTx.Sender == entry.pairAddr || asset.Amount == entry.amount {
+			return true
+		}
+	}
+
+	return false
 }
