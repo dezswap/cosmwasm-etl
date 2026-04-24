@@ -113,8 +113,7 @@ func (p *dezswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx, e
 		txDtos = append(txDtos, *ptx)
 	}
 
-	txDtos = append(txDtos, p.RemoveDuplicatedTxs(pairTxs, wasmTransferTxs)...)
-	txDtos = append(txDtos, p.RemoveDuplicatedTxs(pairTxs, transferTxs)...)
+	txDtos = append(txDtos, p.RemoveDuplicatedTxs(pairTxs, append(wasmTransferTxs, transferTxs...))...)
 	txDtos = append(txDtos, dex.CollectLpBurnTxs(burnTxs, p.lpPairAddrs)...)
 
 	return txDtos, nil
