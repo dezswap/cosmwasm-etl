@@ -314,7 +314,7 @@ func (mixin *DexMixin) RemoveDuplicatedTxs(pairTxs []*ParsedTx, transferTxs []*P
 	popList := []transferPopEntry{}
 	for _, ptx := range pairTxs {
 		for _, asset := range ptx.Assets {
-			if asset.Amount != "" {
+			if asset.Amount != "" && asset.Amount != "0" {
 				popList = append(popList, transferPopEntry{ptx.ContractAddr, asset.Addr, asset.Amount})
 			}
 		}
@@ -342,7 +342,11 @@ func (mixin *DexMixin) RemoveDuplicatedTxs(pairTxs []*ParsedTx, transferTxs []*P
 
 // matchesPairTransferEntry reports whether tx corresponds to a transfer entry.
 func (mixin *DexMixin) matchesPairTransferEntry(entry transferPopEntry, transferTx *ParsedTx) bool {
-	if transferTx.ContractAddr != entry.pairAddr && transferTx.Sender != entry.pairAddr {
+	isPairSendTx := entry.pairAddr == transferTx.Sender
+	isPairReceiveTx := entry.pairAddr == transferTx.ContractAddr
+	isEntryOutflow := strings.HasPrefix(entry.amount, "-")
+
+	if (!isEntryOutflow && !isPairReceiveTx) || (isEntryOutflow && !isPairSendTx) {
 		return false
 	}
 
@@ -356,7 +360,7 @@ func (mixin *DexMixin) matchesPairTransferEntry(entry transferPopEntry, transfer
 		// e.g. columbus-5 14829F480097AF38ECED3079ACD06BAA0AC0583E6BFCC85375A018617B13BBCB
 		// For user->pair transfers, the asset amount must match exactly (asset.Amount == entry.amount),
 		// to avoid consuming unrelated same-asset transfers within the same tx.
-		if transferTx.Sender == entry.pairAddr || asset.Amount == entry.amount {
+		if isPairSendTx || asset.Amount == entry.amount {
 			return true
 		}
 	}
