@@ -37,6 +37,8 @@ const (
 	app = "parser"
 )
 
+var version = "dev" // overridden via -ldflags "-X main.version=v1.2.3"
+
 func newHttpClient(c configs.HttpClientConfig) *http.Client {
 	return &http.Client{
 		Timeout: c.Timeout.Duration,
@@ -156,6 +158,8 @@ func main() {
 
 	grpc.SetLogConfig(c.Log)
 	logger := logging.New("parser", c.Log)
+	logger.WithField("version", version).Info("starting parser")
+
 	defer catch(logger)
 	if err := c.Parser.DexConfig.Validate(); err != nil {
 		panic(fmt.Errorf("dex config is nil: %w", err))

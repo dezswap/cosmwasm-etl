@@ -15,6 +15,8 @@ const (
 	app = "aggregator"
 )
 
+var version = "dev" // overridden via -ldflags "-X main.version=v1.2.3"
+
 func main() {
 	c := configs.New()
 	logger := logging.New("aggregator", c.Log)
@@ -27,6 +29,8 @@ func main() {
 		})
 	}
 	defer catch(logger)
+
+	logger.WithField("version", version).Info("starting aggregator")
 
 	app := aggregator.New(c, logger)
 	if err := app.Run(); err != nil {

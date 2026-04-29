@@ -4,7 +4,7 @@
 
 ### Requirements
 
-- [Go installation](https://golang.org/dl/) (preferably v1.24) and a [correctly configured path](https://golang.org/doc/install#install).
+- [Go installation](https://golang.org/dl/) (preferably v1.25) and a [correctly configured path](https://golang.org/doc/install#install).
 - A local [docker, docker-compose](https://docs.docker.com)
 - [Golangci-lint](https://github.com/golangci/golangci-lint) to improve code quality
 
