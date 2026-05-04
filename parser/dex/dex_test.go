@@ -166,6 +166,109 @@ var (
 	transferTx = ParsedTx{"", time.Time{}, Transfer, "sender", "PAIR_ADDR", [2]Asset{{"Asset0", ""}, {"Asset1", "1000"}}, "", "", "", nil}
 )
 
+func Test_matchesPairTransferEntry(t *testing.T) {
+	mixin := DexMixin{}
+	pairAddr := "PAIR_ADDR"
+
+	tcs := []struct {
+		entry    transferPopEntry
+		transfer ParsedTx
+		expected bool
+		explain  string
+	}{
+		{
+			entry:    transferPopEntry{pairAddr, "TokenA", "1000"},
+			transfer: ParsedTx{ContractAddr: pairAddr, Assets: [2]Asset{{"TokenA", "1000"}, {"TokenB", ""}}},
+			expected: true,
+			explain:  "user→pair transfer with exact amount must match",
+		},
+		{
+			entry:    transferPopEntry{pairAddr, "TokenB", "-500"},
+			transfer: ParsedTx{Sender: pairAddr, Assets: [2]Asset{{"TokenA", ""}, {"TokenB", "490"}}},
+			expected: true,
+			explain:  "pair→user transfer with different amount must match (no amount check)",
+		},
+		{
+			entry:    transferPopEntry{pairAddr, "TokenB", "500"},
+			transfer: ParsedTx{Sender: pairAddr, Assets: [2]Asset{{"TokenA", ""}, {"TokenB", "500"}}},
+			expected: false,
+			explain:  "pair→user transfer with positive sign must not match",
+		},
+		{
+			entry:    transferPopEntry{pairAddr, "TokenA", "1000"},
+			transfer: ParsedTx{ContractAddr: pairAddr, Assets: [2]Asset{{"TokenA", "999"}, {"TokenB", ""}}},
+			expected: false,
+			explain:  "user→pair transfer with mismatched amount must not match (unrelated transfer)",
+		},
+		{
+			entry:    transferPopEntry{pairAddr, "TokenA", "1000"},
+			transfer: ParsedTx{ContractAddr: "OTHER_PAIR", Assets: [2]Asset{{"TokenA", "1000"}, {"TokenB", ""}}},
+			expected: false,
+			explain:  "different contract must not match",
+		},
+	}
+
+	for _, tc := range tcs {
+		result := mixin.matchesPairTransferEntry(tc.entry, &tc.transfer)
+		assert.Equal(t, tc.expected, result, tc.explain)
+	}
+}
+
+func Test_removeDuplicatedTxs(t *testing.T) {
+	mixin := DexMixin{}
+	pairAddr := "PAIR_ADDR"
+	pairTx := &ParsedTx{ContractAddr: pairAddr, Assets: [2]Asset{{"TokenA", "1000"}, {"TokenB", "-500"}}}
+
+	tcs := []struct {
+		pairTxs     []*ParsedTx
+		transferTxs []*ParsedTx
+		expected    int
+		explain     string
+	}{
+		{
+			pairTxs:     []*ParsedTx{pairTx},
+			transferTxs: []*ParsedTx{{ContractAddr: pairAddr, Assets: [2]Asset{{"TokenA", "1000"}, {"TokenB", ""}}}},
+			expected:    0,
+			explain:     "user->pair transfer matching pair action must be removed",
+		},
+		{
+			pairTxs:     []*ParsedTx{pairTx},
+			transferTxs: []*ParsedTx{{Sender: pairAddr, Assets: [2]Asset{{"TokenA", ""}, {"TokenB", "-490"}}}},
+			expected:    0,
+			explain:     "pair->user transfer (negative entry amount) with amount mismatch must be removed",
+		},
+		{
+			pairTxs: []*ParsedTx{pairTx},
+			transferTxs: []*ParsedTx{
+				{ContractAddr: pairAddr, Assets: [2]Asset{{"TokenA", "1000"}, {"TokenB", ""}}},
+				{ContractAddr: pairAddr, Assets: [2]Asset{{"TokenA", "500"}, {"TokenB", ""}}},
+			},
+			expected: 1,
+			explain:  "unrelated transfer to pair with different amount in same tx must be kept",
+		},
+		{
+			pairTxs:     []*ParsedTx{pairTx},
+			transferTxs: []*ParsedTx{{ContractAddr: "OTHER_PAIR", Assets: [2]Asset{{"TokenA", "1000"}, {"TokenB", ""}}}},
+			expected:    1,
+			explain:     "transfer to unrelated pair must be kept",
+		},
+		{
+			pairTxs: []*ParsedTx{{ContractAddr: pairAddr, Assets: [2]Asset{{"TokenA", "0"}, {"TokenB", "0"}}}},
+			transferTxs: []*ParsedTx{
+				{Sender: pairAddr, Assets: [2]Asset{{"TokenA", "1000"}, {"TokenB", ""}}},
+				{Sender: pairAddr, Assets: [2]Asset{{"TokenA", ""}, {"TokenB", "1000"}}},
+			},
+			expected: 2,
+			explain:  "withdraw where pair records 0 amount: transfer must not be consumed (actual movement recorded separately)",
+		},
+	}
+
+	for _, tc := range tcs {
+		result := mixin.RemoveDuplicatedTxs(tc.pairTxs, tc.transferTxs)
+		assert.Len(t, result, tc.expected, tc.explain)
+	}
+}
+
 func Test_collectLpBurnTxs(t *testing.T) {
 	lpPairAddrs := map[string]string{
 		"LpToken": "PairContract",
