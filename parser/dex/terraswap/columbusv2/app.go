@@ -138,20 +138,23 @@ func (p *terraswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx,
 		burnTxs = append(burnTxs, burns...)
 	}
 
-	// Originally, tax_amount in wasm was used to deduct the tax(parser.dex.terraswap.columbusv2.pairMapper.swapMatchedToParsedTx).
-	// tax_payment log replaced tax_amount attribute for more detail, so it will be used to deduct here instead.
+	// tax_payment log replaced the legacy tax_amount wasm attribute for deducting tax from pairTxs.
+	// Tax transfers are extracted first so RemoveDuplicatedTxs consumes the result transfer
+	// (pair→user) rather than the tax transfer (pair→tax_collector).
 	// e.g. 2B99CFA6D1FB1029A28DCCABD753B5F43517B89CE31BF855235D47C16A7D2FB0
+	pairAddrs := p.getPairAddrs(pairTxs)
+	taxTransfers, transferTxs := p.extractTaxTransfers(transferTxs, taxTxs, pairAddrs)
 	if len(taxTxs) > 0 {
-		pairAddrs := p.getPairAddrs(pairTxs)
-		pairTransferTxs := p.getPairTransfers(pairAddrs, transferTxs)
-		pairTxs = p.deductTaxFromPairTxs(taxTxs, pairTransferTxs, pairTxs)
+		pairTxs = p.deductTaxFromPairTxs(taxTxs, p.getPairTransfers(pairAddrs, transferTxs), pairTxs)
 	}
 
 	for _, ptx := range pairTxs {
 		ptx.Sender = tx.Sender
 		txDtos = append(txDtos, *ptx)
 	}
-
+	for _, ttx := range taxTransfers {
+		txDtos = append(txDtos, *ttx)
+	}
 	txDtos = append(txDtos, p.RemoveDuplicatedTxs(pairTxs, append(wasmTxs, transferTxs...))...)
 	txDtos = append(txDtos, dex.CollectLpBurnTxs(burnTxs, p.lpPairAddrs)...)
 
@@ -249,6 +252,54 @@ func (p *terraswapApp) deductTaxFromPairTxs(taxTxs, pairTransferTxs, pairTxs []*
 	}
 
 	return pairTxs
+}
+
+// extractTaxTransfers splits transferTxs into two slices: transfers that
+// correspond to tax payments (matched 1:1 with taxTxs by asset address and
+// absolute amount) and the remaining transfers.
+// Only transfers whose Sender is a known pair address are candidates for tax
+// transfers, since tax transfers always originate from the pair (pair→tax_collector).
+func (p *terraswapApp) extractTaxTransfers(transferTxs, taxTxs []*dex.ParsedTx, pairAddrs []string) (taxTransfers, remaining []*dex.ParsedTx) {
+	if len(taxTxs) == 0 {
+		return nil, transferTxs
+	}
+	pairAddrSet := make(map[string]bool, len(pairAddrs))
+	for _, addr := range pairAddrs {
+		pairAddrSet[addr] = true
+	}
+	type taxKey struct{ addr, amount string }
+	taxCounts := make(map[taxKey]int, len(taxTxs))
+	for _, t := range taxTxs {
+		taxCounts[taxKey{t.Assets[0].Addr, t.Assets[0].Amount}]++
+	}
+	for _, tx := range transferTxs {
+		if !pairAddrSet[tx.Sender] {
+			remaining = append(remaining, tx)
+			continue
+		}
+		// tax transfers carry exactly one asset; if both slots are filled it is not a tax transfer
+		if tx.Assets[0].Amount != "" && tx.Assets[1].Amount != "" {
+			remaining = append(remaining, tx)
+			continue
+		}
+		asset := tx.Assets[0]
+		if asset.Amount == "" {
+			asset = tx.Assets[1]
+		}
+		// tax transfers are outflows from the pair (negative amount)
+		if len(asset.Amount) == 0 || asset.Amount[0] != '-' {
+			remaining = append(remaining, tx)
+			continue
+		}
+		k := taxKey{asset.Addr, asset.Amount[1:]}
+		if taxCounts[k] > 0 {
+			taxCounts[k]--
+			taxTransfers = append(taxTransfers, tx)
+		} else {
+			remaining = append(remaining, tx)
+		}
+	}
+	return taxTransfers, remaining
 }
 
 func (p *terraswapApp) IsValidationExceptionCandidate(contractAddress string) bool {
