@@ -118,6 +118,79 @@ func Test_parseTxs(t *testing.T) {
 	}
 }
 
+func Test_extractTaxTransfers(t *testing.T) {
+	assert := assert.New(t)
+	app := &terraswapApp{}
+
+	const pairAddr = "PAIR_ADDR"
+	pairAddrs := []string{pairAddr}
+
+	taxTx := &dex.ParsedTx{
+		Type:   dex.TaxPayment,
+		Assets: [2]dex.Asset{{Addr: "uluna", Amount: "10"}, {}},
+	}
+
+	// tax transfer: pair → tax_collector, Sender = pair addr, amount -10
+	taxTransfer := &dex.ParsedTx{
+		Type:         dex.Transfer,
+		Sender:       pairAddr,
+		ContractAddr: pairAddr,
+		Assets:       [2]dex.Asset{{Addr: "uluna", Amount: "-10"}, {}},
+	}
+
+	// result transfer: pair → user, Sender = pair addr, amount -990
+	resultTransfer := &dex.ParsedTx{
+		Type:         dex.Transfer,
+		Sender:       pairAddr,
+		ContractAddr: pairAddr,
+		Assets:       [2]dex.Asset{{Addr: "uluna", Amount: "-990"}, {}},
+	}
+
+	// inflow transfer: user → pair, Sender = user (not pair addr)
+	unrelatedTransfer := &dex.ParsedTx{
+		Type:         dex.Transfer,
+		Sender:       "user",
+		ContractAddr: pairAddr,
+		Assets:       [2]dex.Asset{{Addr: "uusd", Amount: "1000"}, {}},
+	}
+
+	// with no taxTxs, all transfers go to remaining
+	taxed, rem := app.extractTaxTransfers([]*dex.ParsedTx{taxTransfer, resultTransfer}, nil, pairAddrs)
+	assert.Nil(taxed, "no taxTxs: taxTransfers should be nil")
+	assert.Len(rem, 2, "no taxTxs: all transfers should remain")
+
+	// tax transfer is extracted; result and unrelated transfers remain
+	taxed, rem = app.extractTaxTransfers([]*dex.ParsedTx{taxTransfer, resultTransfer, unrelatedTransfer}, []*dex.ParsedTx{taxTx}, pairAddrs)
+	assert.Len(taxed, 1, "one tax transfer should be extracted")
+	assert.Equal(taxTransfer, taxed[0])
+	assert.Len(rem, 2, "result and unrelated transfers should remain")
+	assert.Equal(resultTransfer, rem[0])
+	assert.Equal(unrelatedTransfer, rem[1])
+
+	// inflow transfer with same amount as tax is not matched (Sender != pair addr)
+	inflowSameAmount := &dex.ParsedTx{
+		Type:         dex.Transfer,
+		Sender:       "user",
+		ContractAddr: pairAddr,
+		Assets:       [2]dex.Asset{{Addr: "uluna", Amount: "10"}, {}},
+	}
+	taxed, rem = app.extractTaxTransfers([]*dex.ParsedTx{inflowSameAmount, taxTransfer}, []*dex.ParsedTx{taxTx}, pairAddrs)
+	assert.Len(taxed, 1, "only the outflow from pair should be extracted")
+	assert.Equal(taxTransfer, taxed[0])
+	assert.Len(rem, 1, "inflow with same amount should remain")
+	assert.Equal(inflowSameAmount, rem[0])
+
+	// two identical tax transfers, two taxTxs → both extracted
+	taxTx2 := &dex.ParsedTx{
+		Type:   dex.TaxPayment,
+		Assets: [2]dex.Asset{{Addr: "uluna", Amount: "10"}, {}},
+	}
+	taxed, rem = app.extractTaxTransfers([]*dex.ParsedTx{taxTransfer, taxTransfer, resultTransfer}, []*dex.ParsedTx{taxTx, taxTx2}, pairAddrs)
+	assert.Len(taxed, 2, "both tax transfers should be extracted")
+	assert.Len(rem, 1, "only result transfer should remain")
+	assert.Equal(resultTransfer, rem[0])
+}
+
 func Test_taxDeduction(t *testing.T) {
 	assert := assert.New(t)
 	app := &terraswapApp{}
