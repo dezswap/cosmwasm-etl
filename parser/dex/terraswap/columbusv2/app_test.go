@@ -89,10 +89,16 @@ func Test_parseTxs(t *testing.T) {
 		return dexApp.(dex.DexParserApp)
 	}
 
+	localSwapTx := swapTx
+	localProvideTx := provideTx
+	localWithdrawTx := withdrawTx
+	localTransferTx := transferTx
+	localWasmTransferTx := wasmTransferTx
+
 	tcs := []testcase{
-		{[]string{swapLogStr, provideLogStr, withdrawLogStr, wasmTransferLogStr, transferLogStr}, 1, 0, []dex.ParsedTx{swapTx, provideTx, withdrawTx}, ""},
-		{[]string{withdrawLogStr, transferLogStr, wasmTransferLogStr}, 1, 0, []dex.ParsedTx{withdrawTx, transferTx, wasmTransferTx}, ""},
-		{[]string{swapLogStr, wasmTransferLogStr, transferLogStr}, 1, 0, []dex.ParsedTx{swapTx, transferTx}, ""},
+		{[]string{swapLogStr, provideLogStr, withdrawLogStr, wasmTransferLogStr, transferLogStr}, 1, 0, []dex.ParsedTx{localSwapTx, localProvideTx, localWithdrawTx}, ""},
+		{[]string{withdrawLogStr, transferLogStr, wasmTransferLogStr}, 1, 0, []dex.ParsedTx{localWithdrawTx, localTransferTx, localWasmTransferTx}, ""},
+		{[]string{swapLogStr, wasmTransferLogStr, transferLogStr}, 1, 0, []dex.ParsedTx{localSwapTx, localTransferTx}, ""},
 		{nil, 0, 0, []dex.ParsedTx{}, ""},
 		{nil, 3, 1, []dex.ParsedTx{}, ""},
 	}
