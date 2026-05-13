@@ -51,6 +51,7 @@ func Test_parseTxs(t *testing.T) {
 		repo := dex.RepoMock{}
 		rawStore := dex.RawStoreMock{}
 
+		pair := dex.FakeParserPairs()[0]
 		pairMap := map[string]dex.Pair{pair.ContractAddr: pair}
 
 		pairs := []dex.Pair{}
