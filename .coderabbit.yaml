@@ -1,0 +1,81 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: "en"
+early_access: true
+chat: { auto_reply: true }
+
+reviews:
+  request_changes_workflow: true
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: true
+
+  path_filters:
+    - "!**/*.pb.go"
+    - "!**/*.mod"
+    - "!**/*.sum"
+
+  path_instructions:
+  - path: "collector/**"
+    instructions: |
+      Fetches raw blocks and pool snapshots from chain nodes, uploads to S3/PostgreSQL.
+      - Goroutine leaks: goroutines in DoCollect must exit on error; errChan must always be consumed and never block.
+      - Idempotency: UploadBlockBinary/UploadPoolInfoBinary must be safe to re-run on the same height.
+
+  - path: "parser/**"
+    instructions: |
+      Maps CosmWasm event logs to ParsedTx structs, writes to PostgreSQL.
+      - ETL atomicity: each height must be processed in a single DB transaction (insert + pool snapshot + synced height) with rollback on failure.
+      - Hardcoded values: flag any hardcoded block heights, tx hashes, or contract addresses that look like debug artifacts left in production.
+
+  - path: "parser/dex/**"
+    instructions: |
+      DEX-specific parsing layer (Dezswap, Terraswap, Starfleit).
+      - Mapper index safety: index-based access to MatchedResult (e.g., res[PairAddrIdx]) panics if shorter than expected; validate length first.
+      - Transfer deduplication: check edge cases in RemoveDuplicatedTxs/matchesPairTransferEntry where the same asset appears multiple times in one tx.
+
+  - path: "aggregator/**"
+    instructions: |
+      Scheduled tasks that aggregate parser DB data into metrics (pair stats, LP history, prices).
+      - errChan safety: errors sent to the package-level errChan must always be consumed; a blocked send freezes the scheduler goroutine.
+      - Idempotency: tasks must be re-runnable for the same time window without double-counting rows.
+
+  - path: "pkg/db/**"
+    instructions: |
+      GORM models and repositories shared across all three stages.
+      - Transaction boundaries: multi-step writes must use a single DB transaction with rollback.
+      - GORM gotchas: watch for zero-value primary keys and accidental full-table updates via Save.
+
+  - path: "pkg/eventlog/**"
+    instructions: |
+      LogFinder matches CosmWasm event attribute sequences against Rules.
+      - Bounds safety: findMatchingSubseq accesses attrs[attrIdx+i]; verify the loop guard holds under all skipKey (msg_index, token_id) combinations, including consecutive skip keys.
+
+  - path: "pkg/terra/**"
+    instructions: |
+      The only layer that makes external HTTP/gRPC calls to chain nodes.
+      - HTTP hygiene: always close response bodies (defer resp.Body.Close()); always set Timeout on *http.Client — an unconfigured client blocks indefinitely.
+
+  - path: "db/migrations/**"
+    instructions: |
+      Timestamped SQL migration pairs (up/down) for parser, aggregator, and collector.
+      - Reversibility: every .up.sql must have a correct .down.sql.
+      - Locking: DDL on existing tables must use CONCURRENTLY / IF NOT EXISTS.
+      - Idempotency: backfill DML must use ON CONFLICT DO NOTHING or WHERE NOT EXISTS.
+
+  - path: "configs/**"
+    instructions: |
+      Viper-based config (config.yaml + APP_* env overrides).
+      - No secrets committed: use env-var references only, never real credentials.
+      - Fail-fast: required fields (ChainId, node URLs) must error clearly at startup if missing.
+      - Env var alignment: APP_* override names must match the mapstructure tag path exactly.
+
+  auto_review:
+    enabled: true
+    ignore_title_keywords:
+      - "WIP"
+      - "DO NOT MERGE"
+    drafts: false
+    auto_incremental_review: true
+    base_branches:
+      - "main"
