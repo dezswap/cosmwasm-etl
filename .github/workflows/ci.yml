@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   tests:
@@ -38,22 +39,27 @@ jobs:
 
     - name: Run Golang linter
       uses: golangci/golangci-lint-action@v8
+    
+    - name: Build all
+      run: make build-all
 
     - name: Tests
       shell: bash
       run: |
         echo "${{ secrets.CONFIG }}" > config.yaml
-        make test
+        go test -short -coverprofile=coverage.out -covermode=atomic ./...
 
+    - name: Upload to Codecov
+      uses: codecov/codecov-action@v6
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: ./coverage.out
+    
     - name: Migration Tests
       run: |
         make parser-migrate-up
         make parser-migrate-test
         make parser-migrate-down
-      # Add if more needed
-
-    - name: Build all
-      run: make build-all
 
   docker-check:
     runs-on: ubuntu-latest
