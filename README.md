@@ -1,5 +1,10 @@
 # CosmWasm ETL
 
+[![codecov](https://codecov.io/github/dezswap/cosmwasm-etl/graph/badge.svg?token=K9YH072SSY)](https://codecov.io/github/dezswap/cosmwasm-etl)
+![CI](https://github.com/dezswap/cosmwasm-etl/actions/workflows/ci.yml/badge.svg)
+![Go Report Card](https://goreportcard.com/badge/dezswap/cosmwasm-etl)
+![License](https://img.shields.io/github/license/dezswap/cosmwasm-etl)
+
 ## Getting Started
 
 ### Requirements
