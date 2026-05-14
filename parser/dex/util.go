@@ -77,3 +77,10 @@ func ToBigInt(n string) (*big.Int, error) {
 
 	return bi, nil
 }
+
+// isCw20TokenAddress reports whether addr is a CW20 token contract address.
+// CW20 contracts have long bech32 addresses (> 20 chars), while native token
+// denoms (e.g., axpla, uusd, uluna) are short and IBC denoms start with "ibc/".
+func isCw20TokenAddress(addr string) bool {
+	return !strings.HasPrefix(addr, "ibc/") && len(addr) > 20
+}

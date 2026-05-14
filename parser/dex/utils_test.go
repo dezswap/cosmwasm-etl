@@ -122,3 +122,26 @@ func TestToBigInt(t *testing.T) {
 		})
 	}
 }
+
+// Test_isCw20TokenAddress verifies that native denoms and IBC tokens are not
+// treated as CW20 contracts, while bech32 contract addresses are.
+func Test_isCw20TokenAddress(t *testing.T) {
+	tests := []struct {
+		name string
+		addr string
+		want bool
+	}{
+		{"native uluna", "uluna", false},
+		{"native uusd", "uusd", false},
+		{"native axpla", "axpla", false},
+		{"ibc denom", "ibc/B3504E092456BA618CC28AC671A71FB08C6CA0FD0BE7C8A5B5A3E2DD933CC9E4", false},
+		{"terra CW20 contract", "terra1sepfj7s0aeg5967uxnfk4thzlerrsktkpelm5s", true},
+		{"xpla CW20 contract", "xpla1w6hv0suf8dmpq8kxd8a6yy9fnmntlh7hh9kl37qmax7kyzfd047qnnp0mm", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, isCw20TokenAddress(tt.addr))
+		})
+	}
+}
