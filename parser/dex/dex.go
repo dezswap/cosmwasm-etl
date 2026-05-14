@@ -355,12 +355,14 @@ func (mixin *DexMixin) matchesPairTransferEntry(entry transferPopEntry, transfer
 			continue
 		}
 
-		// For pair->user transfers (transferTx.Sender == entry.pairAddr), only the asset address is checked:
-		// unknown attributes from token contract may cause the received amount to differ from the pair's recorded amount.
+		// For pair->user transfers (transferTx.Sender == entry.pairAddr), CW20 token contracts
+		// may charge fees/taxes causing the received amount to differ from the pair's recorded amount.
 		// e.g. columbus-5 14829F480097AF38ECED3079ACD06BAA0AC0583E6BFCC85375A018617B13BBCB
+		// Native tokens (e.g., axpla, uusd, uluna) always transfer exact amounts via the bank module,
+		// so require an exact match even for pair->user transfers.
 		// For user->pair transfers, the asset amount must match exactly (asset.Amount == entry.amount),
 		// to avoid consuming unrelated same-asset transfers within the same tx.
-		if isPairSendTx || asset.Amount == entry.amount {
+		if (isPairSendTx && isCw20TokenAddress(entry.assetAddr)) || asset.Amount == entry.amount {
 			return true
 		}
 	}
