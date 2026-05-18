@@ -127,12 +127,12 @@ func rawLogs(logStr string) eventlog.LogResults {
 
 var (
 	pair           = dex.Pair{ContractAddr: "PAIR_ADDR", Assets: []string{"Asset0", "Asset1"}, LpAddr: "Lp"}
-	createTx       = dex.ParsedTx{hash, time.Time{}, dex.CreatePair, sender, "PAIR_ADDR", [2]dex.Asset{{"Asset0", "1000"}, {"Asset1", "1000"}}, "Lp", "1000", "", nil}
-	swapTx         = dex.ParsedTx{hash, time.Time{}, dex.Swap, sender, "PAIR_ADDR", [2]dex.Asset{{"Asset0", "1000"}, {"Asset1", "-1000"}}, "", "", "1", map[string]interface{}{"tax_amount": dex.Asset{pair.Assets[1], "0"}}}
-	provideTx      = dex.ParsedTx{hash, time.Time{}, dex.Provide, sender, "PAIR_ADDR", [2]dex.Asset{{"Asset0", "1000"}, {"Asset1", "1000"}}, "Lp", "1000", "", nil}
-	withdrawTx     = dex.ParsedTx{hash, time.Time{}, dex.Withdraw, sender, "PAIR_ADDR", [2]dex.Asset{{"Asset0", "0"}, {"Asset1", "0"}}, "Lp", "1000", "", map[string]interface{}{"withdraw_assets": []dex.Asset{{"Asset0", "-1000"}, {"Asset1", "-1000"}}}}
-	transferTx     = dex.ParsedTx{hash, time.Time{}, dex.Transfer, sender, "PAIR_ADDR", [2]dex.Asset{{"Asset0", ""}, {"Asset1", "1000"}}, "", "", "", make(map[string]interface{})}
-	wasmTransferTx = dex.ParsedTx{hash, time.Time{}, dex.Transfer, sender, "PAIR_ADDR", [2]dex.Asset{{"Asset0", "1000"}, {"Asset1", ""}}, "", "", "", make(map[string]interface{})}
+	createTx       = dex.ParsedTx{hash, time.Time{}, dex.CreatePair, sender, "PAIR_ADDR", [2]dex.Asset{{"Asset0", "1000"}, {"Asset1", "1000"}}, "Lp", "1000", "", 0, nil}
+	swapTx         = dex.ParsedTx{hash, time.Time{}, dex.Swap, sender, "PAIR_ADDR", [2]dex.Asset{{"Asset0", "1000"}, {"Asset1", "-1000"}}, "", "", "1", 0, map[string]interface{}{"tax_amount": dex.Asset{pair.Assets[1], "0"}}}
+	provideTx      = dex.ParsedTx{hash, time.Time{}, dex.Provide, sender, "PAIR_ADDR", [2]dex.Asset{{"Asset0", "1000"}, {"Asset1", "1000"}}, "Lp", "1000", "", 0, nil}
+	withdrawTx     = dex.ParsedTx{hash, time.Time{}, dex.Withdraw, sender, "PAIR_ADDR", [2]dex.Asset{{"Asset0", "0"}, {"Asset1", "0"}}, "Lp", "1000", "", 0, map[string]interface{}{"withdraw_assets": []dex.Asset{{"Asset0", "-1000"}, {"Asset1", "-1000"}}}}
+	transferTx     = dex.ParsedTx{hash, time.Time{}, dex.Transfer, sender, "PAIR_ADDR", [2]dex.Asset{{"Asset0", ""}, {"Asset1", "1000"}}, "", "", "", 0, make(map[string]interface{})}
+	wasmTransferTx = dex.ParsedTx{hash, time.Time{}, dex.Transfer, sender, "PAIR_ADDR", [2]dex.Asset{{"Asset0", "1000"}, {"Asset1", ""}}, "", "", "", 0, make(map[string]interface{})}
 )
 
 const (

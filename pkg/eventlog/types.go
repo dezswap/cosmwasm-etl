@@ -16,8 +16,9 @@ const (
 )
 
 type Attribute struct {
-	Key   string `json:"key"`
-	Value string `json:"value"`
+	Key      string `json:"key"`
+	Value    string `json:"value"`
+	MsgIndex int    `json:"msg_index,omitempty"`
 }
 type Attributes []Attribute
 
@@ -28,8 +29,16 @@ type LogResult struct {
 type LogResults []LogResult
 
 type MatchedItem struct {
-	Key   string `json:"key"`
-	Value string `json:"value"`
+	Key      string `json:"key"`
+	Value    string `json:"value"`
+	MsgIndex int    `json:"msg_index,omitempty"`
 }
 type MatchedResult []MatchedItem
 type MatchedResults []MatchedResult
+
+func MsgIndex(res MatchedResult) int {
+	if len(res) == 0 {
+		return 0
+	}
+	return res[0].MsgIndex
+}

@@ -159,11 +159,11 @@ func Test_validate(t *testing.T) {
 }
 
 var (
-	createTx   = ParsedTx{"", time.Time{}, CreatePair, "sender", "PAIR_ADDR", [2]Asset{{"Asset0", "1000"}, {"Asset1", "1000"}}, "Lp", "1000", "", nil}
-	swapTx     = ParsedTx{"", time.Time{}, Swap, "sender", "PAIR_ADDR", [2]Asset{{"Asset0", "1000"}, {"Asset1", "-1000"}}, "", "", "1", nil}
-	provideTx  = ParsedTx{"", time.Time{}, Provide, "sender", "PAIR_ADDR", [2]Asset{{"Asset0", "1000"}, {"Asset1", "1000"}}, "Lp", "1000", "", nil}
-	withdrawTx = ParsedTx{"", time.Time{}, Withdraw, "sender", "PAIR_ADDR", [2]Asset{{"Asset0", "-1000"}, {"Asset1", "-1000"}}, "Lp", "1000", "", nil}
-	transferTx = ParsedTx{"", time.Time{}, Transfer, "sender", "PAIR_ADDR", [2]Asset{{"Asset0", ""}, {"Asset1", "1000"}}, "", "", "", nil}
+	createTx   = ParsedTx{"", time.Time{}, CreatePair, "sender", "PAIR_ADDR", [2]Asset{{"Asset0", "1000"}, {"Asset1", "1000"}}, "Lp", "1000", "", 0, nil}
+	swapTx     = ParsedTx{"", time.Time{}, Swap, "sender", "PAIR_ADDR", [2]Asset{{"Asset0", "1000"}, {"Asset1", "-1000"}}, "", "", "1", 0, nil}
+	provideTx  = ParsedTx{"", time.Time{}, Provide, "sender", "PAIR_ADDR", [2]Asset{{"Asset0", "1000"}, {"Asset1", "1000"}}, "Lp", "1000", "", 0, nil}
+	withdrawTx = ParsedTx{"", time.Time{}, Withdraw, "sender", "PAIR_ADDR", [2]Asset{{"Asset0", "-1000"}, {"Asset1", "-1000"}}, "Lp", "1000", "", 0, nil}
+	transferTx = ParsedTx{"", time.Time{}, Transfer, "sender", "PAIR_ADDR", [2]Asset{{"Asset0", ""}, {"Asset1", "1000"}}, "", "", "", 0, nil}
 )
 
 // Test_matchesPairTransferEntry verifies that transfers are matched to pair entries

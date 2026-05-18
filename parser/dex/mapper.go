@@ -54,6 +54,7 @@ func (m *factoryMapper) MatchedToParsedTx(res eventlog.MatchedResult, optional .
 		},
 		LpAddr:   res[pdex.FactoryLpAddrIdx].Value,
 		LpAmount: "",
+		MsgIndex: eventlog.MsgIndex(res),
 	}}, nil
 }
 
@@ -163,14 +164,14 @@ func (m *transferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals
 	assetsStr := matchMap[pdex.TransferAmountKey].Value
 	txs := []*ParsedTx{}
 	if fromPair {
-		tx, err := m.transferToParsedTx(fp, sender, assetsStr, true)
+		tx, err := m.transferToParsedTx(fp, sender, assetsStr, true, eventlog.MsgIndex(res))
 		if err != nil {
 			return nil, errors.Wrap(err, "transferMapper.MatchedToParsedTx")
 		}
 		txs = append(txs, tx)
 	}
 	if toPair {
-		tx, err := m.transferToParsedTx(tp, sender, assetsStr, false)
+		tx, err := m.transferToParsedTx(tp, sender, assetsStr, false, eventlog.MsgIndex(res))
 		if err != nil {
 			return nil, errors.Wrap(err, "transferMapper.MatchedToParsedTx")
 		}
@@ -183,7 +184,7 @@ func (m *transferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals
 	return txs, nil
 }
 
-func (m transferMapper) transferToParsedTx(pair Pair, from, assetsStr string, fromPair bool) (*ParsedTx, error) {
+func (m transferMapper) transferToParsedTx(pair Pair, from, assetsStr string, fromPair bool, msgIndex int) (*ParsedTx, error) {
 	assets := [2]Asset{
 		{Addr: pair.Assets[0]},
 		{Addr: pair.Assets[1]},
@@ -214,6 +215,7 @@ func (m transferMapper) transferToParsedTx(pair Pair, from, assetsStr string, fr
 		Assets:       assets,
 		LpAddr:       "",
 		LpAmount:     "",
+		MsgIndex:     msgIndex,
 		Meta:         meta,
 	}, nil
 }
@@ -261,9 +263,10 @@ func (m *taxPaymentMapper) MatchedToParsedTx(res eventlog.MatchedResult, optiona
 	}
 
 	return []*ParsedTx{{
-		Type:   TaxPayment,
-		Sender: "",
-		Assets: [2]Asset{asset, {}},
+		Type:     TaxPayment,
+		Sender:   "",
+		Assets:   [2]Asset{asset, {}},
+		MsgIndex: eventlog.MsgIndex(res),
 	}}, nil
 }
 

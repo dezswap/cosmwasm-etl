@@ -75,6 +75,7 @@ func (m *pairMapper) swapMatchedToParsedTx(res eventlog.MatchedResult, pair dex.
 		Sender:           matchMap[pdex.PairSwapSenderKey].Value,
 		Assets:           assets,
 		CommissionAmount: matchMap[pdex.PairSwapCommissionAmountKey].Value,
+		MsgIndex:         eventlog.MsgIndex(res),
 		Meta:             nil,
 	}}, nil
 }
@@ -118,6 +119,7 @@ func (m *pairMapper) provideMatchedToParsedTx(res eventlog.MatchedResult, pair d
 		Assets:       [2]dex.Asset(assets),
 		LpAddr:       pair.LpAddr,
 		LpAmount:     matchMap[columbusv2.PairProvideShareKey].Value,
+		MsgIndex:     eventlog.MsgIndex(res),
 	}}, nil
 }
 
@@ -146,6 +148,7 @@ func (m *pairMapper) withdrawMatchedToParsedTx(res eventlog.MatchedResult, pair 
 		Assets:       [2]dex.Asset{{Addr: assets[0].Addr, Amount: "0"}, {Addr: assets[1].Addr, Amount: "0"}},
 		LpAddr:       pair.LpAddr,
 		LpAmount:     matchMap[columbusv2.PairWithdrawWithdrawShareKey].Value,
+		MsgIndex:     eventlog.MsgIndex(res),
 		Meta: map[string]interface{}{
 			"withdraw_assets": assets,
 		},

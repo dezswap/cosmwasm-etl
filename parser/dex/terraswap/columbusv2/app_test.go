@@ -10,6 +10,7 @@ import (
 	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/parser/dex"
 	dts "github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap"
+	cv2 "github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap/columbusv2"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 	"github.com/dezswap/cosmwasm-etl/pkg/faker"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
@@ -189,6 +190,32 @@ func Test_extractTaxTransfers(t *testing.T) {
 	assert.Len(taxed, 2, "both tax transfers should be extracted")
 	assert.Len(rem, 1, "only result transfer should remain")
 	assert.Equal(resultTransfer, rem[0])
+
+	// same asset and amount in different messages must not match across MsgIndex
+	taxTxMsg1 := &dex.ParsedTx{
+		Type:     dex.TaxPayment,
+		Assets:   [2]dex.Asset{{Addr: "uluna", Amount: "10"}, {}},
+		MsgIndex: 1,
+	}
+	taxTransferMsg0 := &dex.ParsedTx{
+		Type:         dex.Transfer,
+		Sender:       pairAddr,
+		ContractAddr: pairAddr,
+		Assets:       [2]dex.Asset{{Addr: "uluna", Amount: "-10"}, {}},
+		MsgIndex:     0,
+	}
+	taxTransferMsg1 := &dex.ParsedTx{
+		Type:         dex.Transfer,
+		Sender:       pairAddr,
+		ContractAddr: pairAddr,
+		Assets:       [2]dex.Asset{{Addr: "uluna", Amount: "-10"}, {}},
+		MsgIndex:     1,
+	}
+	taxed, rem = app.extractTaxTransfers([]*dex.ParsedTx{taxTransferMsg0, taxTransferMsg1}, []*dex.ParsedTx{taxTxMsg1}, pairAddrs)
+	assert.Len(taxed, 1, "only the matching MsgIndex tax transfer should be extracted")
+	assert.Equal(taxTransferMsg1, taxed[0])
+	assert.Len(rem, 1, "same asset and amount with different MsgIndex should remain")
+	assert.Equal(taxTransferMsg0, rem[0])
 }
 
 func Test_taxDeduction(t *testing.T) {
@@ -220,6 +247,73 @@ func Test_taxDeduction(t *testing.T) {
 	assert.Equal("-990", result[0].Assets[1].Amount, "Asset1 outflow: net -990 applied from pairTransferTx")
 }
 
+func Test_taxDeduction_MatchesMsgIndex(t *testing.T) {
+	assert := assert.New(t)
+	app := &terraswapApp{}
+
+	pairTxMsg0 := &dex.ParsedTx{
+		Type:         dex.Swap,
+		ContractAddr: "PAIR_ADDR",
+		Assets:       [2]dex.Asset{{"Asset0", "1000"}, {"Asset1", "-1000"}},
+		MsgIndex:     0,
+	}
+	pairTxMsg1 := &dex.ParsedTx{
+		Type:         dex.Swap,
+		ContractAddr: "PAIR_ADDR",
+		Assets:       [2]dex.Asset{{"Asset0", "2000"}, {"Asset1", "-1000"}},
+		MsgIndex:     1,
+	}
+	taxTxMsg1 := &dex.ParsedTx{
+		Type:     dex.TaxPayment,
+		Assets:   [2]dex.Asset{{Addr: "Asset1", Amount: "10"}, {}},
+		MsgIndex: 1,
+	}
+	pairTransferTxMsg1 := &dex.ParsedTx{
+		Type:         dex.Transfer,
+		ContractAddr: "PAIR_ADDR",
+		Assets:       [2]dex.Asset{{Addr: "Asset0", Amount: ""}, {Addr: "Asset1", Amount: "-990"}},
+		MsgIndex:     1,
+	}
+
+	result := app.deductTaxFromPairTxs(
+		[]*dex.ParsedTx{taxTxMsg1},
+		[]*dex.ParsedTx{pairTransferTxMsg1},
+		[]*dex.ParsedTx{pairTxMsg0, pairTxMsg1},
+	)
+	assert.Equal("-1000", result[0].Assets[1].Amount, "msg 0 pair tx must not consume msg 1 tax")
+	assert.Equal("-990", result[1].Assets[1].Amount, "msg 1 pair tx should consume msg 1 tax")
+}
+
+func Test_pairMapper_PropagatesMsgIndex(t *testing.T) {
+	assert := assert.New(t)
+
+	pairSet := map[string]dex.Pair{
+		pair.ContractAddr: pair,
+	}
+	finder, err := cv2.CreatePairCommonRulesFinder(map[string]bool{pair.ContractAddr: true})
+	assert.NoError(err)
+
+	parser := parser.NewParser(finder, &pairMapper{pairSet: pairSet})
+	txs, err := parser.Parse(eventlog.LogResults{{
+		Type: eventlog.WasmType,
+		Attributes: eventlog.Attributes{
+			{Key: "_contract_address", Value: pair.ContractAddr, MsgIndex: 1},
+			{Key: "action", Value: string(cv2.SwapAction), MsgIndex: 1},
+			{Key: "sender", Value: sender, MsgIndex: 1},
+			{Key: "receiver", Value: "receiver", MsgIndex: 1},
+			{Key: "offer_asset", Value: pair.Assets[0], MsgIndex: 1},
+			{Key: "ask_asset", Value: pair.Assets[1], MsgIndex: 1},
+			{Key: "offer_amount", Value: "1000", MsgIndex: 1},
+			{Key: "return_amount", Value: "1000", MsgIndex: 1},
+			{Key: "spread_amount", Value: "10", MsgIndex: 1},
+			{Key: "commission_amount", Value: "1", MsgIndex: 1},
+		},
+	}}, dex.ParsedTx{Hash: hash, Timestamp: time.Time{}})
+	assert.NoError(err)
+	assert.Len(txs, 1)
+	assert.Equal(1, txs[0].MsgIndex)
+}
+
 func rawLogs(logStr string) eventlog.LogResults {
 	logs := eventlog.LogResults{}
 	if err := json.Unmarshal([]byte(logStr), &logs); err != nil {
@@ -230,12 +324,12 @@ func rawLogs(logStr string) eventlog.LogResults {
 
 var (
 	pair           = dex.Pair{ContractAddr: "PAIR_ADDR", Assets: []string{"Asset0", "Asset1"}, LpAddr: "Lp"}
-	createTx       = dex.ParsedTx{hash, time.Time{}, dex.CreatePair, sender, "PAIR_ADDR", [2]dex.Asset{{"Asset0", "1000"}, {"Asset1", "1000"}}, "Lp", "1000", "", nil}
-	swapTx         = dex.ParsedTx{hash, time.Time{}, dex.Swap, sender, "PAIR_ADDR", [2]dex.Asset{{"Asset0", "1000"}, {"Asset1", "-1000"}}, "", "", "1", nil}
-	provideTx      = dex.ParsedTx{hash, time.Time{}, dex.Provide, sender, "PAIR_ADDR", [2]dex.Asset{{"Asset0", "1000"}, {"Asset1", "1000"}}, "Lp", "1000", "", nil}
-	withdrawTx     = dex.ParsedTx{hash, time.Time{}, dex.Withdraw, sender, "PAIR_ADDR", [2]dex.Asset{{"Asset0", "0"}, {"Asset1", "0"}}, "Lp", "1000", "", map[string]interface{}{"withdraw_assets": []dex.Asset{{pair.Assets[0], "-1000"}, {pair.Assets[1], "-1000"}}}}
-	transferTx     = dex.ParsedTx{hash, time.Time{}, dex.Transfer, sender, "PAIR_ADDR", [2]dex.Asset{{"Asset0", ""}, {"Asset1", "1000"}}, "", "", "", make(map[string]interface{})}
-	wasmTransferTx = dex.ParsedTx{hash, time.Time{}, dex.Transfer, sender, "PAIR_ADDR", [2]dex.Asset{{"Asset0", "1000"}, {"Asset1", ""}}, "", "", "", make(map[string]interface{})}
+	createTx       = dex.ParsedTx{hash, time.Time{}, dex.CreatePair, sender, "PAIR_ADDR", [2]dex.Asset{{"Asset0", "1000"}, {"Asset1", "1000"}}, "Lp", "1000", "", 0, nil}
+	swapTx         = dex.ParsedTx{hash, time.Time{}, dex.Swap, sender, "PAIR_ADDR", [2]dex.Asset{{"Asset0", "1000"}, {"Asset1", "-1000"}}, "", "", "1", 0, nil}
+	provideTx      = dex.ParsedTx{hash, time.Time{}, dex.Provide, sender, "PAIR_ADDR", [2]dex.Asset{{"Asset0", "1000"}, {"Asset1", "1000"}}, "Lp", "1000", "", 0, nil}
+	withdrawTx     = dex.ParsedTx{hash, time.Time{}, dex.Withdraw, sender, "PAIR_ADDR", [2]dex.Asset{{"Asset0", "0"}, {"Asset1", "0"}}, "Lp", "1000", "", 0, map[string]interface{}{"withdraw_assets": []dex.Asset{{pair.Assets[0], "-1000"}, {pair.Assets[1], "-1000"}}}}
+	transferTx     = dex.ParsedTx{hash, time.Time{}, dex.Transfer, sender, "PAIR_ADDR", [2]dex.Asset{{"Asset0", ""}, {"Asset1", "1000"}}, "", "", "", 0, make(map[string]interface{})}
+	wasmTransferTx = dex.ParsedTx{hash, time.Time{}, dex.Transfer, sender, "PAIR_ADDR", [2]dex.Asset{{"Asset0", "1000"}, {"Asset1", ""}}, "", "", "", 0, make(map[string]interface{})}
 )
 
 const (

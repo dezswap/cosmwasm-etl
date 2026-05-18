@@ -2,6 +2,7 @@ package columbusv1
 
 import (
 	"fmt"
+
 	pdex "github.com/dezswap/cosmwasm-etl/pkg/dex"
 
 	"github.com/dezswap/cosmwasm-etl/parser"

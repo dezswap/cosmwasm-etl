@@ -157,8 +157,9 @@ func groupLogAttrByType(logs logResults) map[eventlog.LogType]eventlog.Attribute
 			attributes := eventlog.Attributes{}
 			for _, attr := range event.Attributes {
 				attributes = append(attributes, eventlog.Attribute{
-					Key:   attr.Key,
-					Value: attr.Value,
+					Key:      attr.Key,
+					Value:    attr.Value,
+					MsgIndex: log.MsgIndex,
 				})
 			}
 			logType := event.Type

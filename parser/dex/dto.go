@@ -37,6 +37,7 @@ type ParsedTx struct {
 	LpAddr           string   `json:"lpAddr"`
 	LpAmount         string   `json:"lpAmount" faker:"amountString"`
 	CommissionAmount string   `json:"commissionAmount" faker:"amountString"`
+	MsgIndex         int      `json:"msg_index"`
 
 	Meta map[string]interface{} `json:"meta" faker:"meta"`
 }
@@ -77,6 +78,9 @@ func (defaultVal ParsedTx) Override(tx ParsedTx) (ParsedTx, error) {
 	}
 	if tx.CommissionAmount != "" {
 		defaultVal.CommissionAmount = tx.CommissionAmount
+	}
+	if tx.MsgIndex > 0 {
+		defaultVal.MsgIndex = tx.MsgIndex
 	}
 	if tx.Meta != nil {
 		if defaultVal.Meta == nil {
