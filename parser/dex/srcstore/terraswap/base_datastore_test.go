@@ -86,6 +86,7 @@ func Test_convertLogToRawTx_InvalidFormat(t *testing.T) {
 func Test_groupLogAttrByType(t *testing.T) {
 	logs := logResults{
 		{
+			MsgIndex: 3,
 			Events: eventlog.LogResults{
 				{
 					Type:       "wasm",
@@ -98,6 +99,7 @@ func Test_groupLogAttrByType(t *testing.T) {
 			},
 		},
 		{
+			MsgIndex: 4,
 			Events: eventlog.LogResults{
 				{
 					Type:       "wasm",
@@ -108,8 +110,11 @@ func Test_groupLogAttrByType(t *testing.T) {
 	}
 	result := groupLogAttrByType(logs)
 	assert.Len(t, result, 2)
-	assert.Equal(t, eventlog.Attributes{{Key: "k2", Value: "v2"}}, result["transfer"])
-	assert.ElementsMatch(t, []eventlog.Attribute{{Key: "k1", Value: "v1"}, {Key: "k3", Value: "v3"}}, result["wasm"])
+	assert.Equal(t, eventlog.Attributes{{Key: "k2", Value: "v2", MsgIndex: 3}}, result["transfer"])
+	assert.ElementsMatch(t, []eventlog.Attribute{
+		{Key: "k1", Value: "v1", MsgIndex: 3},
+		{Key: "k3", Value: "v3", MsgIndex: 4},
+	}, result["wasm"])
 }
 
 func Test_groupLogAttrByType_Empty(t *testing.T) {

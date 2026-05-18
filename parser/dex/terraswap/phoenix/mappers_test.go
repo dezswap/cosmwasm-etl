@@ -34,7 +34,7 @@ func Test_PairMapper(t *testing.T) {
 				{Key: "offer_amount", Value: "100000"}, {Key: "return_amount", Value: "100583"},
 				{Key: "spread_amount", Value: "2"}, {Key: "commission_amount", Value: "302"},
 			},
-			[]*dex.ParsedTx{{"", time.Time{}, dex.Swap, userAddr, pair.ContractAddr, [2]dex.Asset{{pair.Assets[0], "100000"}, {pair.Assets[1], "-100583"}}, "", "", "302", nil}},
+			[]*dex.ParsedTx{{"", time.Time{}, dex.Swap, userAddr, pair.ContractAddr, [2]dex.Asset{{pair.Assets[0], "100000"}, {pair.Assets[1], "-100583"}}, "", "", "302", 0, nil}},
 			"",
 		},
 		{
@@ -46,7 +46,7 @@ func Test_PairMapper(t *testing.T) {
 				{Key: "offer_amount", Value: "100000"}, {Key: "return_amount", Value: "100583"},
 				{Key: "spread_amount", Value: "2"}, {Key: "commission_amount", Value: "300"},
 			},
-			[]*dex.ParsedTx{{"", time.Time{}, dex.Swap, userAddr, pair.ContractAddr, [2]dex.Asset{{pair.Assets[0], "-100583"}, {pair.Assets[1], "100000"}}, "", "", "300", nil}},
+			[]*dex.ParsedTx{{"", time.Time{}, dex.Swap, userAddr, pair.ContractAddr, [2]dex.Asset{{pair.Assets[0], "-100583"}, {pair.Assets[1], "100000"}}, "", "", "300", 0, nil}},
 			"",
 		},
 		{
@@ -67,7 +67,7 @@ func Test_PairMapper(t *testing.T) {
 				{Key: "assets", Value: fmt.Sprintf("%s%s, %s%s", "1000", pair.Assets[0], "10000", pair.Assets[1])},
 				{Key: "share", Value: "998735"},
 			},
-			[]*dex.ParsedTx{{"", time.Time{}, dex.Provide, userAddr, pair.ContractAddr, [2]dex.Asset{{pair.Assets[0], "1000"}, {pair.Assets[1], "10000"}}, pair.LpAddr, "998735", "", nil}},
+			[]*dex.ParsedTx{{"", time.Time{}, dex.Provide, userAddr, pair.ContractAddr, [2]dex.Asset{{pair.Assets[0], "1000"}, {pair.Assets[1], "10000"}}, pair.LpAddr, "998735", "", 0, nil}},
 			"",
 		},
 		{
@@ -78,7 +78,7 @@ func Test_PairMapper(t *testing.T) {
 				{Key: "assets", Value: fmt.Sprintf("%s%s, %s%s", "1000", pair.Assets[0], "10000", pair.Assets[1])},
 				{Key: "share", Value: "998735"}, {Key: phoenix.PairProvideRefundAssetKey, Value: fmt.Sprintf("%s%s, %s%s", "100", pair.Assets[0], "100", pair.Assets[1])},
 			},
-			[]*dex.ParsedTx{{"", time.Time{}, dex.Provide, userAddr, pair.ContractAddr, [2]dex.Asset{{pair.Assets[0], "900"}, {pair.Assets[1], "9900"}}, pair.LpAddr, "998735", "", nil}},
+			[]*dex.ParsedTx{{"", time.Time{}, dex.Provide, userAddr, pair.ContractAddr, [2]dex.Asset{{pair.Assets[0], "900"}, {pair.Assets[1], "9900"}}, pair.LpAddr, "998735", "", 0, nil}},
 			"",
 		},
 		{
@@ -102,7 +102,7 @@ func Test_PairMapper(t *testing.T) {
 				{Key: "withdrawn_share", Value: "12418119"},
 				{Key: "refund_assets", Value: fmt.Sprintf("%s%s, %s%s", "24999998", pair.Assets[0], "24939789", pair.Assets[1])},
 			},
-			[]*dex.ParsedTx{{"", time.Time{}, dex.Withdraw, userAddr, pair.ContractAddr, [2]dex.Asset{{pair.Assets[0], "-24999998"}, {pair.Assets[1], "-24939789"}}, pair.LpAddr, "12418119", "", nil}},
+			[]*dex.ParsedTx{{"", time.Time{}, dex.Withdraw, userAddr, pair.ContractAddr, [2]dex.Asset{{pair.Assets[0], "-24999998"}, {pair.Assets[1], "-24939789"}}, pair.LpAddr, "12418119", "", 0, nil}},
 			"",
 		},
 		{

@@ -198,6 +198,7 @@ func (p *terraswapApp) deductTaxFromPairTxs(taxTxs, pairTransferTxs, pairTxs []*
 		addr      string
 		assetIdx  int
 		absAmount int64
+		msgIdx    int
 	}
 	pairTxIdx := make(map[pairKey]int)
 	for i, t := range pairTxs {
@@ -209,15 +210,21 @@ func (p *terraswapApp) deductTaxFromPairTxs(taxTxs, pairTransferTxs, pairTxs []*
 			if amount < 0 {
 				amount = -amount
 			}
-			pairTxIdx[pairKey{t.ContractAddr, j, amount}] = i
+			pairTxIdx[pairKey{t.ContractAddr, j, amount, t.MsgIndex}] = i
 		}
 	}
 
-	// queue tax amounts by asset addr (consumed one by one)
-	taxQueue := make(map[string][]int64)
+	type taxKey struct {
+		addr   string
+		msgIdx int
+	}
+
+	// queue tax amounts by asset addr and message index (consumed one by one)
+	taxQueue := make(map[taxKey][]int64)
 	for _, t := range taxTxs {
 		amount, _ := strconv.ParseInt(t.Assets[0].Amount, 10, 64)
-		taxQueue[t.Assets[0].Addr] = append(taxQueue[t.Assets[0].Addr], amount)
+		k := taxKey{t.Assets[0].Addr, t.MsgIndex}
+		taxQueue[k] = append(taxQueue[k], amount)
 	}
 
 	for _, tx := range pairTransferTxs {
@@ -230,7 +237,8 @@ func (p *terraswapApp) deductTaxFromPairTxs(taxTxs, pairTransferTxs, pairTxs []*
 			netAsset, assetIdx = tx.Assets[1], 1
 		}
 
-		taxes := taxQueue[netAsset.Addr]
+		taxQueueKey := taxKey{netAsset.Addr, tx.MsgIndex}
+		taxes := taxQueue[taxQueueKey]
 		if len(taxes) == 0 {
 			continue
 		}
@@ -241,11 +249,11 @@ func (p *terraswapApp) deductTaxFromPairTxs(taxTxs, pairTransferTxs, pairTxs []*
 		}
 
 		for j, taxAmount := range taxes {
-			key := pairKey{tx.ContractAddr, assetIdx, netAmount + taxAmount} // gross = net + tax
+			key := pairKey{tx.ContractAddr, assetIdx, netAmount + taxAmount, tx.MsgIndex} // gross = net + tax
 			if i, ok := pairTxIdx[key]; ok {
 				pairTxs[i].Assets[assetIdx].Amount = netAsset.Amount
 				delete(pairTxIdx, key)
-				taxQueue[netAsset.Addr] = append(taxes[:j], taxes[j+1:]...)
+				taxQueue[taxQueueKey] = append(taxes[:j], taxes[j+1:]...)
 				break
 			}
 		}
@@ -267,10 +275,13 @@ func (p *terraswapApp) extractTaxTransfers(transferTxs, taxTxs []*dex.ParsedTx, 
 	for _, addr := range pairAddrs {
 		pairAddrSet[addr] = true
 	}
-	type taxKey struct{ addr, amount string }
+	type taxKey struct {
+		addr, amount string
+		msgIdx       int
+	}
 	taxCounts := make(map[taxKey]int, len(taxTxs))
 	for _, t := range taxTxs {
-		taxCounts[taxKey{t.Assets[0].Addr, t.Assets[0].Amount}]++
+		taxCounts[taxKey{t.Assets[0].Addr, t.Assets[0].Amount, t.MsgIndex}]++
 	}
 	for _, tx := range transferTxs {
 		if !pairAddrSet[tx.Sender] {
@@ -291,7 +302,7 @@ func (p *terraswapApp) extractTaxTransfers(transferTxs, taxTxs []*dex.ParsedTx, 
 			remaining = append(remaining, tx)
 			continue
 		}
-		k := taxKey{asset.Addr, asset.Amount[1:]}
+		k := taxKey{asset.Addr, asset.Amount[1:], tx.MsgIndex}
 		if taxCounts[k] > 0 {
 			taxCounts[k]--
 			taxTransfers = append(taxTransfers, tx)

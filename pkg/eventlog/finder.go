@@ -74,15 +74,17 @@ func (f *logfinderImpl) findMatchingSubseq(attrIdx int, attrs Attributes) (Match
 	matchedResult := make(MatchedResult, 0)
 
 	i := 0
+	msgIndex := -1
 	for ; i < ruleItemsSize; i++ {
 		if shouldSkipKey(attrs[attrIdx+i].Key) && (attrIdx+ruleItemsSize) < attrsSize {
 			attrIdx++
 		}
-		if !f.rule.Items[i].Match(attrs[attrIdx+i]) {
+		if !f.rule.Items[i].Match(attrs[attrIdx+i]) || (msgIndex != -1 && attrs[attrIdx+i].MsgIndex != msgIndex) {
 			break
 		}
 
-		matchedResult = append(matchedResult, MatchedItem{attrs[attrIdx+i].Key, attrs[attrIdx+i].Value})
+		msgIndex = attrs[attrIdx+i].MsgIndex
+		matchedResult = append(matchedResult, MatchedItem{attrs[attrIdx+i].Key, attrs[attrIdx+i].Value, msgIndex})
 	}
 
 	return matchedResult, attrIdx + i
@@ -96,7 +98,7 @@ func (f *logfinderImpl) appendUntil(attrIdx int, matchedResult MatchedResult, at
 		for ; attrIdx < attrsSize && attrs[attrIdx].Key != f.rule.Until; attrIdx++ {
 			key := attrs[attrIdx].Key
 			if !shouldSkipKey(key) {
-				matchedResult = append(matchedResult, MatchedItem{key, attrs[attrIdx].Value})
+				matchedResult = append(matchedResult, MatchedItem{key, attrs[attrIdx].Value, attrs[attrIdx].MsgIndex})
 			}
 		}
 	}
