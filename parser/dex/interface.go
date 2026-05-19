@@ -23,6 +23,9 @@ type Repo interface {
 	ParsedPoolsInfo(from, to uint64) ([]PoolInfo, error)
 	ValidationExceptionList() ([]string, error)
 	InsertPairValidationException(chainID string, contractAddress string) error
+	GetValidationHeight() (uint64, error)
+	SetValidationHeight(height uint64) error
+	ClearValidationHeight() error
 }
 
 type SourceDataStore interface {

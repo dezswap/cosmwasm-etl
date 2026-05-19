@@ -104,3 +104,18 @@ func (m *RepoMock) ValidationExceptionList() ([]string, error) {
 	args := m.MethodCalled("ValidationExceptionList")
 	return args.Get(0).([]string), args.Error(1)
 }
+
+// GetValidationHeight implements Repo.
+func (m *RepoMock) GetValidationHeight() (uint64, error) {
+	return 0, nil
+}
+
+// SetValidationHeight implements Repo.
+func (m *RepoMock) SetValidationHeight(_ uint64) error {
+	return nil
+}
+
+// ClearValidationHeight implements Repo.
+func (m *RepoMock) ClearValidationHeight() error {
+	return nil
+}

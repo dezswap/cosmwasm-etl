@@ -44,6 +44,18 @@ func (m *MockRepo) ValidationExceptionList() ([]string, error) {
 	return nil, nil
 }
 
+func (m *MockRepo) GetValidationHeight() (uint64, error) {
+	return 0, nil
+}
+
+func (m *MockRepo) SetValidationHeight(_ uint64) error {
+	return nil
+}
+
+func (m *MockRepo) ClearValidationHeight() error {
+	return nil
+}
+
 // MockSourceDataStore implements pdex.SourceDataStore for testing
 type MockSourceDataStore struct {
 	syncedHeight uint64

@@ -183,3 +183,43 @@ func (r *repoImpl) ValidationExceptionList() ([]string, error) {
 	}
 	return exceptions, nil
 }
+
+// GetValidationHeight implements dex.Repo.
+func (r *repoImpl) GetValidationHeight() (uint64, error) {
+	sh := schemas.SyncedHeight{}
+	if tx := r.db.FirstOrCreate(&sh, schemas.SyncedHeight{ChainId: r.chainId}); tx.Error != nil {
+		return 0, fmt.Errorf("GetValidationHeight: %w", tx.Error)
+	}
+	if sh.ValidationHeight == nil {
+		return 0, nil
+	}
+	return *sh.ValidationHeight, nil
+}
+
+// SetValidationHeight implements dex.Repo.
+func (r *repoImpl) SetValidationHeight(height uint64) error {
+	tx := r.db.Model(&schemas.SyncedHeight{}).
+		Where("chain_id = ?", r.chainId).
+		Update("validation_height", height)
+	if tx.Error != nil {
+		return fmt.Errorf("SetValidationHeight: %w", tx.Error)
+	}
+	if tx.RowsAffected == 0 {
+		return fmt.Errorf("SetValidationHeight: no row found for chain_id %s", r.chainId)
+	}
+	return nil
+}
+
+// ClearValidationHeight implements dex.Repo.
+func (r *repoImpl) ClearValidationHeight() error {
+	tx := r.db.Model(&schemas.SyncedHeight{}).
+		Where("chain_id = ?", r.chainId).
+		Update("validation_height", nil)
+	if tx.Error != nil {
+		return fmt.Errorf("ClearValidationHeight: %w", tx.Error)
+	}
+	if tx.RowsAffected == 0 {
+		return fmt.Errorf("ClearValidationHeight: no row found for chain_id %s", r.chainId)
+	}
+	return nil
+}

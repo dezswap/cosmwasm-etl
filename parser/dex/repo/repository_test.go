@@ -229,6 +229,93 @@ func (s *validationExceptionSuite) Test_InsertPairValidationException() {
 	assert.Error(err)
 }
 
+type validationHeightSuite struct {
+	baseSuite
+}
+
+func (s *validationHeightSuite) Test_GetValidationHeight_WithValue() {
+	const validationHeight = uint64(42)
+	rows := sqlmock.NewRows([]string{"chain_id", "height", "validation_height"}).
+		AddRow(s.Repo.chainId, uint64(0), validationHeight)
+	s.Mock.ExpectQuery(`^SELECT (.+) FROM "synced_height" WHERE (.+)?[chain_id ](.+)=`).WillReturnRows(rows)
+
+	h, err := s.Repo.GetValidationHeight()
+	s.NoError(err)
+	s.Equal(validationHeight, h)
+}
+
+func (s *validationHeightSuite) Test_GetValidationHeight_Nil() {
+	rows := sqlmock.NewRows([]string{"chain_id", "height", "validation_height"}).
+		AddRow(s.Repo.chainId, uint64(0), nil) // NULL → returns 0
+	s.Mock.ExpectQuery(`^SELECT (.+) FROM "synced_height" WHERE (.+)?[chain_id ](.+)=`).WillReturnRows(rows)
+
+	h, err := s.Repo.GetValidationHeight()
+	s.NoError(err)
+	s.Equal(uint64(0), h)
+}
+
+func (s *validationHeightSuite) Test_GetValidationHeight_Create() {
+	// Row not found → FirstOrCreate inserts a new row (wrapped in a transaction).
+	s.Mock.ExpectQuery(`^SELECT (.+) FROM "synced_height" WHERE (.+)?[chain_id ](.+)=`).
+		WillReturnRows(sqlmock.NewRows([]string{}))
+	s.Mock.ExpectBegin()
+	s.Mock.ExpectExec(`^INSERT INTO "synced_height" (.+) VALUES (.+)`).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	s.Mock.ExpectCommit()
+
+	h, err := s.Repo.GetValidationHeight()
+	s.NoError(err)
+	s.Equal(uint64(0), h)
+}
+
+func (s *validationHeightSuite) Test_GetValidationHeight_Fail() {
+	s.Mock.ExpectQuery(`^SELECT (.+) FROM "synced_height" WHERE (.+)?[chain_id ](.+)=`).
+		WillReturnError(errors.New("db error"))
+
+	_, err := s.Repo.GetValidationHeight()
+	s.Error(err)
+}
+
+func (s *validationHeightSuite) Test_SetValidationHeight() {
+	s.Mock.ExpectBegin()
+	s.Mock.ExpectExec(`UPDATE "synced_height" SET "validation_height"=\$1 WHERE chain_id = \$2`).
+		WithArgs(uint64(42), s.Repo.chainId).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	s.Mock.ExpectCommit()
+
+	s.NoError(s.Repo.SetValidationHeight(42))
+}
+
+func (s *validationHeightSuite) Test_SetValidationHeight_NoRow() {
+	s.Mock.ExpectBegin()
+	s.Mock.ExpectExec(`UPDATE "synced_height" SET "validation_height"=\$1 WHERE chain_id = \$2`).
+		WithArgs(uint64(42), s.Repo.chainId).
+		WillReturnResult(sqlmock.NewResult(0, 0)) // RowsAffected = 0
+	s.Mock.ExpectCommit()
+
+	s.Error(s.Repo.SetValidationHeight(42))
+}
+
+func (s *validationHeightSuite) Test_SetValidationHeight_Fail() {
+	s.Mock.ExpectBegin()
+	s.Mock.ExpectExec(`UPDATE "synced_height" SET "validation_height"=\$1 WHERE chain_id = \$2`).
+		WithArgs(uint64(42), s.Repo.chainId).
+		WillReturnError(errors.New("db error"))
+	s.Mock.ExpectRollback()
+
+	s.Error(s.Repo.SetValidationHeight(42))
+}
+
+func (s *validationHeightSuite) Test_ClearValidationHeight() {
+	s.Mock.ExpectBegin()
+	s.Mock.ExpectExec(`UPDATE "synced_height" SET "validation_height"=\$1 WHERE chain_id = \$2`).
+		WithArgs(nil, s.Repo.chainId).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	s.Mock.ExpectCommit()
+
+	s.NoError(s.Repo.ClearValidationHeight())
+}
+
 func Test_repo(t *testing.T) {
 	dex.FakerCustomGenerator()
 	faker.CustomGenerator()
@@ -236,4 +323,5 @@ func Test_repo(t *testing.T) {
 	suite.Run(t, new(pairsSuite))
 	suite.Run(t, new(insertSuite))
 	suite.Run(t, new(validationExceptionSuite))
+	suite.Run(t, new(validationHeightSuite))
 }
