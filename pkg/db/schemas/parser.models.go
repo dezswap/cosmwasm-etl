@@ -50,6 +50,10 @@ type Pair struct {
 type SyncedHeight struct {
 	ChainId string `json:"chainId"`
 	Height  uint64 `json:"height"`
+	// ValidationHeight is the next validation cursor persisted for restart recovery.
+	// nil means no validation is pending. A positive value means the parser must
+	// validate that height next and only advance it after successful validation.
+	ValidationHeight *uint64 `json:"validationHeight"`
 }
 
 type PairValidationException struct {

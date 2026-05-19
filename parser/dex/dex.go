@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/parser"
@@ -39,6 +40,11 @@ type dexApp struct {
 	sameHeightTolerance uint
 	lastSrcHeight       uint64
 	sameHeightCount     uint
+
+	validationWorkerOnce         sync.Once
+	validationMu                 sync.Mutex
+	validationSignal             chan struct{}
+	latestValidationSyncedHeight uint64
 }
 
 type DexMixin struct{}
@@ -56,6 +62,7 @@ func NewDexApp(app TargetApp, srcStore SourceDataStore, repo Repo, logger loggin
 		sameHeightTolerance:  c.SameHeightTolerance,
 		poolSnapshotInterval: c.PoolSnapshotInterval,
 		validationInterval:   c.ValidationInterval,
+		validationSignal:     make(chan struct{}, 1),
 	}
 }
 
@@ -83,15 +90,11 @@ func (app *dexApp) Run() error {
 		return fmt.Errorf("app.Run: %w", err)
 	}
 
+	app.signalValidation(localSynced)
+
 	// to avoid skipping validation error
-	if (localSynced % uint64(app.validationInterval)) == 0 {
-		poolInfos, err := app.GetPoolInfos((localSynced))
-		if err != nil {
-			return fmt.Errorf("app.Run: %w", err)
-		}
-		if err := app.validate(0, (localSynced), poolInfos); err != nil {
-			return fmt.Errorf("app.Run: %w", err)
-		}
+	if app.isValidationHeight(localSynced) {
+		app.triggerValidation(localSynced)
 	}
 
 	app.logger.Infof("current synced height: %d, remote node height: %d", localSynced, srcHeight)
@@ -130,16 +133,8 @@ func (app *dexApp) Run() error {
 			return fmt.Errorf("app.Run: %w", err)
 		}
 
-		if (cur % uint64(app.validationInterval)) == 0 {
-			if len(poolInfos) == 0 {
-				poolInfos, err = app.GetPoolInfos(cur)
-				if err != nil {
-					return fmt.Errorf("app.Run: %w", err)
-				}
-			}
-			if err := app.validate(0, cur, poolInfos); err != nil {
-				return fmt.Errorf("app.Run: %w", err)
-			}
+		if app.isValidationHeight(cur) {
+			app.triggerValidation(cur)
 		}
 	}
 	app.lastSrcHeight = srcHeight
@@ -180,6 +175,134 @@ func (app *dexApp) checkRemoteHeight(srcHeight uint64) error {
 		app.sameHeightCount = 0
 	}
 	return nil
+}
+
+// isValidationHeight reports whether the given height is a configured
+// validation interval boundary.
+func (app *dexApp) isValidationHeight(height uint64) bool {
+	if app.validationInterval == 0 || height == 0 {
+		return false
+	}
+	return height%uint64(app.validationInterval) == 0
+}
+
+// triggerValidation persists a validation cursor when none exists, then wakes
+// the async validator for the synced height that just reached an interval.
+func (app *dexApp) triggerValidation(height uint64) {
+	validationHeight, err := app.GetValidationHeight()
+	if err != nil {
+		app.logger.Errorf("validator: failed to load validation height: %s", err)
+		return
+	}
+	if validationHeight == 0 {
+		if err := app.SetValidationHeight(height); err != nil {
+			app.logger.Errorf("validator: failed to persist validation height %d: %s", height, err)
+			return
+		}
+	}
+	app.signalValidation(height)
+}
+
+// signalValidation starts the single validation worker and records the latest
+// synced height it should validate up to. Multiple calls coalesce into one wakeup.
+func (app *dexApp) signalValidation(syncedHeight uint64) {
+	if app.validationInterval == 0 {
+		return
+	}
+
+	app.validationWorkerOnce.Do(func() {
+		if app.validationSignal == nil {
+			app.validationSignal = make(chan struct{}, 1)
+		}
+		go app.runValidationWorker()
+	})
+
+	app.validationMu.Lock()
+	if syncedHeight > app.latestValidationSyncedHeight {
+		app.latestValidationSyncedHeight = syncedHeight
+	}
+	app.validationMu.Unlock()
+
+	select {
+	case app.validationSignal <- struct{}{}:
+	default:
+	}
+}
+
+// runValidationWorker consumes validation wakeups and drains all persisted
+// validation work up to the latest synced height observed while it is running.
+func (app *dexApp) runValidationWorker() {
+	for range app.validationSignal {
+		for {
+			app.validationMu.Lock()
+			syncedHeight := app.latestValidationSyncedHeight
+			app.latestValidationSyncedHeight = 0
+			app.validationMu.Unlock()
+
+			if syncedHeight == 0 {
+				break
+			}
+
+			app.processPendingValidations(syncedHeight)
+
+			app.validationMu.Lock()
+			hasPendingSignal := app.latestValidationSyncedHeight > 0
+			app.validationMu.Unlock()
+			if !hasPendingSignal {
+				break
+			}
+		}
+	}
+}
+
+// processPendingValidations validates the persisted validation cursor up to
+// syncedHeight. Successful validation advances the cursor by validationInterval
+// before the next validation, so restarts continue from the next unresolved
+// validation height.
+func (app *dexApp) processPendingValidations(syncedHeight uint64) {
+	if app.validationInterval == 0 {
+		return
+	}
+
+	for {
+		height, err := app.GetValidationHeight()
+		if err != nil {
+			app.logger.Errorf("validator: failed to load validation height: %s", err)
+			return
+		}
+		if height == 0 || height > syncedHeight {
+			return
+		}
+		if !app.validateAtHeight(height) {
+			return
+		}
+		next := height + uint64(app.validationInterval)
+		if next <= height {
+			if err := app.ClearValidationHeight(); err != nil {
+				app.logger.Errorf("validator: failed to clear validation height after overflow: %s", err)
+			}
+			return
+		}
+		if err := app.SetValidationHeight(next); err != nil {
+			app.logger.Errorf("validator: failed to advance validation height from %d to %d: %s", height, next, err)
+			return
+		}
+	}
+}
+
+// validateAtHeight compares source pool info with parsed DB state for one
+// validation height and returns false when validation should be retried later.
+func (app *dexApp) validateAtHeight(height uint64) bool {
+	poolInfos, err := app.GetPoolInfos(height)
+	if err != nil {
+		app.logger.Errorf("validator: GetPoolInfos at height %d: %s", height, err)
+		return false
+	}
+	if err := app.validate(0, height, poolInfos); err != nil {
+		app.logger.Errorf("validator: pool mismatch at height %d: %s", height, err)
+		return false
+	}
+	return true
 }
 
 // validate with `expected` from the node, compare database updates, as `actual`

@@ -2,11 +2,14 @@ package dex
 
 import (
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // insert implements parser
@@ -344,4 +347,202 @@ func Test_collectLpBurnTxs(t *testing.T) {
 		result := CollectLpBurnTxs(tc.burnTxs, lpPairAddrs)
 		assert.Equal(tc.expected, result, tc.errMsg)
 	}
+}
+
+// testRepoMock extends RepoMock to control the persisted validation height
+// and track every SetValidationHeight call.
+type testRepoMock struct {
+	RepoMock
+	mu                sync.Mutex
+	validationHeight  uint64
+	setValidationArgs []uint64
+	setValidationErrs []error
+	clearCount        int
+}
+
+func (m *testRepoMock) GetValidationHeight() (uint64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.validationHeight, nil
+}
+
+func (m *testRepoMock) SetValidationHeight(h uint64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.setValidationArgs = append(m.setValidationArgs, h)
+	if len(m.setValidationErrs) > 0 {
+		err := m.setValidationErrs[0]
+		m.setValidationErrs = m.setValidationErrs[1:]
+		if err != nil {
+			return err
+		}
+	}
+	m.validationHeight = h
+	return nil
+}
+
+func (m *testRepoMock) ClearValidationHeight() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.clearCount++
+	m.validationHeight = 0
+	return nil
+}
+
+func (m *testRepoMock) validationState() (uint64, []uint64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.validationHeight, append([]uint64(nil), m.setValidationArgs...)
+}
+
+func Test_processPendingValidations_AdvancesPersistedCursor(t *testing.T) {
+	pool := PoolInfo{
+		ContractAddr: "pool1",
+		TotalShare:   "1000",
+		Assets:       []Asset{{"token0", "500"}, {"token1", "500"}},
+	}
+	const firstHeight = uint64(100)
+	const secondHeight = uint64(200)
+
+	srcStore := &RawStoreMock{}
+	repo := &testRepoMock{validationHeight: firstHeight}
+	app := &dexApp{
+		Repo:               repo,
+		SourceDataStore:    srcStore,
+		logger:             logging.Discard,
+		validationInterval: 100,
+	}
+
+	srcStore.On("GetPoolInfos", firstHeight).Return([]PoolInfo{pool}, nil)
+	srcStore.On("GetPoolInfos", secondHeight).Return([]PoolInfo{pool}, nil)
+	repo.On("ParsedPoolsInfo", uint64(0), firstHeight).Return([]PoolInfo{pool}, nil)
+	repo.On("ParsedPoolsInfo", uint64(0), secondHeight).Return([]PoolInfo{pool}, nil)
+	repo.On("ValidationExceptionList").Return([]string{}, nil)
+
+	app.processPendingValidations(250)
+
+	assert.Equal(t, []uint64{secondHeight, 300}, repo.setValidationArgs)
+	assert.Equal(t, uint64(300), repo.validationHeight)
+}
+
+func Test_processPendingValidations_LeavesCursorOnValidationFailure(t *testing.T) {
+	pool := PoolInfo{
+		ContractAddr: "pool1",
+		TotalShare:   "1000",
+		Assets:       []Asset{{"token0", "500"}, {"token1", "500"}},
+	}
+	const height = uint64(100)
+
+	srcStore := &RawStoreMock{}
+	repo := &testRepoMock{validationHeight: height}
+	app := &dexApp{
+		Repo:               repo,
+		SourceDataStore:    srcStore,
+		logger:             logging.Discard,
+		validationInterval: 100,
+	}
+
+	srcStore.On("GetPoolInfos", height).Return([]PoolInfo{pool}, nil)
+	repo.On("ParsedPoolsInfo", uint64(0), height).Return([]PoolInfo{}, nil)
+	repo.On("ValidationExceptionList").Return([]string{}, nil)
+
+	app.processPendingValidations(height)
+
+	assert.Empty(t, repo.setValidationArgs)
+	assert.Equal(t, height, repo.validationHeight)
+}
+
+func Test_triggerValidation_PersistsCursorBeforeValidation(t *testing.T) {
+	pool := PoolInfo{
+		ContractAddr: "pool1",
+		TotalShare:   "1000",
+		Assets:       []Asset{{"token0", "500"}, {"token1", "500"}},
+	}
+	const height = uint64(100)
+
+	srcStore := &RawStoreMock{}
+	repo := &testRepoMock{}
+	app := &dexApp{
+		Repo:               repo,
+		SourceDataStore:    srcStore,
+		logger:             logging.Discard,
+		validationInterval: 100,
+	}
+
+	srcStore.On("GetPoolInfos", height).Return([]PoolInfo{pool}, nil)
+	repo.On("ParsedPoolsInfo", uint64(0), height).Return([]PoolInfo{pool}, nil)
+	repo.On("ValidationExceptionList").Return([]string{}, nil)
+
+	app.triggerValidation(height)
+
+	require.Eventually(t, func() bool {
+		validationHeight, setValidationArgs := repo.validationState()
+		return validationHeight == 200 && assert.ObjectsAreEqual([]uint64{height, 200}, setValidationArgs)
+	}, time.Second, 10*time.Millisecond)
+}
+
+func Test_processPendingValidations_RetriesCursorAfterAdvanceFailure(t *testing.T) {
+	pool := PoolInfo{
+		ContractAddr: "pool1",
+		TotalShare:   "1000",
+		Assets:       []Asset{{"token0", "500"}, {"token1", "500"}},
+	}
+	const height = uint64(100)
+
+	srcStore := &RawStoreMock{}
+	repo := &testRepoMock{
+		validationHeight:  height,
+		setValidationErrs: []error{errors.New("db unavailable")},
+	}
+	app := &dexApp{
+		Repo:               repo,
+		SourceDataStore:    srcStore,
+		logger:             logging.Discard,
+		validationInterval: 100,
+	}
+
+	srcStore.On("GetPoolInfos", height).Return([]PoolInfo{pool}, nil)
+	repo.On("ParsedPoolsInfo", uint64(0), height).Return([]PoolInfo{pool}, nil)
+	repo.On("ValidationExceptionList").Return([]string{}, nil)
+
+	app.processPendingValidations(height)
+
+	assert.Equal(t, []uint64{200}, repo.setValidationArgs)
+	assert.Equal(t, height, repo.validationHeight)
+}
+
+func Test_Run_FollowsPersistedValidationCursor(t *testing.T) {
+	pool := PoolInfo{
+		ContractAddr: "pool1",
+		TotalShare:   "1000",
+		Assets:       []Asset{{"token0", "500"}, {"token1", "500"}},
+	}
+	const firstHeight = uint64(100)
+	const secondHeight = uint64(200)
+
+	srcStore := &RawStoreMock{}
+	repo := &testRepoMock{validationHeight: firstHeight}
+	app := &dexApp{
+		Repo:                repo,
+		SourceDataStore:     srcStore,
+		logger:              logging.Discard,
+		validationInterval:  100,
+		sameHeightTolerance: 5,
+	}
+
+	repo.On("GetTokenExceptions").Return(map[string]bool{}, nil)
+	repo.On("GetSyncedHeight").Return(secondHeight, nil)
+	srcStore.On("GetSourceSyncedHeight").Return(secondHeight, nil)
+	srcStore.On("GetPoolInfos", firstHeight).Return([]PoolInfo{pool}, nil)
+	srcStore.On("GetPoolInfos", secondHeight).Return([]PoolInfo{pool}, nil)
+	repo.On("ParsedPoolsInfo", uint64(0), firstHeight).Return([]PoolInfo{pool}, nil)
+	repo.On("ParsedPoolsInfo", uint64(0), secondHeight).Return([]PoolInfo{pool}, nil)
+	repo.On("ValidationExceptionList").Return([]string{}, nil)
+
+	require.NoError(t, app.Run())
+
+	require.Eventually(t, func() bool {
+		validationHeight, setValidationArgs := repo.validationState()
+		return validationHeight == 300 && assert.ObjectsAreEqual([]uint64{secondHeight, 300}, setValidationArgs)
+	}, time.Second, 10*time.Millisecond)
 }
