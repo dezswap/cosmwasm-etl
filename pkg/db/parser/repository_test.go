@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 
@@ -554,6 +555,47 @@ func (s *aggregatorReadRepoSuite) Test_CommissionAmountInPair() {
 	assert.NoError(err)
 	assert.Equal(expectedAsset0, actualAsset0)
 	assert.Equal(expectedAsset1, actualAsset1)
+}
+
+func (s *aggregatorReadRepoSuite) Test_LiquiditiesOfPairStats_UsesOneForPriceToken() {
+	assert := assert.New(s.T())
+	require := require.New(s.T())
+
+	priceToken := "uusd"
+	pairId := uint64(100)
+
+	require.NoError(s.DB.Exec(`TRUNCATE TABLE parsed_tx, lp_history, price, tokens, pair CASCADE`).Error)
+	require.NoError(s.DB.Exec(
+		`INSERT INTO pair(id, chain_id, contract, asset0, asset1, lp) VALUES($1, $2, $3, $4, $5, $6)`,
+		pairId, chainName, "terra0pricepair", priceToken, "terra0asset", "terra0lp",
+	).Error)
+	require.NoError(s.DB.Exec(
+		`INSERT INTO tokens(id, chain_id, address, decimals) VALUES($1, $2, $3, $4), ($5, $6, $7, $8)`,
+		1000, chainName, priceToken, 6,
+		1001, chainName, "terra0asset", 6,
+	).Error)
+	require.NoError(s.DB.Exec(
+		`INSERT INTO price(height, chain_id, token_id, price, price_token_id, route_id) VALUES($1, $2, $3, $4, $5, $6)`,
+		99, chainName, 1001, "2", 1000, 0,
+	).Error)
+	require.NoError(s.DB.Exec(
+		`INSERT INTO lp_history(height, pair_id, chain_id, liquidity0, liquidity1, timestamp) VALUES($1, $2, $3, $4, $5, $6)`,
+		100, pairId, chainName, "1000000", "2000000", start,
+	).Error)
+
+	actual, err := s.Repo.LiquiditiesOfPairStats(start, end, priceToken)
+
+	require.NoError(err)
+	require.Contains(actual, pairId)
+	assert.Equal("1000000", actual[pairId].Liquidity0)
+	assert.Equal("2000000", actual[pairId].Liquidity1)
+
+	liquidity0InPrice, err := strconv.ParseFloat(actual[pairId].Liquidity0InPrice, 64)
+	require.NoError(err)
+	liquidity1InPrice, err := strconv.ParseFloat(actual[pairId].Liquidity1InPrice, 64)
+	require.NoError(err)
+	assert.Equal(1.0, liquidity0InPrice)
+	assert.Equal(4.0, liquidity1InPrice)
 }
 
 func createTestPairs(db *gorm.DB) {

@@ -35,3 +35,8 @@ unittest.config.yaml
 
 # builds
 build
+
+# go
+.cache
+
+.tool-versions

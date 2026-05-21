@@ -4,15 +4,17 @@ aggregator:
   srcDb:
     host: localhost
     port: 5432
-    database: cosmwasm-etl
+    database: cosmwasm_etl
     username: app
     password: appPW
+    sslmode: disable
   destDb:
     host: localhost
     port: 5432
-    database: cosmwasm-etl
+    database: cosmwasm_etl
     username: app
     password: appPW
+    sslmode: disable
   cleanDups: true
 
 log:
