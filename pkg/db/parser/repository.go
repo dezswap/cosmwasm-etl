@@ -494,19 +494,23 @@ required_height_by_token AS (
     JOIN tokens t ON p.chain_id = t.chain_id AND (p.asset0 = t.address OR p.asset1 = t.address)
 ),
 token_price_by_height AS (
-    SELECT DISTINCT
-        COALESCE(FIRST_VALUE(p.price) OVER (PARTITION BY p.token_id ORDER BY p.height DESC), 0) price,
+    SELECT
+        CASE
+            WHEN rht.token_address = ? THEN 1::numeric
+            ELSE COALESCE(pr.price, 0::numeric)
+        END AS price,
         rht.token_address,
         rht.token_decimals,
         rht.height
-    FROM required_height_by_token rht LEFT JOIN price p ON rht.token_id = p.token_id AND p.height <= rht.height
-    UNION
-    SELECT 1 price,
-       rht.token_address,
-       rht.token_decimals,
-       rht.height
     FROM required_height_by_token rht
-    WHERE token_address = ?
+    LEFT JOIN LATERAL (
+        SELECT p.price
+        FROM price p
+        WHERE p.token_id = rht.token_id
+          AND p.height <= rht.height
+        ORDER BY p.height DESC, p.id DESC
+        LIMIT 1
+    ) pr ON true
 )
 SELECT lh.pair_id,
        lh.liquidity0,
