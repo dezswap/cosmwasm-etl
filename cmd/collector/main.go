@@ -2,31 +2,25 @@ package main
 
 import (
 	"fmt"
-	"net/http"
 	"os"
 	"runtime/debug"
-	"time"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/dezswap/cosmwasm-etl/collector"
-	"github.com/dezswap/cosmwasm-etl/collector/datastore"
+	"github.com/dezswap/cosmwasm-etl/collector/repo"
 	"github.com/dezswap/cosmwasm-etl/configs"
+	"github.com/dezswap/cosmwasm-etl/parser/dex/srcstore/terraswap"
 	"github.com/dezswap/cosmwasm-etl/pkg/grpc"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 )
 
-const (
-	HTTP_REDIRECT_LIMIT = 15
-	app                 = "collector"
-)
+const app = "collector"
 
 var version = "dev" // overridden via -ldflags "-X main.version=v1.2.3"
 
 func main() {
 	c := configs.New()
-	nodeConf := c.Collector.NodeConfig
 	logger := logging.New("main", c.Log)
-
 	if c.Sentry.DSN != "" {
 		sentryEnv := fmt.Sprintf("%s-%s", c.Collector.ChainId, app)
 		logging.ConfigureReporter(logger, c.Sentry.DSN, sentryEnv, map[string]string{
@@ -35,39 +29,28 @@ func main() {
 			"x-env":      c.Log.Environment,
 		})
 	}
-	if nodeConf.GrpcConfig.BackoffDelay.Duration == time.Duration(0) {
-		panic("invalid back off delay")
-	}
-
 	defer catch(logger)
 
 	logger.WithField("version", version).Info("starting collector")
-
 	grpc.SetLogConfig(c.Log)
-	serviceDesc := grpc.GetServiceDesc("collector", nodeConf.GrpcConfig)
-	httpClient := &http.Client{
-		Transport: &http.Transport{
-			MaxIdleConns:      10,               // Maximum idle connections to keep open
-			IdleConnTimeout:   30 * time.Second, // Time to keep idle connections open
-			DisableKeepAlives: false,            // Use HTTP Keep-Alive
-		},
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) >= HTTP_REDIRECT_LIMIT { // Increase the maximum number of redirects allowed here
-				return fmt.Errorf("stopped after %d redirects", HTTP_REDIRECT_LIMIT)
-			}
-			return nil
-		},
+
+	factoryAddress := c.Collector.PairFactoryContractAddress
+	if factoryAddress == "" {
+		factoryAddress = c.Parser.DexConfig.FactoryAddress
 	}
 
-	failoverClient := datastore.NewLcdClient(nodeConf.FailoverLcdHost, httpClient)
-	col, err := datastore.New(c, serviceDesc, failoverClient)
-	if err != nil {
-		logger.Panic(err)
+	nodeConfig := c.Collector.NodeConfig
+	if nodeConfig.RestClientConfig.RpcHost == "" && nodeConfig.RestClientConfig.LcdHost == "" {
+		nodeConfig = c.Parser.DexConfig.NodeConfig
 	}
 
-	err = collector.DoCollect(col, logger)
+	source, err := terraswap.NewFromConfig(nodeConfig, factoryAddress)
 	if err != nil {
-		logger.Panic(err)
+		panic(err)
+	}
+
+	if err := collector.DoCollect(repo.New(c.Rdb), source, c.Collector, c.Parser.DexConfig, logger); err != nil {
+		panic(err)
 	}
 }
 

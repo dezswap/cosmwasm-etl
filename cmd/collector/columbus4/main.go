@@ -51,7 +51,7 @@ var columbus4_pairs = []string{
 func main() {
 	cfg := configs.New()
 	fcdCfg := cfg.Collector.FcdConfig
-	dbCon := fcdCfg.RdbConfig
+	dbCon := cfg.Rdb
 	dbDsn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", dbCon.Host, dbCon.Port, dbCon.Username, dbCon.Password, dbCon.Database)
 	writer := io.MultiWriter(os.Stdout)
 	db, err := gorm.Open(postgres.Open(dbDsn), &gorm.Config{
@@ -84,7 +84,7 @@ func main() {
 
 	// default setting is for columbus-4 network
 	targets := columbus4_pairs
-	fcdCfg.UntilHeight = terraswap.COLUMBUS_4_END_HEIGHT
+	cfg.Collector.UntilHeight = terraswap.COLUMBUS_4_END_HEIGHT
 
 	app := fcd_collector.New(repo, store)
 	logger := logging.New("col4_collector", cfg.Log)
@@ -95,7 +95,7 @@ func main() {
 	for _, addr := range targets {
 		logger.Infof("start collecting addr(%s)", addr)
 		for errCount := uint(0); errCount <= uint(errTolerance); {
-			if err := app.Collect(addr, uint32(fcdCfg.UntilHeight)); err != nil {
+			if err := app.Collect(addr, uint32(cfg.Collector.UntilHeight)); err != nil {
 				errCount++
 				logger.Errorf("errCount: %d, err: %s", errCount, err)
 			} else {

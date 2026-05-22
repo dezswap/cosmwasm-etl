@@ -16,3 +16,29 @@ type FcdTxLog struct {
 func (c FcdTxLog) TableName() string {
 	return "fcd_tx_log"
 }
+
+type CollectorJSON []byte
+
+type CollectorBlock struct {
+	ChainId   string        `json:"chainId"`
+	Height    uint64        `json:"height"`
+	BlockTime time.Time     `json:"blockTime"`
+	Txs       CollectorJSON `json:"txs" gorm:"type:jsonb"`
+	CreatedAt time.Time     `json:"createdAt"`
+	UpdatedAt time.Time     `json:"updatedAt"`
+}
+
+type CollectorPoolSnapshot struct {
+	ChainId   string        `json:"chainId"`
+	Height    uint64        `json:"height"`
+	PoolInfos CollectorJSON `json:"poolInfos" gorm:"type:jsonb"`
+	CreatedAt time.Time     `json:"createdAt"`
+	UpdatedAt time.Time     `json:"updatedAt"`
+}
+
+type CollectorSyncedHeight struct {
+	ChainId   string    `json:"chainId"`
+	Height    uint64    `json:"height"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}

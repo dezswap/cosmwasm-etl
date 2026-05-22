@@ -4,13 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"net/http"
 	"os"
 	"runtime/debug"
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/dezswap/cosmwasm-etl/collector/datastore"
+	collectorrepo "github.com/dezswap/cosmwasm-etl/collector/repo"
 	"github.com/dezswap/cosmwasm-etl/configs"
 	p_dex "github.com/dezswap/cosmwasm-etl/parser/dex"
 	pds "github.com/dezswap/cosmwasm-etl/parser/dex/dezswap"
@@ -20,17 +20,11 @@ import (
 	psf "github.com/dezswap/cosmwasm-etl/parser/dex/starfleit"
 	pts "github.com/dezswap/cosmwasm-etl/parser/dex/terraswap"
 	"github.com/dezswap/cosmwasm-etl/pkg/dex"
-	dts "github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap"
-	dts_colv1 "github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap/columbusv1"
-	dts_colv2 "github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap/columbusv2"
-	dts_phoenix "github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap/phoenix"
+	"github.com/dezswap/cosmwasm-etl/pkg/httpclient"
 
 	"github.com/dezswap/cosmwasm-etl/pkg/grpc"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 	"github.com/dezswap/cosmwasm-etl/pkg/s3client"
-	"github.com/dezswap/cosmwasm-etl/pkg/terra/col4"
-	terra_cosmos45 "github.com/dezswap/cosmwasm-etl/pkg/terra/cosmos45"
-	"github.com/dezswap/cosmwasm-etl/pkg/terra/rpc"
 )
 
 const (
@@ -38,19 +32,6 @@ const (
 )
 
 var version = "dev" // overridden via -ldflags "-X main.version=v1.2.3"
-
-func newHttpClient(c configs.HttpClientConfig) *http.Client {
-	return &http.Client{
-		Timeout: c.Timeout.Duration,
-		Transport: &http.Transport{
-			MaxIdleConns:        c.MaxIdleConns,
-			MaxIdleConnsPerHost: c.MaxIdleConnsPerHost,
-			IdleConnTimeout:     c.IdleConnTimeout.Duration,
-			DisableKeepAlives:   c.DisableKeepAlives,
-			ForceAttemptHTTP2:   c.ForceAttemptHTTP2,
-		},
-	}
-}
 
 func getDexCollectorReadStore(c configs.Config, dc configs.ParserDexConfig) datastore.ReadStore {
 	nodeConf := dc.NodeConfig
@@ -63,7 +44,7 @@ func getDexCollectorReadStore(c configs.Config, dc configs.ParserDexConfig) data
 			panic(err)
 		}
 		if nodeConf.FailoverLcdHost != "" {
-			store, _ = datastore.New(c, serviceDesc, datastore.NewLcdClient(nodeConf.FailoverLcdHost, newHttpClient(dc.NodeConfig.HttpClientConfig)))
+			store, _ = datastore.New(c, serviceDesc, datastore.NewLcdClient(nodeConf.FailoverLcdHost, httpclient.New(dc.NodeConfig.HttpClientConfig)))
 		}
 
 		return datastore.NewReadStoreWithGrpc(dc.ChainId, store)
@@ -108,28 +89,11 @@ func dex_main(c configs.ParserDexConfig, logc configs.LogConfig, sentryc configs
 
 	var rawDataStore p_dex.SourceDataStore
 	if c.TargetApp == dex.Terraswap {
-		httpClient := newHttpClient(c.NodeConfig.HttpClientConfig)
-		r := rpc.New(c.NodeConfig.RestClientConfig.RpcHost, httpClient)
-
-		switch dts.TerraswapFactory(c.FactoryAddress) {
-		case dts.MAINNET_FACTORY:
-			lcd := terra_cosmos45.NewLcd(c.NodeConfig.RestClientConfig.LcdHost, httpClient)
-			terraswapQueryClient := dts_phoenix.NewPhoenixClient(lcd)
-			rawDataStore = ts_srcstore.NewPhoenixStore(c.FactoryAddress, r, lcd, terraswapQueryClient)
-		case dts.CLASSIC_V2_FACTORY:
-			lcd := terra_cosmos45.NewLcd(c.NodeConfig.RestClientConfig.LcdHost, httpClient)
-			terraswapQueryClient := dts_colv2.NewColumbusV2Client(lcd)
-			rawDataStore = ts_srcstore.NewCol5Store(c.FactoryAddress, r, lcd, terraswapQueryClient)
-
-		case dts.PISCO_FACTORY:
-			panic(errors.New("not implemented yet"))
-		case dts.CLASSIC_V1_FACTORY:
-			lcd := col4.NewLcd(c.NodeConfig.RestClientConfig.LcdHost, httpClient)
-			terraswapQueryClient := dts_colv1.NewCol4Client(lcd)
-			rawDataStore = ts_srcstore.NewCol4Store(c.FactoryAddress, r, lcd, terraswapQueryClient)
-		default:
-			panic(fmt.Errorf("invalid factory address: %s", c.FactoryAddress))
+		fallback, err := ts_srcstore.NewFromConfig(c.NodeConfig, c.FactoryAddress)
+		if err != nil {
+			panic(err)
 		}
+		rawDataStore = srcstore.NewCollectorFallback(c.ChainId, collectorrepo.New(rdbc), fallback, logger)
 	} else {
 		rawDataStore = srcstore.New(readStore)
 	}
