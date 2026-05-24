@@ -66,7 +66,7 @@ func (c *sourceHeightCollector) CollectHeight(height uint64) error {
 		return err
 	}
 
-	blockTime := time.Now().UTC()
+	blockTime := time.Time{}
 	if len(txs) > 0 {
 		blockTime = txs[0].Timestamp
 	}
