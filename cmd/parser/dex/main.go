@@ -44,7 +44,15 @@ func getDexCollectorReadStore(c configs.Config, dc configs.ParserDexConfig) data
 			panic(err)
 		}
 		if nodeConf.FailoverLcdHost != "" {
-			store, _ = datastore.New(c, serviceDesc, datastore.NewLcdClient(nodeConf.FailoverLcdHost, httpclient.New(dc.NodeConfig.HttpClientConfig)))
+			failoverStore, err := datastore.New(
+				c,
+				serviceDesc,
+				datastore.NewLcdClient(nodeConf.FailoverLcdHost, httpclient.New(dc.NodeConfig.HttpClientConfig)),
+			)
+			if err != nil {
+				panic(err)
+			}
+			store = failoverStore
 		}
 
 		return datastore.NewReadStoreWithGrpc(dc.ChainId, store)
