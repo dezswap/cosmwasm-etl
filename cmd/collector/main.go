@@ -39,10 +39,7 @@ func main() {
 		factoryAddress = c.Parser.DexConfig.FactoryAddress
 	}
 
-	nodeConfig := c.Collector.NodeConfig
-	if nodeConfig.RestClientConfig.RpcHost == "" && nodeConfig.RestClientConfig.LcdHost == "" {
-		nodeConfig = c.Parser.DexConfig.NodeConfig
-	}
+	nodeConfig := c.Collector.NodeConfigWithFallback(c.Parser.DexConfig.NodeConfig)
 
 	source, err := terraswap.NewFromConfig(nodeConfig, factoryAddress)
 	if err != nil {
