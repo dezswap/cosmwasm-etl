@@ -138,7 +138,13 @@ func (r *repository) SaveHeight(chainID string, height uint64, blockTime time.Ti
 			CreatedAt: now,
 			UpdatedAt: now,
 		}
-		if err := upsert(tx, synced, []string{"chain_id"}, []string{"height", "updated_at"}); err != nil {
+		if err := tx.Clauses(clause.OnConflict{
+			Columns: []clause.Column{{Name: "chain_id"}},
+			DoUpdates: clause.Assignments(map[string]interface{}{
+				"height":     gorm.Expr("GREATEST(collector_synced_heights.height, EXCLUDED.height)"),
+				"updated_at": now,
+			}),
+		}).Create(&synced).Error; err != nil {
 			return pkgerrors.Wrap(err, "collector repo save synced height")
 		}
 		return nil

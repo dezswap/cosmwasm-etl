@@ -159,7 +159,7 @@ func TestSaveHeightUpsertsBlockPoolAndSyncedHeight(t *testing.T) {
 	mock.ExpectBegin()
 	expectInsert(mock, `INSERT INTO "collector_blocks"`)
 	expectInsert(mock, `INSERT INTO "collector_pool_snapshots"`)
-	expectInsert(mock, `INSERT INTO "collector_synced_heights"`)
+	expectSyncedHeightInsert(mock)
 	mock.ExpectCommit()
 
 	err := repo.SaveHeight(
@@ -181,7 +181,7 @@ func TestSaveHeightWithoutPoolSnapshotSkipsPoolUpsert(t *testing.T) {
 
 	mock.ExpectBegin()
 	expectInsert(mock, `INSERT INTO "collector_blocks"`)
-	expectInsert(mock, `INSERT INTO "collector_synced_heights"`)
+	expectSyncedHeightInsert(mock)
 	mock.ExpectCommit()
 
 	err := repo.SaveHeight(
@@ -234,7 +234,7 @@ func TestSaveHeightRollsBackWhenSyncedHeightUpsertFails(t *testing.T) {
 
 	mock.ExpectBegin()
 	expectInsert(mock, `INSERT INTO "collector_blocks"`)
-	mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO "collector_synced_heights"`)).
+	mock.ExpectExec(syncedHeightInsertPattern()).
 		WillReturnError(expected)
 	mock.ExpectRollback()
 
@@ -258,4 +258,15 @@ func TestIsUndefinedTableRejectsUnrelatedDoesNotExistErrors(t *testing.T) {
 func expectInsert(mock sqlmock.Sqlmock, sql string) {
 	mock.ExpectExec(regexp.QuoteMeta(sql)).
 		WillReturnResult(sqlmock.NewResult(1, 1))
+}
+
+func expectSyncedHeightInsert(mock sqlmock.Sqlmock) {
+	mock.ExpectExec(syncedHeightInsertPattern()).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+}
+
+func syncedHeightInsertPattern() string {
+	return regexp.QuoteMeta(`INSERT INTO "collector_synced_heights"`) +
+		`.*` +
+		regexp.QuoteMeta(`GREATEST(collector_synced_heights.height, EXCLUDED.height)`)
 }
