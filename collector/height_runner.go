@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
@@ -22,18 +23,12 @@ type heightCollectorConfig struct {
 // Implementations own source reads and persistence for a single height, while
 // the runner handles local/source progress, until-height bounds, and polling.
 func collectHeights(collector heightCollector, config heightCollectorConfig, logger logging.Logger) error {
-func collectHeights(collector heightCollector, config heightCollectorConfig, logger logging.Logger) error {
 	startHeight := normalizeStartHeight(config.StartHeight)
 	if config.UntilHeight > 0 && config.UntilHeight < startHeight {
 		return fmt.Errorf("invalid height range: start_height=%d until_height=%d", startHeight, config.UntilHeight)
 	}
 
 	pollInterval := config.PollInterval
-	if pollInterval == 0 {
-		pollInterval = collectorPollInterval
-	}
-	// ... rest of function
-}
 	if pollInterval == 0 {
 		pollInterval = collectorPollInterval
 	}
