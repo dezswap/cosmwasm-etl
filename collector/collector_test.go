@@ -102,7 +102,6 @@ func TestDoCollectSourceCollectsFromStartHeightToUntilHeight(t *testing.T) {
 		repo,
 		source,
 		configs.CollectorConfig{ChainId: "chain", StartHeight: 5, UntilHeight: 6, PoolSnapshotInterval: 2},
-		configs.ParserDexConfig{},
 		logging.Discard,
 	)
 
@@ -116,7 +115,7 @@ func TestDoCollectSourceCollectsFromStartHeightToUntilHeight(t *testing.T) {
 	require.Equal(t, []dex.PoolInfo{{ContractAddr: "pair6"}}, repo.saved[1].poolInfos)
 }
 
-func TestDoCollectSourceUsesParserChainAndSnapshotIntervalFallbacks(t *testing.T) {
+func TestDoCollectSourceUsesChainAndSnapshotIntervalFallbacks(t *testing.T) {
 	repo := &sourceRepoMock{syncedErr: collectorrepo.ErrUnavailable}
 	source := &sourceStoreMock{
 		syncedHeight: 3,
@@ -133,14 +132,13 @@ func TestDoCollectSourceUsesParserChainAndSnapshotIntervalFallbacks(t *testing.T
 	err := DoCollect(
 		repo,
 		source,
-		configs.CollectorConfig{UntilHeight: 3},
-		configs.ParserDexConfig{ChainId: "parser-chain", PoolSnapshotInterval: 2},
+		configs.CollectorConfig{ChainId: "chain", UntilHeight: 3, PoolSnapshotInterval: 2},
 		logging.Discard,
 	)
 
 	require.NoError(t, err)
 	require.Len(t, repo.saved, 3)
-	require.Equal(t, "parser-chain", repo.saved[0].chainID)
+	require.Equal(t, "chain", repo.saved[0].chainID)
 	require.False(t, repo.saved[0].savePoolSnapshot)
 	require.True(t, repo.saved[1].savePoolSnapshot)
 	require.False(t, repo.saved[2].savePoolSnapshot)
@@ -155,7 +153,6 @@ func TestDoCollectSourceReturnsSourceTxError(t *testing.T) {
 		repo,
 		source,
 		configs.CollectorConfig{ChainId: "chain", UntilHeight: 1},
-		configs.ParserDexConfig{},
 		logging.Discard,
 	)
 
@@ -176,7 +173,6 @@ func TestDoCollectSourceReturnsPoolInfoError(t *testing.T) {
 		repo,
 		source,
 		configs.CollectorConfig{ChainId: "chain", UntilHeight: 1, PoolSnapshotInterval: 1},
-		configs.ParserDexConfig{},
 		logging.Discard,
 	)
 
@@ -192,7 +188,6 @@ func TestDoCollectReturnsRepositoryHeightError(t *testing.T) {
 		repo,
 		&sourceStoreMock{syncedHeight: 1},
 		configs.CollectorConfig{ChainId: "chain", UntilHeight: 1},
-		configs.ParserDexConfig{},
 		logging.Discard,
 	)
 
@@ -208,7 +203,6 @@ func TestDoCollectReturnsSourceHeightError(t *testing.T) {
 		repo,
 		&sourceStoreMock{syncedErr: expected},
 		configs.CollectorConfig{ChainId: "chain", UntilHeight: 1},
-		configs.ParserDexConfig{},
 		logging.Discard,
 	)
 
@@ -228,7 +222,6 @@ func TestDoCollectReturnsSaveHeightError(t *testing.T) {
 		repo,
 		source,
 		configs.CollectorConfig{ChainId: "chain", UntilHeight: 1},
-		configs.ParserDexConfig{},
 		logging.Discard,
 	)
 
@@ -242,7 +235,6 @@ func TestCollectorStartHeight(t *testing.T) {
 }
 
 func TestCollectorPoolSnapshotInterval(t *testing.T) {
-	require.Equal(t, uint(7), collectorPoolSnapshotInterval(configs.CollectorConfig{PoolSnapshotInterval: 7}, configs.ParserDexConfig{PoolSnapshotInterval: 2}))
-	require.Equal(t, uint(2), collectorPoolSnapshotInterval(configs.CollectorConfig{}, configs.ParserDexConfig{PoolSnapshotInterval: 2}))
-	require.Equal(t, uint(configs.PARSER_POOL_SNAPSHOT_INTERVAL), collectorPoolSnapshotInterval(configs.CollectorConfig{}, configs.ParserDexConfig{}))
+	require.Equal(t, uint(7), collectorPoolSnapshotInterval(configs.CollectorConfig{PoolSnapshotInterval: 7}))
+	require.Equal(t, uint(configs.PARSER_POOL_SNAPSHOT_INTERVAL), collectorPoolSnapshotInterval(configs.CollectorConfig{}))
 }

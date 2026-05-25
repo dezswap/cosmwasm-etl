@@ -55,7 +55,12 @@ func collectHeights(collector heightCollector, config heightCollectorConfig, log
 			continue
 		}
 
-		for height := localHeight + 1; height <= targetHeight; height++ {
+		nextHeight := localHeight + 1
+		if nextHeight < startHeight {
+			nextHeight = startHeight
+		}
+
+		for height := nextHeight; height <= targetHeight; height++ {
 			if height < startHeight {
 				continue
 			}

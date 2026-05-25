@@ -2,6 +2,7 @@ package collector
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	collectorrepo "github.com/dezswap/cosmwasm-etl/collector/repo"
@@ -18,10 +19,10 @@ const collectorPollInterval = 5 * time.Second
 // optional pool snapshots, and synced height in PostgreSQL. That keeps the loop
 // reusable for future DEX apps as long as they expose the same parser source
 // interface.
-func DoCollect(repo collectorrepo.Repository, source dex.SourceDataStore, collectorConfig configs.CollectorConfig, parserConfig configs.ParserDexConfig, logger logging.Logger) error {
+func DoCollect(repo collectorrepo.Repository, source dex.SourceDataStore, collectorConfig configs.CollectorConfig, logger logging.Logger) error {
 	chainID := collectorConfig.ChainId
 	if chainID == "" {
-		chainID = parserConfig.ChainId
+		return fmt.Errorf("missing chain id: set collector.chainid")
 	}
 
 	startHeight := collectorStartHeight(collectorConfig)
@@ -30,7 +31,7 @@ func DoCollect(repo collectorrepo.Repository, source dex.SourceDataStore, collec
 		source:               source,
 		chainID:              chainID,
 		startHeight:          startHeight,
-		poolSnapshotInterval: collectorPoolSnapshotInterval(collectorConfig, parserConfig),
+		poolSnapshotInterval: collectorPoolSnapshotInterval(collectorConfig),
 	}, heightCollectorConfig{
 		StartHeight: startHeight,
 		UntilHeight: collectorConfig.UntilHeight,
@@ -90,12 +91,10 @@ func collectorStartHeight(c configs.CollectorConfig) uint64 {
 	return 1
 }
 
-func collectorPoolSnapshotInterval(c configs.CollectorConfig, parserConfig configs.ParserDexConfig) uint {
+func collectorPoolSnapshotInterval(c configs.CollectorConfig) uint {
 	if c.PoolSnapshotInterval > 0 {
 		return c.PoolSnapshotInterval
 	}
-	if parserConfig.PoolSnapshotInterval > 0 {
-		return parserConfig.PoolSnapshotInterval
-	}
+
 	return configs.PARSER_POOL_SNAPSHOT_INTERVAL
 }

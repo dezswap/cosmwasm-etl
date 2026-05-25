@@ -46,7 +46,7 @@ func main() {
 		panic(err)
 	}
 
-	if err := collector.DoCollect(repo.New(c.Rdb), source, c.Collector, c.Parser.DexConfig, logger); err != nil {
+	if err := collector.DoCollect(repo.New(c.Rdb), source, c.Collector, logger); err != nil {
 		panic(err)
 	}
 }

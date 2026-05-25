@@ -157,8 +157,8 @@ func TestSaveHeightUpsertsBlockPoolAndSyncedHeight(t *testing.T) {
 	ts := time.Date(2026, 5, 19, 1, 2, 3, 0, time.UTC)
 
 	mock.ExpectBegin()
-	expectInsert(mock, `INSERT INTO "collector_blocks"`)
-	expectInsert(mock, `INSERT INTO "collector_pool_snapshots"`)
+	expectUpsert(mock, `collector_blocks`)
+	expectUpsert(mock, `collector_pool_snapshots`)
 	expectSyncedHeightInsert(mock)
 	mock.ExpectCommit()
 
@@ -180,7 +180,7 @@ func TestSaveHeightWithoutPoolSnapshotSkipsPoolUpsert(t *testing.T) {
 	ts := time.Date(2026, 5, 19, 1, 2, 3, 0, time.UTC)
 
 	mock.ExpectBegin()
-	expectInsert(mock, `INSERT INTO "collector_blocks"`)
+	expectUpsert(mock, `collector_blocks`)
 	expectSyncedHeightInsert(mock)
 	mock.ExpectCommit()
 
@@ -217,7 +217,7 @@ func TestSaveHeightRollsBackWhenPoolUpsertFails(t *testing.T) {
 	expected := errors.New("pool insert failed")
 
 	mock.ExpectBegin()
-	expectInsert(mock, `INSERT INTO "collector_blocks"`)
+	expectUpsert(mock, `collector_blocks`)
 	mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO "collector_pool_snapshots"`)).
 		WillReturnError(expected)
 	mock.ExpectRollback()
@@ -233,7 +233,7 @@ func TestSaveHeightRollsBackWhenSyncedHeightUpsertFails(t *testing.T) {
 	expected := errors.New("synced insert failed")
 
 	mock.ExpectBegin()
-	expectInsert(mock, `INSERT INTO "collector_blocks"`)
+	expectUpsert(mock, `collector_blocks`)
 	mock.ExpectExec(syncedHeightInsertPattern()).
 		WillReturnError(expected)
 	mock.ExpectRollback()
@@ -255,8 +255,12 @@ func TestIsUndefinedTableRejectsUnrelatedDoesNotExistErrors(t *testing.T) {
 	require.False(t, isUndefinedTable(errors.New(`role "etl" does not exist`)))
 }
 
-func expectInsert(mock sqlmock.Sqlmock, sql string) {
-	mock.ExpectExec(regexp.QuoteMeta(sql)).
+func expectUpsert(mock sqlmock.Sqlmock, table string) {
+	mock.ExpectExec(
+		regexp.QuoteMeta(
+			`INSERT INTO "`+table+`"`) +
+			`.*` + regexp.QuoteMeta(`ON CONFLICT`),
+	).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 }
 
