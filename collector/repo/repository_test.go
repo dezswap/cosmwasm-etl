@@ -250,6 +250,11 @@ func TestIsUndefinedTableHandlesDriverAndSQLStateErrors(t *testing.T) {
 	require.False(t, isUndefinedTable(errors.New("connection refused")))
 }
 
+func TestIsUndefinedTableRejectsUnrelatedDoesNotExistErrors(t *testing.T) {
+	require.False(t, isUndefinedTable(errors.New(`database "collector" does not exist`)))
+	require.False(t, isUndefinedTable(errors.New(`role "etl" does not exist`)))
+}
+
 func expectInsert(mock sqlmock.Sqlmock, sql string) {
 	mock.ExpectExec(regexp.QuoteMeta(sql)).
 		WillReturnResult(sqlmock.NewResult(1, 1))

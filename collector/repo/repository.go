@@ -172,5 +172,6 @@ func isUndefinedTable(err error) bool {
 		return true
 	}
 	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "sqlstate 42p01") || strings.Contains(msg, "does not exist")
+	return strings.Contains(msg, "sqlstate 42p01") ||
+		(strings.Contains(msg, "relation") && strings.Contains(msg, "does not exist"))
 }
