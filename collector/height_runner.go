@@ -59,6 +59,11 @@ func collectHeights(collector heightCollector, config heightCollectorConfig, log
 		if nextHeight < startHeight {
 			nextHeight = startHeight
 		}
+		if nextHeight > targetHeight {
+			logger.Infof("no collectible height yet: local=%d source=%d start=%d", localHeight, srcHeight, startHeight)
+			time.Sleep(pollInterval)
+			continue
+		}
 
 		for height := nextHeight; height <= targetHeight; height++ {
 			if height < startHeight {
