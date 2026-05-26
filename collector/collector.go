@@ -1,15 +1,26 @@
 package collector
 
 import (
-	"errors"
+	"fmt"
 	"time"
 
-	"github.com/dezswap/cosmwasm-etl/collector/repo"
 	collectorrepo "github.com/dezswap/cosmwasm-etl/collector/repo"
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/parser/dex"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 )
+
+type heightCollector interface {
+	LocalHeight() (uint64, error)
+	SourceHeight() (uint64, error)
+	CollectHeight(height uint64) error
+}
+
+type heightCollectorConfig struct {
+	StartHeight  uint64
+	UntilHeight  uint64
+	PollInterval time.Duration
+}
 
 // DoCollect persists normalized parser source data into the collector DB.
 //
@@ -17,7 +28,7 @@ import (
 // optional pool snapshots, and synced height in PostgreSQL. That keeps the loop
 // reusable for future DEX apps as long as they expose the same parser source
 // interface.
-func DoCollect(repo repo.Repository, source dex.SourceDataStore, collectorConfig configs.CollectorConfig, logger logging.Logger) error {
+func DoCollect(repo collectorrepo.Repository, source dex.SourceDataStore, collectorConfig configs.CollectorConfig, logger logging.Logger) error {
 	return collectHeights(&sourceHeightCollector{
 		repo:                 repo,
 		source:               source,
@@ -31,48 +42,68 @@ func DoCollect(repo repo.Repository, source dex.SourceDataStore, collectorConfig
 	}, logger)
 }
 
-type sourceHeightCollector struct {
-	repo                 collectorrepo.Repository
-	source               dex.SourceDataStore
-	chainID              string
-	startHeight          uint64
-	poolSnapshotInterval uint
-}
-
-func (c *sourceHeightCollector) LocalHeight() (uint64, error) {
-	localHeight, err := c.repo.GetSyncedHeight(c.chainID)
-	if err == nil {
-		return localHeight, nil
-	}
-	if errors.Is(err, collectorrepo.ErrNotFound) || errors.Is(err, collectorrepo.ErrUnavailable) {
-		return c.startHeight - 1, nil
-	}
-	return 0, err
-}
-
-func (c *sourceHeightCollector) SourceHeight() (uint64, error) {
-	return c.source.GetSourceSyncedHeight()
-}
-
-func (c *sourceHeightCollector) CollectHeight(height uint64) error {
-	txs, err := c.source.GetSourceTxs(height)
-	if err != nil {
-		return err
+// collectHeights runs the common contiguous-height collection loop.
+// Implementations own source reads and persistence for a single height, while
+// the runner handles local/source progress, until-height bounds, and polling.
+func collectHeights(collector heightCollector, config heightCollectorConfig, logger logging.Logger) error {
+	startHeight := config.StartHeight
+	if config.UntilHeight > 0 && config.UntilHeight < startHeight {
+		return fmt.Errorf("invalid height range: start_height=%d until_height=%d", startHeight, config.UntilHeight)
 	}
 
-	blockTime := time.Time{}
-	if len(txs) > 0 {
-		blockTime = txs[0].Timestamp
-	}
+	pollInterval := config.PollInterval
 
-	savePoolSnapshot := c.poolSnapshotInterval > 0 && height%uint64(c.poolSnapshotInterval) == 0
-	poolInfos := []dex.PoolInfo{}
-	if savePoolSnapshot {
-		poolInfos, err = c.source.GetPoolInfos(height)
+	for {
+		localHeight, err := collector.LocalHeight()
 		if err != nil {
 			return err
 		}
-	}
 
-	return c.repo.SaveHeight(c.chainID, height, blockTime, txs, poolInfos, savePoolSnapshot)
+		srcHeight, err := collector.SourceHeight()
+		if err != nil {
+			return err
+		}
+
+		targetHeight := boundedTargetHeight(srcHeight, config.UntilHeight)
+		if localHeight >= targetHeight {
+			if reachedUntilHeight(localHeight, config.UntilHeight) {
+				logger.Infof("collector reached until height %d", config.UntilHeight)
+				return nil
+			}
+			logger.Infof("no new collector source height: local=%d source=%d", localHeight, srcHeight)
+			time.Sleep(pollInterval)
+			continue
+		}
+
+		nextHeight := localHeight + 1
+		if nextHeight < startHeight {
+			nextHeight = startHeight
+		}
+		if nextHeight > targetHeight {
+			logger.Infof("no collectible height yet: local=%d source=%d start=%d", localHeight, srcHeight, startHeight)
+			time.Sleep(pollInterval)
+			continue
+		}
+
+		for height := nextHeight; height <= targetHeight; height++ {
+			if height < startHeight {
+				continue
+			}
+			if err := collector.CollectHeight(height); err != nil {
+				return err
+			}
+			logger.Infof("collected source height %d", height)
+		}
+	}
+}
+
+func boundedTargetHeight(sourceHeight, untilHeight uint64) uint64 {
+	if untilHeight > 0 && untilHeight < sourceHeight {
+		return untilHeight
+	}
+	return sourceHeight
+}
+
+func reachedUntilHeight(localHeight, untilHeight uint64) bool {
+	return untilHeight > 0 && localHeight >= untilHeight
 }

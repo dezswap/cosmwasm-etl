@@ -35,7 +35,7 @@ func main() {
 	grpc.SetLogConfig(c.Log)
 
 	if err := c.Collector.Validate(); err != nil {
-		panic(fmt.Errorf("dex config is nil: %w", err))
+		panic(err)
 	}
 
 	source, err := terraswap.NewFromConfig(c.Collector.NodeConfig, c.Collector.PairFactoryContractAddress)

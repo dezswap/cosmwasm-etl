@@ -3,116 +3,63 @@ package collector
 import (
 	"errors"
 	"testing"
+	"time"
 
-	"github.com/dezswap/cosmwasm-etl/pkg/logging"
+	"github.com/dezswap/cosmwasm-etl/collector/repo"
+	"github.com/dezswap/cosmwasm-etl/parser"
+	"github.com/dezswap/cosmwasm-etl/parser/dex"
 	"github.com/stretchr/testify/require"
 )
 
-type heightCollectorMock struct {
-	localHeight  uint64
-	localErr     error
-	sourceHeight uint64
-	sourceErr    error
-	collectErr   error
-	collected    []uint64
-}
+func TestSourceHeightCollectorLocalHeightUsesPreviousStartHeightWhenRepositoryHasNoProgress(t *testing.T) {
+	for _, err := range []error{repo.ErrNotFound, repo.ErrUnavailable} {
+		collector := &sourceHeightCollector{
+			repo:        &sourceRepoMock{syncedErr: err},
+			chainID:     "chain",
+			startHeight: 5,
+		}
 
-func (m *heightCollectorMock) LocalHeight() (uint64, error) {
-	return m.localHeight, m.localErr
-}
+		height, actualErr := collector.LocalHeight()
 
-func (m *heightCollectorMock) SourceHeight() (uint64, error) {
-	return m.sourceHeight, m.sourceErr
-}
-
-func (m *heightCollectorMock) CollectHeight(height uint64) error {
-	if m.collectErr != nil {
-		return m.collectErr
+		require.NoError(t, actualErr)
+		require.Equal(t, uint64(4), height)
 	}
-	m.collected = append(m.collected, height)
-	m.localHeight = height
-	return nil
 }
 
-func TestCollectHeightsCollectsBoundedRange(t *testing.T) {
-	collector := &heightCollectorMock{
-		localHeight:  3,
-		sourceHeight: 10,
+func TestSourceHeightCollectorLocalHeightReturnsRepositoryError(t *testing.T) {
+	expected := errors.New("height failed")
+	collector := &sourceHeightCollector{
+		repo:    &sourceRepoMock{syncedErr: expected},
+		chainID: "chain",
 	}
 
-	err := collectHeights(collector, heightCollectorConfig{
-		StartHeight: 5,
-		UntilHeight: 7,
-	}, logging.Discard)
+	_, err := collector.LocalHeight()
+
+	require.ErrorIs(t, err, expected)
+}
+
+func TestSourceHeightCollectorCollectHeightSavesScheduledPoolSnapshot(t *testing.T) {
+	repository := &sourceRepoMock{}
+	source := &sourceStoreMock{
+		txs: map[uint64]parser.RawTxs{
+			10: {{Hash: "tx", Timestamp: time.Date(2026, 5, 26, 0, 0, 0, 0, time.UTC)}},
+		},
+		poolInfos: map[uint64][]dex.PoolInfo{
+			10: {{ContractAddr: "pair"}},
+		},
+	}
+	collector := &sourceHeightCollector{
+		repo:                 repository,
+		source:               source,
+		chainID:              "chain",
+		poolSnapshotInterval: 10,
+	}
+
+	err := collector.CollectHeight(10)
 
 	require.NoError(t, err)
-	require.Equal(t, []uint64{5, 6, 7}, collector.collected)
-}
-
-func TestCollectHeightsStopsWhenUntilHeightAlreadyReached(t *testing.T) {
-	collector := &heightCollectorMock{
-		localHeight:  7,
-		sourceHeight: 10,
-	}
-
-	err := collectHeights(collector, heightCollectorConfig{
-		StartHeight: 5,
-		UntilHeight: 7,
-	}, logging.Discard)
-
-	require.NoError(t, err)
-	require.Empty(t, collector.collected)
-}
-
-func TestCollectHeightsReturnsSourceError(t *testing.T) {
-	expected := errors.New("source height failed")
-	collector := &heightCollectorMock{
-		localHeight: 0,
-		sourceErr:   expected,
-	}
-
-	err := collectHeights(collector, heightCollectorConfig{
-		UntilHeight: 1,
-	}, logging.Discard)
-
-	require.ErrorIs(t, err, expected)
-}
-
-func TestCollectHeightsReturnsLocalError(t *testing.T) {
-	expected := errors.New("local height failed")
-	collector := &heightCollectorMock{localErr: expected}
-
-	err := collectHeights(collector, heightCollectorConfig{
-		UntilHeight: 1,
-	}, logging.Discard)
-
-	require.ErrorIs(t, err, expected)
-}
-
-func TestCollectHeightsReturnsCollectError(t *testing.T) {
-	expected := errors.New("collect height failed")
-	collector := &heightCollectorMock{
-		localHeight:  0,
-		sourceHeight: 1,
-		collectErr:   expected,
-	}
-
-	err := collectHeights(collector, heightCollectorConfig{
-		UntilHeight: 1,
-	}, logging.Discard)
-
-	require.ErrorIs(t, err, expected)
-	require.Empty(t, collector.collected)
-}
-
-func TestBoundedTargetHeight(t *testing.T) {
-	require.Equal(t, uint64(7), boundedTargetHeight(10, 7))
-	require.Equal(t, uint64(10), boundedTargetHeight(10, 0))
-	require.Equal(t, uint64(5), boundedTargetHeight(5, 7))
-}
-
-func TestReachedUntilHeight(t *testing.T) {
-	require.True(t, reachedUntilHeight(7, 7))
-	require.False(t, reachedUntilHeight(6, 7))
-	require.False(t, reachedUntilHeight(7, 0))
+	require.Len(t, repository.saved, 1)
+	require.True(t, repository.saved[0].savePoolSnapshot)
+	require.Equal(t, []dex.PoolInfo{{ContractAddr: "pair"}}, repository.saved[0].poolInfos)
+	require.Equal(t, parser.RawTxs{{Hash: "tx", Timestamp: time.Date(2026, 5, 26, 0, 0, 0, 0, time.UTC)}}, repository.saved[0].txs)
 }
