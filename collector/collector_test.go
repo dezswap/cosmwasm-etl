@@ -228,13 +228,3 @@ func TestDoCollectReturnsSaveHeightError(t *testing.T) {
 	require.ErrorIs(t, err, expected)
 	require.Empty(t, repo.saved)
 }
-
-func TestCollectorStartHeight(t *testing.T) {
-	require.Equal(t, uint64(1), collectorStartHeight(configs.CollectorConfig{}))
-	require.Equal(t, uint64(42), collectorStartHeight(configs.CollectorConfig{StartHeight: 42}))
-}
-
-func TestCollectorPoolSnapshotInterval(t *testing.T) {
-	require.Equal(t, uint(7), collectorPoolSnapshotInterval(configs.CollectorConfig{PoolSnapshotInterval: 7}))
-	require.Equal(t, uint(configs.PARSER_POOL_SNAPSHOT_INTERVAL), collectorPoolSnapshotInterval(configs.CollectorConfig{}))
-}

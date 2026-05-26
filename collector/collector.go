@@ -25,15 +25,14 @@ func DoCollect(repo collectorrepo.Repository, source dex.SourceDataStore, collec
 		return fmt.Errorf("missing chain id: set collector.chainid")
 	}
 
-	startHeight := collectorStartHeight(collectorConfig)
 	return collectHeights(&sourceHeightCollector{
 		repo:                 repo,
 		source:               source,
 		chainID:              chainID,
-		startHeight:          startHeight,
-		poolSnapshotInterval: collectorPoolSnapshotInterval(collectorConfig),
+		startHeight:          collectorConfig.StartHeight,
+		poolSnapshotInterval: collectorConfig.PoolSnapshotInterval,
 	}, heightCollectorConfig{
-		StartHeight: startHeight,
+		StartHeight: collectorConfig.StartHeight,
 		UntilHeight: collectorConfig.UntilHeight,
 	}, logger)
 }
@@ -82,19 +81,4 @@ func (c *sourceHeightCollector) CollectHeight(height uint64) error {
 	}
 
 	return c.repo.SaveHeight(c.chainID, height, blockTime, txs, poolInfos, savePoolSnapshot)
-}
-
-func collectorStartHeight(c configs.CollectorConfig) uint64 {
-	if c.StartHeight > 0 {
-		return c.StartHeight
-	}
-	return 1
-}
-
-func collectorPoolSnapshotInterval(c configs.CollectorConfig) uint {
-	if c.PoolSnapshotInterval > 0 {
-		return c.PoolSnapshotInterval
-	}
-
-	return configs.PARSER_POOL_SNAPSHOT_INTERVAL
 }

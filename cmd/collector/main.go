@@ -36,12 +36,10 @@ func main() {
 
 	factoryAddress := c.Collector.PairFactoryContractAddress
 	if factoryAddress == "" {
-		factoryAddress = c.Parser.DexConfig.FactoryAddress
+		panic("missing pair factory contract address: set collector.pair_factory_contract_address")
 	}
 
-	nodeConfig := c.Collector.NodeConfigWithFallback(c.Parser.DexConfig.NodeConfig)
-
-	source, err := terraswap.NewFromConfig(nodeConfig, factoryAddress)
+	source, err := terraswap.NewFromConfig(c.Collector.NodeConfig, factoryAddress)
 	if err != nil {
 		panic(err)
 	}

@@ -14,20 +14,3 @@ type FcdConfig struct {
 	Url             string   `mapstructure:"url"`
 	TargetAddresses []string `mapstructure:"target_addresses"`
 }
-
-// NodeConfigWithFallback resolves node settings for collectors migrating from
-// parser-owned node configuration while preserving collector endpoint overrides.
-func (c CollectorConfig) NodeConfigWithFallback(fallback NodeConfig) NodeConfig {
-	if c.NodeConfig.RestClientConfig.RpcHost == "" && c.NodeConfig.RestClientConfig.LcdHost == "" {
-		return fallback
-	}
-
-	nodeConfig := c.NodeConfig
-	if nodeConfig.RestClientConfig.RpcHost == "" {
-		nodeConfig.RestClientConfig.RpcHost = fallback.RestClientConfig.RpcHost
-	}
-	if nodeConfig.RestClientConfig.LcdHost == "" {
-		nodeConfig.RestClientConfig.LcdHost = fallback.RestClientConfig.LcdHost
-	}
-	return nodeConfig
-}
