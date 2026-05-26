@@ -230,12 +230,14 @@ func TestDoCollectReturnsSaveHeightError(t *testing.T) {
 }
 
 type heightCollectorMock struct {
-	localHeight  uint64
-	localErr     error
-	sourceHeight uint64
-	sourceErr    error
-	collectErr   error
-	collected    []uint64
+	localHeight   uint64
+	localErr      error
+	sourceHeight  uint64
+	sourceHeights []uint64
+	sourceCalls   int
+	sourceErr     error
+	collectErr    error
+	collected     []uint64
 }
 
 func (m *heightCollectorMock) LocalHeight() (uint64, error) {
@@ -243,6 +245,13 @@ func (m *heightCollectorMock) LocalHeight() (uint64, error) {
 }
 
 func (m *heightCollectorMock) SourceHeight() (uint64, error) {
+	if len(m.sourceHeights) > 0 {
+		height := m.sourceHeights[m.sourceCalls]
+		if m.sourceCalls < len(m.sourceHeights)-1 {
+			m.sourceCalls++
+		}
+		return height, m.sourceErr
+	}
 	return m.sourceHeight, m.sourceErr
 }
 
@@ -282,6 +291,47 @@ func TestCollectHeightsStopsWhenUntilHeightAlreadyReached(t *testing.T) {
 	}, logging.Discard)
 
 	require.NoError(t, err)
+	require.Empty(t, collector.collected)
+}
+
+func TestCollectHeightsPollsUntilSourceAdvances(t *testing.T) {
+	collector := &heightCollectorMock{
+		localHeight:   1,
+		sourceHeights: []uint64{1, 2},
+	}
+
+	err := collectHeights(collector, heightCollectorConfig{
+		StartHeight: 1,
+		UntilHeight: 2,
+	}, logging.Discard)
+
+	require.NoError(t, err)
+	require.Equal(t, []uint64{2}, collector.collected)
+}
+
+func TestCollectHeightsPollsUntilConfiguredStartHeightIsAvailable(t *testing.T) {
+	collector := &heightCollectorMock{
+		sourceHeights: []uint64{4, 5},
+	}
+
+	err := collectHeights(collector, heightCollectorConfig{
+		StartHeight: 5,
+		UntilHeight: 5,
+	}, logging.Discard)
+
+	require.NoError(t, err)
+	require.Equal(t, []uint64{5}, collector.collected)
+}
+
+func TestCollectHeightsRejectsUntilHeightBeforeStartHeight(t *testing.T) {
+	collector := &heightCollectorMock{}
+
+	err := collectHeights(collector, heightCollectorConfig{
+		StartHeight: 5,
+		UntilHeight: 4,
+	}, logging.Discard)
+
+	require.EqualError(t, err, "invalid height range: start_height=5 until_height=4")
 	require.Empty(t, collector.collected)
 }
 
