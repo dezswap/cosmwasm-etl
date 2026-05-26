@@ -22,6 +22,9 @@ func (c *sourceHeightCollector) LocalHeight() (uint64, error) {
 		return localHeight, nil
 	}
 	if errors.Is(err, repo.ErrNotFound) || errors.Is(err, repo.ErrUnavailable) {
+		if c.startHeight == 0 {
+			return 0, nil
+		}
 		return c.startHeight - 1, nil
 	}
 	return 0, err
