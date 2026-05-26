@@ -11,8 +11,6 @@ import (
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 )
 
-const collectorPollInterval = 5 * time.Second
-
 // DoCollect persists normalized parser source data into the collector DB.
 //
 // It consumes any dex SourceDataStore implementation and stores per-height txs,
@@ -27,8 +25,9 @@ func DoCollect(repo repo.Repository, source dex.SourceDataStore, collectorConfig
 		startHeight:          collectorConfig.StartHeight,
 		poolSnapshotInterval: collectorConfig.PoolSnapshotInterval,
 	}, heightCollectorConfig{
-		StartHeight: collectorConfig.StartHeight,
-		UntilHeight: collectorConfig.UntilHeight,
+		StartHeight:  collectorConfig.StartHeight,
+		UntilHeight:  collectorConfig.UntilHeight,
+		PollInterval: time.Duration(collectorConfig.PollIntervalSec) * time.Second,
 	}, logger)
 }
 

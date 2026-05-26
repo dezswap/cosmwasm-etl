@@ -29,9 +29,6 @@ func collectHeights(collector heightCollector, config heightCollectorConfig, log
 	}
 
 	pollInterval := config.PollInterval
-	if pollInterval == 0 {
-		pollInterval = collectorPollInterval
-	}
 
 	for {
 		localHeight, err := collector.LocalHeight()

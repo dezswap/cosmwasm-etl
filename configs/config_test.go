@@ -157,6 +157,7 @@ func Test_CollectorConfig_EnvVars(t *testing.T) {
 	t.Setenv("APP_COLLECTOR_FCD_URL", "https://fcd.example.com")
 	t.Setenv("APP_COLLECTOR_START_HEIGHT", "123")
 	t.Setenv("APP_COLLECTOR_UNTIL_HEIGHT", "1000")
+	t.Setenv("APP_COLLECTOR_POLL_INTERVAL_SEC", "7")
 	t.Setenv("APP_COLLECTOR_POOL_SNAPSHOT_INTERVAL", "50")
 
 	tmp := t.TempDir()
@@ -174,6 +175,7 @@ func Test_CollectorConfig_EnvVars(t *testing.T) {
 	require.Equal(t, "https://fcd.example.com", col.FcdConfig.Url)
 	require.Equal(t, uint64(123), col.StartHeight)
 	require.Equal(t, uint64(1000), col.UntilHeight)
+	require.Equal(t, uint64(7), col.PollIntervalSec)
 	require.Equal(t, uint(50), col.PoolSnapshotInterval)
 }
 
@@ -186,6 +188,7 @@ func Test_CollectorConfig_Defaults(t *testing.T) {
 
 	col := New().Collector
 	require.Equal(t, uint64(defaultCollectorStartHeight), col.StartHeight)
+	require.Equal(t, uint64(defaultCollectorPollInterval), col.PollIntervalSec)
 	require.Equal(t, uint(defaultCollectorPoolSnapshotInterval), col.PoolSnapshotInterval)
 }
 

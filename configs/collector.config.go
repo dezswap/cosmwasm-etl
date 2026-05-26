@@ -6,6 +6,7 @@ import (
 
 const (
 	defaultCollectorStartHeight          = 1
+	defaultCollectorPollInterval         = 5
 	defaultCollectorPoolSnapshotInterval = 1000
 )
 
@@ -16,6 +17,7 @@ type CollectorConfig struct {
 	FcdConfig                  FcdConfig  `mapstructure:"fcd"`
 	StartHeight                uint64     `mapstructure:"start_height"`
 	UntilHeight                uint64     `mapstructure:"until_height"`
+	PollIntervalSec            uint64     `mapstructure:"poll_interval_sec"`
 	PoolSnapshotInterval       uint       `mapstructure:"pool_snapshot_interval"`
 }
 
@@ -30,6 +32,7 @@ func defaultCollectorConfig() CollectorConfig {
 			HttpClientConfig: defaultHttpClientConfig,
 		},
 		StartHeight:          defaultCollectorStartHeight,
+		PollIntervalSec:      defaultCollectorPollInterval,
 		PoolSnapshotInterval: defaultCollectorPoolSnapshotInterval,
 	}
 }

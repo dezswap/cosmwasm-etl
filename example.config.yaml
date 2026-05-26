@@ -11,6 +11,7 @@ collector:
     failover_lcd_host:
   pair_factory_contract_address:
   start_height: # uint first source height, default 1
+  poll_interval_sec: # uint poll source height every N seconds, default 5
   pool_snapshot_interval: # uint save pool status every interval, default 1000
 
 parser:
