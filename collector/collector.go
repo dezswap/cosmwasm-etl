@@ -2,9 +2,9 @@ package collector
 
 import (
 	"errors"
-	"fmt"
 	"time"
 
+	"github.com/dezswap/cosmwasm-etl/collector/repo"
 	collectorrepo "github.com/dezswap/cosmwasm-etl/collector/repo"
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/parser/dex"
@@ -19,16 +19,11 @@ const collectorPollInterval = 5 * time.Second
 // optional pool snapshots, and synced height in PostgreSQL. That keeps the loop
 // reusable for future DEX apps as long as they expose the same parser source
 // interface.
-func DoCollect(repo collectorrepo.Repository, source dex.SourceDataStore, collectorConfig configs.CollectorConfig, logger logging.Logger) error {
-	chainID := collectorConfig.ChainId
-	if chainID == "" {
-		return fmt.Errorf("missing chain id: set collector.chainid")
-	}
-
+func DoCollect(repo repo.Repository, source dex.SourceDataStore, collectorConfig configs.CollectorConfig, logger logging.Logger) error {
 	return collectHeights(&sourceHeightCollector{
 		repo:                 repo,
 		source:               source,
-		chainID:              chainID,
+		chainID:              collectorConfig.ChainId,
 		startHeight:          collectorConfig.StartHeight,
 		poolSnapshotInterval: collectorConfig.PoolSnapshotInterval,
 	}, heightCollectorConfig{

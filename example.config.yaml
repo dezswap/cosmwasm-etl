@@ -10,6 +10,8 @@ collector:
       noTls: # true - direct IP connection / false - tls is enabled that its cert should be set first
     failover_lcd_host:
   pair_factory_contract_address:
+  start_height: # uint first source height, default 1
+  pool_snapshot_interval: # uint save pool status every interval, default 1000
 
 parser:
   dex:

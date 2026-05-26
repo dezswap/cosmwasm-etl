@@ -23,7 +23,7 @@ type heightCollectorConfig struct {
 // Implementations own source reads and persistence for a single height, while
 // the runner handles local/source progress, until-height bounds, and polling.
 func collectHeights(collector heightCollector, config heightCollectorConfig, logger logging.Logger) error {
-	startHeight := normalizeStartHeight(config.StartHeight)
+	startHeight := config.StartHeight
 	if config.UntilHeight > 0 && config.UntilHeight < startHeight {
 		return fmt.Errorf("invalid height range: start_height=%d until_height=%d", startHeight, config.UntilHeight)
 	}
@@ -75,13 +75,6 @@ func collectHeights(collector heightCollector, config heightCollectorConfig, log
 			logger.Infof("collected source height %d", height)
 		}
 	}
-}
-
-func normalizeStartHeight(height uint64) uint64 {
-	if height > 0 {
-		return height
-	}
-	return 1
 }
 
 func boundedTargetHeight(sourceHeight, untilHeight uint64) uint64 {

@@ -34,12 +34,11 @@ func main() {
 	logger.WithField("version", version).Info("starting collector")
 	grpc.SetLogConfig(c.Log)
 
-	factoryAddress := c.Collector.PairFactoryContractAddress
-	if factoryAddress == "" {
-		panic("missing pair factory contract address: set collector.pair_factory_contract_address")
+	if err := c.Collector.Validate(); err != nil {
+		panic(fmt.Errorf("dex config is nil: %w", err))
 	}
 
-	source, err := terraswap.NewFromConfig(c.Collector.NodeConfig, factoryAddress)
+	source, err := terraswap.NewFromConfig(c.Collector.NodeConfig, c.Collector.PairFactoryContractAddress)
 	if err != nil {
 		panic(err)
 	}

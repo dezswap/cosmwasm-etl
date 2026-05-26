@@ -177,6 +177,18 @@ func Test_CollectorConfig_EnvVars(t *testing.T) {
 	require.Equal(t, uint(50), col.PoolSnapshotInterval)
 }
 
+func Test_CollectorConfig_Defaults(t *testing.T) {
+	t.Setenv("APP_LOG_ENV", "local")
+	t.Setenv("APP_LOG_CHAINID", "testnet-1")
+
+	tmp := t.TempDir()
+	defer withTestBasepath(t, tmp)()
+
+	col := New().Collector
+	require.Equal(t, uint64(defaultCollectorStartHeight), col.StartHeight)
+	require.Equal(t, uint(defaultCollectorPoolSnapshotInterval), col.PoolSnapshotInterval)
+}
+
 func Test_ParserConfig_EnvVars(t *testing.T) {
 	t.Setenv("APP_LOG_ENV", "local")
 	t.Setenv("APP_LOG_CHAINID", "testnet-1")

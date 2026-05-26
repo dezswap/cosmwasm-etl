@@ -18,11 +18,7 @@ const (
 )
 
 var defaultConfig = Config{
-	Collector: CollectorConfig{
-		NodeConfig: NodeConfig{
-			HttpClientConfig: defaultHttpClientConfig,
-		},
-	},
+	Collector: defaultCollectorConfig(),
 	Parser: ParserConfig{
 		DexConfig: ParserDexConfig{
 			NodeConfig: NodeConfig{
