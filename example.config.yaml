@@ -17,8 +17,8 @@ parser:
     factoryAddress: #string
     errTolerance: # uint
     targetApp: # dezswap, terraswap
-    poolSnapshotInterval: # uint save pools' status every interval default 100
-    validationInterval: # uint validate every interval default 100
+    poolSnapshotInterval: # uint save pools' status every interval default 1000
+    validationInterval: # uint validate every interval default 1000
     node:
       rest:
         lcd:
