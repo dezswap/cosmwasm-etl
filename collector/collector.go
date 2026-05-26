@@ -1,120 +1,100 @@
 package collector
 
 import (
-	"encoding/json"
+	"errors"
 	"fmt"
-	"strings"
 	"time"
 
-	tendermintType "github.com/cometbft/cometbft/proto/tendermint/types"
-	"github.com/pkg/errors"
-
-	"github.com/dezswap/cosmwasm-etl/collector/datastore"
+	collectorrepo "github.com/dezswap/cosmwasm-etl/collector/repo"
+	"github.com/dezswap/cosmwasm-etl/configs"
+	"github.com/dezswap/cosmwasm-etl/parser/dex"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 )
 
-func DoCollect(store datastore.DataStore, logger logging.Logger) error {
-	blockQueue := make(chan *tendermintType.Block, 10)
-	errChan := make(chan error)
+const collectorPollInterval = 5 * time.Second
 
-	blockFolderPath := datastore.GetBlockFolderPath(store.GetChainId())
-	pairFolderPath := datastore.GetPairFolderPath(store.GetChainId())
+// DoCollect persists normalized parser source data into the collector DB.
+//
+// It consumes any dex SourceDataStore implementation and stores per-height txs,
+// optional pool snapshots, and synced height in PostgreSQL. That keeps the loop
+// reusable for future DEX apps as long as they expose the same parser source
+// interface.
+func DoCollect(repo collectorrepo.Repository, source dex.SourceDataStore, collectorConfig configs.CollectorConfig, logger logging.Logger) error {
+	chainID := collectorConfig.ChainId
+	if chainID == "" {
+		return fmt.Errorf("missing chain id: set collector.chainid")
+	}
 
-	// block collecting job
-	go func() {
-		latestBlock, err := store.GetLatestProcessedBlockNumber(blockFolderPath...)
+	startHeight := collectorStartHeight(collectorConfig)
+	return collectHeights(&sourceHeightCollector{
+		repo:                 repo,
+		source:               source,
+		chainID:              chainID,
+		startHeight:          startHeight,
+		poolSnapshotInterval: collectorPoolSnapshotInterval(collectorConfig),
+	}, heightCollectorConfig{
+		StartHeight: startHeight,
+		UntilHeight: collectorConfig.UntilHeight,
+	}, logger)
+}
+
+type sourceHeightCollector struct {
+	repo                 collectorrepo.Repository
+	source               dex.SourceDataStore
+	chainID              string
+	startHeight          uint64
+	poolSnapshotInterval uint
+}
+
+func (c *sourceHeightCollector) LocalHeight() (uint64, error) {
+	localHeight, err := c.repo.GetSyncedHeight(c.chainID)
+	if err == nil {
+		return localHeight, nil
+	}
+	if errors.Is(err, collectorrepo.ErrNotFound) || errors.Is(err, collectorrepo.ErrUnavailable) {
+		return c.startHeight - 1, nil
+	}
+	return 0, err
+}
+
+func (c *sourceHeightCollector) SourceHeight() (uint64, error) {
+	return c.source.GetSourceSyncedHeight()
+}
+
+func (c *sourceHeightCollector) CollectHeight(height uint64) error {
+	txs, err := c.source.GetSourceTxs(height)
+	if err != nil {
+		return err
+	}
+
+	blockTime := time.Time{}
+	if len(txs) > 0 {
+		blockTime = txs[0].Timestamp
+	}
+
+	savePoolSnapshot := c.poolSnapshotInterval > 0 && height%uint64(c.poolSnapshotInterval) == 0
+	poolInfos := []dex.PoolInfo{}
+	if savePoolSnapshot {
+		poolInfos, err = c.source.GetPoolInfos(height)
 		if err != nil {
-			err = errors.Wrap(err, "DoCollect, GetLatestProcessedBlockNumber")
-			errChan <- err
-			return
-		}
-
-		logger.Infof("Start collecting from the block %d ...", latestBlock+1)
-
-		for {
-			block, err := store.GetBlockByHeight(latestBlock + 1)
-			if err != nil && strings.Contains(err.Error(), "invalid height") {
-				// case 1: new block is not yet produced
-				// TODO: print logger: "waiting new blocks..."
-
-				timer := time.NewTimer(time.Second * 3)
-				<-timer.C
-
-				continue
-			} else if err != nil {
-				// case 2: other error
-				err = errors.Wrap(err, "DoCollect, GetBlockByHeight")
-				errChan <- err
-				return
-			}
-
-			if block != nil {
-				blockQueue <- block
-
-				latestBlock = block.Header.Height
-			} else {
-				errChan <- fmt.Errorf("received block is nil")
-				return
-			}
-
-			logger.Infof("Collected block %d ...", latestBlock)
-		}
-	}()
-
-	// tx storing job
-	for {
-		select {
-		case block := <-blockQueue:
-			// store block
-			blockId := block.GetHeader().Height
-
-			logger.Infof("Processing block %d ...", blockId)
-
-			blockInfo, err := store.GetBlockTxsFromBlockData(block)
-			if err != nil {
-				return errors.Wrap(err, "DoCollect, GetBlockTxsFromBlockData")
-			}
-
-			data, err := json.Marshal(blockInfo)
-			if err != nil {
-				return errors.Wrap(err, "DoCollect, Marshal")
-			}
-
-			err = store.UploadBlockBinary(blockId, data, blockFolderPath...)
-			if err != nil {
-				return errors.Wrap(err, "DoCollect, UploadBlockBinaryAsLatest")
-			}
-
-			logger.Infof("Pair processing in block %d ...", blockId)
-
-			// store pair
-			pairStatus, err := store.GetCurrentPoolStatusOfAllPairs(blockId)
-			if err != nil {
-				return errors.Wrap(err, "DoCollect, GetCurrentPoolStatusOfAllPairs")
-			}
-
-			pairStatusByte, err := json.Marshal(pairStatus)
-			if err != nil {
-				return errors.Wrap(err, "DoCollect, Marshal, pair")
-			}
-
-			err = store.UploadPoolInfoBinary(blockId, pairStatusByte, pairFolderPath...)
-			if err != nil {
-				return errors.Wrap(err, "DoCollect, UploadPoolInfoBinary, pair")
-			}
-
-			err = store.ChangeLatestBlock(blockId, blockFolderPath...)
-			if err != nil {
-				return errors.Wrap(err, "DoCollect, ChangeLatestBlock")
-			}
-
-			logger.Infof("Block %d process done!", blockId)
-
-		case err := <-errChan:
-			if err != nil {
-				logger.Error(err)
-				return err
-			}
+			return err
 		}
 	}
+
+	return c.repo.SaveHeight(c.chainID, height, blockTime, txs, poolInfos, savePoolSnapshot)
+}
+
+func collectorStartHeight(c configs.CollectorConfig) uint64 {
+	if c.StartHeight > 0 {
+		return c.StartHeight
+	}
+	return 1
+}
+
+func collectorPoolSnapshotInterval(c configs.CollectorConfig) uint {
+	if c.PoolSnapshotInterval > 0 {
+		return c.PoolSnapshotInterval
+	}
+
+	return configs.PARSER_POOL_SNAPSHOT_INTERVAL
 }

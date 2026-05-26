@@ -123,7 +123,6 @@ func (c Config) Redacted() Config {
 	cp := c
 
 	// Collector
-	cp.Collector.FcdConfig.RdbConfig.Password = "***"
 	cp.S3.Secret = "***"
 
 	// Parser

@@ -152,14 +152,12 @@ func Test_CollectorConfig_EnvVars(t *testing.T) {
 	t.Setenv("APP_COLLECTOR_NODE_GRPC_HOST", "grpc.example.com")
 	t.Setenv("APP_COLLECTOR_NODE_GRPC_PORT", "9090")
 	t.Setenv("APP_COLLECTOR_NODE_FAILOVER_LCD_HOST", "lcd-failover.example.com")
-	t.Setenv("APP_COLLECTOR_FCD_RDB_HOST", "fcd-host")
-	t.Setenv("APP_COLLECTOR_FCD_RDB_PORT", "5432")
-	t.Setenv("APP_COLLECTOR_FCD_RDB_USERNAME", "fcduser")
-	t.Setenv("APP_COLLECTOR_FCD_RDB_PASSWORD", "fcdpass")
-	t.Setenv("APP_COLLECTOR_FCD_RDB_DATABASE", "fcddb")
-	t.Setenv("APP_COLLECTOR_FCD_RDB_SSLMODE", "require")
+	t.Setenv("APP_COLLECTOR_NODE_REST_LCD", "https://lcd.example.com")
+	t.Setenv("APP_COLLECTOR_NODE_REST_RPC", "https://rpc.example.com")
 	t.Setenv("APP_COLLECTOR_FCD_URL", "https://fcd.example.com")
-	t.Setenv("APP_COLLECTOR_FCD_UNTIL_HEIGHT", "1000")
+	t.Setenv("APP_COLLECTOR_START_HEIGHT", "123")
+	t.Setenv("APP_COLLECTOR_UNTIL_HEIGHT", "1000")
+	t.Setenv("APP_COLLECTOR_POOL_SNAPSHOT_INTERVAL", "50")
 
 	tmp := t.TempDir()
 	defer withTestBasepath(t, tmp)()
@@ -171,14 +169,12 @@ func Test_CollectorConfig_EnvVars(t *testing.T) {
 	require.Equal(t, "grpc.example.com", col.NodeConfig.GrpcConfig.Host)
 	require.Equal(t, 9090, col.NodeConfig.GrpcConfig.Port)
 	require.Equal(t, "lcd-failover.example.com", col.NodeConfig.FailoverLcdHost)
-	require.Equal(t, "fcd-host", col.FcdConfig.RdbConfig.Host)
-	require.Equal(t, 5432, col.FcdConfig.RdbConfig.Port)
-	require.Equal(t, "fcduser", col.FcdConfig.RdbConfig.Username)
-	require.Equal(t, "fcdpass", col.FcdConfig.RdbConfig.Password)
-	require.Equal(t, "fcddb", col.FcdConfig.RdbConfig.Database)
-	require.Equal(t, "require", col.FcdConfig.RdbConfig.SslMode)
+	require.Equal(t, "https://lcd.example.com", col.NodeConfig.RestClientConfig.LcdHost)
+	require.Equal(t, "https://rpc.example.com", col.NodeConfig.RestClientConfig.RpcHost)
 	require.Equal(t, "https://fcd.example.com", col.FcdConfig.Url)
-	require.Equal(t, uint(1000), col.FcdConfig.UntilHeight)
+	require.Equal(t, uint64(123), col.StartHeight)
+	require.Equal(t, uint64(1000), col.UntilHeight)
+	require.Equal(t, uint(50), col.PoolSnapshotInterval)
 }
 
 func Test_ParserConfig_EnvVars(t *testing.T) {
@@ -290,13 +286,6 @@ func TestConfig_Redacted(t *testing.T) {
 	expected := "***"
 
 	cfg := Config{
-		Collector: CollectorConfig{
-			FcdConfig: FcdConfig{
-				RdbConfig: RdbConfig{
-					Password: "original-collector-pw",
-				},
-			},
-		},
 		S3: S3Config{
 			Secret: "original-s3-secret",
 		},
@@ -316,14 +305,12 @@ func TestConfig_Redacted(t *testing.T) {
 	redacted := cfg.Redacted()
 
 	// all sensitive fields must be redacted
-	require.Equal(t, expected, redacted.Collector.FcdConfig.RdbConfig.Password)
 	require.Equal(t, expected, redacted.S3.Secret)
 	require.Equal(t, expected, redacted.Rdb.Password)
 	require.Equal(t, expected, redacted.Aggregator.SrcDb.Password)
 	require.Equal(t, expected, redacted.Aggregator.DestDb.Password)
 
 	// ensure original config is not modified
-	require.Equal(t, "original-collector-pw", cfg.Collector.FcdConfig.RdbConfig.Password)
 	require.Equal(t, "original-s3-secret", cfg.S3.Secret)
 	require.Equal(t, "original-parser-pw", cfg.Rdb.Password)
 	require.Equal(t, "src-db-password", cfg.Aggregator.SrcDb.Password)
