@@ -86,9 +86,6 @@ func collectHeights(collector heightCollector, config heightCollectorConfig, log
 		}
 
 		for height := nextHeight; height <= targetHeight; height++ {
-			if height < startHeight {
-				continue
-			}
 			if err := collector.CollectHeight(height); err != nil {
 				return err
 			}
