@@ -58,5 +58,9 @@ func (c CollectorConfig) Validate() error {
 		return fmt.Errorf("invalid start height: set collector.start_height to a value greater than 0")
 	}
 
+	if c.PollIntervalSec == 0 {
+		return fmt.Errorf("invalid start height: set collector.poll_interval_sec to a value greater than 0")
+	}
+
 	return nil
 }

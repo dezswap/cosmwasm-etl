@@ -192,6 +192,68 @@ func Test_CollectorConfig_Defaults(t *testing.T) {
 	require.Equal(t, uint(defaultCollectorPoolSnapshotInterval), col.PoolSnapshotInterval)
 }
 
+func Test_CollectorConfig_Validate(t *testing.T) {
+	valid := CollectorConfig{
+		ChainId:                    "phoenix-1",
+		PairFactoryContractAddress: "terra1factory",
+		NodeConfig: NodeConfig{RestClientConfig: RestClientConfig{
+			RpcHost: "https://rpc.example.com",
+			LcdHost: "https://lcd.example.com",
+		}},
+		StartHeight:     1,
+		PollIntervalSec: 1,
+	}
+
+	testCases := []struct {
+		name     string
+		config   CollectorConfig
+		expected string
+	}{
+		{name: "valid", config: valid},
+		{name: "missing chain id", config: func() CollectorConfig {
+			config := valid
+			config.ChainId = ""
+			return config
+		}(), expected: "missing chain id: set collector.chainid"},
+		{name: "missing pair factory", config: func() CollectorConfig {
+			config := valid
+			config.PairFactoryContractAddress = ""
+			return config
+		}(), expected: "missing pair factory contract address: set collector.pair_factory_contract_address"},
+		{name: "missing RPC host", config: func() CollectorConfig {
+			config := valid
+			config.NodeConfig.RestClientConfig.RpcHost = ""
+			return config
+		}(), expected: "missing RPC host: set collector.node.rest.rpc"},
+		{name: "missing LCD host", config: func() CollectorConfig {
+			config := valid
+			config.NodeConfig.RestClientConfig.LcdHost = ""
+			return config
+		}(), expected: "missing LCD host: set collector.node.rest.lcd"},
+		{name: "zero start height", config: func() CollectorConfig {
+			config := valid
+			config.StartHeight = 0
+			return config
+		}(), expected: "invalid start height: set collector.start_height to a value greater than 0"},
+		{name: "zero poll interval", config: func() CollectorConfig {
+			config := valid
+			config.PollIntervalSec = 0
+			return config
+		}(), expected: "invalid start height: set collector.poll_interval_sec to a value greater than 0"},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			err := testCase.config.Validate()
+			if testCase.expected == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.EqualError(t, err, testCase.expected)
+		})
+	}
+}
+
 func Test_ParserConfig_EnvVars(t *testing.T) {
 	t.Setenv("APP_LOG_ENV", "local")
 	t.Setenv("APP_LOG_CHAINID", "testnet-1")
