@@ -239,7 +239,7 @@ func Test_CollectorConfig_Validate(t *testing.T) {
 			config := valid
 			config.PollIntervalSec = 0
 			return config
-		}(), expected: "invalid start height: set collector.poll_interval_sec to a value greater than 0"},
+		}(), expected: "invalid poll interval: set collector.poll_interval_sec to a value greater than 0"},
 	}
 
 	for _, testCase := range testCases {
