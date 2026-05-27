@@ -1,3 +1,6 @@
+-- NOTE: This rollback reconstructs timestamps from epoch seconds via to_timestamp().
+-- Sub-second precision from the original timestamp values is lost and cannot be recovered.
+-- Consider this migration forward-only in practice.
 BEGIN;
 
 ALTER TABLE "public"."collector_blocks"
