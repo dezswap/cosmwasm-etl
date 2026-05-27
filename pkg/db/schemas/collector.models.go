@@ -24,21 +24,21 @@ type CollectorBlock struct {
 	Height    uint64        `json:"height"`
 	BlockTime time.Time     `json:"blockTime"`
 	Txs       CollectorJSON `json:"txs" gorm:"type:jsonb"`
-	CreatedAt time.Time     `json:"createdAt"`
-	UpdatedAt time.Time     `json:"updatedAt"`
+	CreatedAt int64         `json:"createdAt" gorm:"->"`
+	UpdatedAt int64         `json:"updatedAt" gorm:"->"`
 }
 
 type CollectorPoolSnapshot struct {
 	ChainId   string        `json:"chainId"`
 	Height    uint64        `json:"height"`
 	PoolInfos CollectorJSON `json:"poolInfos" gorm:"type:jsonb"`
-	CreatedAt time.Time     `json:"createdAt"`
-	UpdatedAt time.Time     `json:"updatedAt"`
+	CreatedAt int64         `json:"createdAt" gorm:"->"`
+	UpdatedAt int64         `json:"updatedAt" gorm:"->"`
 }
 
 type CollectorSyncedHeight struct {
-	ChainId   string    `json:"chainId"`
-	Height    uint64    `json:"height"`
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	ChainId   string `json:"chainId"`
+	Height    uint64 `json:"height"`
+	CreatedAt int64  `json:"createdAt" gorm:"->"`
+	UpdatedAt int64  `json:"updatedAt" gorm:"->"`
 }

@@ -106,14 +106,11 @@ func (r *repository) SaveHeight(chainID string, height uint64, blockTime time.Ti
 	}
 
 	return r.db.Transaction(func(tx *gorm.DB) error {
-		now := time.Now().UTC()
 		block := schemas.CollectorBlock{
 			ChainId:   chainID,
 			Height:    height,
 			BlockTime: blockTime.UTC(),
 			Txs:       schemas.CollectorJSON(txBytes),
-			CreatedAt: now,
-			UpdatedAt: now,
 		}
 		if err := upsert(tx, block, []string{"chain_id", "height"}, []string{"block_time", "txs", "updated_at"}); err != nil {
 			return pkgerrors.Wrap(err, "collector repo save block")
@@ -124,8 +121,6 @@ func (r *repository) SaveHeight(chainID string, height uint64, blockTime time.Ti
 				ChainId:   chainID,
 				Height:    height,
 				PoolInfos: schemas.CollectorJSON(poolBytes),
-				CreatedAt: now,
-				UpdatedAt: now,
 			}
 			if err := upsert(tx, pool, []string{"chain_id", "height"}, []string{"pool_infos", "updated_at"}); err != nil {
 				return pkgerrors.Wrap(err, "collector repo save pool snapshot")
@@ -133,16 +128,14 @@ func (r *repository) SaveHeight(chainID string, height uint64, blockTime time.Ti
 		}
 
 		synced := schemas.CollectorSyncedHeight{
-			ChainId:   chainID,
-			Height:    height,
-			CreatedAt: now,
-			UpdatedAt: now,
+			ChainId: chainID,
+			Height:  height,
 		}
 		if err := tx.Clauses(clause.OnConflict{
 			Columns: []clause.Column{{Name: "chain_id"}},
 			DoUpdates: clause.Assignments(map[string]interface{}{
 				"height":     gorm.Expr("GREATEST(collector_synced_heights.height, EXCLUDED.height)"),
-				"updated_at": now,
+				"updated_at": gorm.Expr("EXCLUDED.updated_at"),
 			}),
 		}).Create(&synced).Error; err != nil {
 			return pkgerrors.Wrap(err, "collector repo save synced height")

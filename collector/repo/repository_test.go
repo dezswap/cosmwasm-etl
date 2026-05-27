@@ -70,7 +70,7 @@ func TestGetBlockTxs(t *testing.T) {
 	repo, mock := newMockRepo(t)
 	ts := time.Date(2026, 5, 19, 1, 2, 3, 0, time.UTC)
 	rows := sqlmock.NewRows([]string{"chain_id", "height", "block_time", "txs", "created_at", "updated_at"}).
-		AddRow("phoenix-1", 10, ts, schemas.CollectorJSON(`[{"hash":"hash","sender":"sender","timestamp":"2026-05-19T01:02:03Z","logResults":[]}]`), ts, ts)
+		AddRow("phoenix-1", 10, ts, schemas.CollectorJSON(`[{"hash":"hash","sender":"sender","timestamp":"2026-05-19T01:02:03Z","logResults":[]}]`), ts.Unix(), ts.Unix())
 	mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "collector_blocks"`)).WillReturnRows(rows)
 
 	txs, blockTime, err := repo.GetBlockTxs("phoenix-1", 10)
@@ -96,7 +96,7 @@ func TestGetBlockTxsMalformedJSONDoesNotMapToFallbackError(t *testing.T) {
 	repo, mock := newMockRepo(t)
 	ts := time.Date(2026, 5, 19, 1, 2, 3, 0, time.UTC)
 	rows := sqlmock.NewRows([]string{"chain_id", "height", "block_time", "txs", "created_at", "updated_at"}).
-		AddRow("phoenix-1", 10, ts, schemas.CollectorJSON(`{bad json`), ts, ts)
+		AddRow("phoenix-1", 10, ts, schemas.CollectorJSON(`{bad json`), ts.Unix(), ts.Unix())
 	mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "collector_blocks"`)).WillReturnRows(rows)
 
 	_, _, err := repo.GetBlockTxs("phoenix-1", 10)
@@ -111,7 +111,7 @@ func TestGetPoolInfos(t *testing.T) {
 	repo, mock := newMockRepo(t)
 	ts := time.Date(2026, 5, 19, 1, 2, 3, 0, time.UTC)
 	rows := sqlmock.NewRows([]string{"chain_id", "height", "pool_infos", "created_at", "updated_at"}).
-		AddRow("phoenix-1", 10, schemas.CollectorJSON(`[{"contractAddr":"pair","assets":[{"addr":"asset0","amount":"1"}],"lpAddr":"lp","totalShare":"2"}]`), ts, ts)
+		AddRow("phoenix-1", 10, schemas.CollectorJSON(`[{"contractAddr":"pair","assets":[{"addr":"asset0","amount":"1"}],"lpAddr":"lp","totalShare":"2"}]`), ts.Unix(), ts.Unix())
 	mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "collector_pool_snapshots"`)).WillReturnRows(rows)
 
 	poolInfos, err := repo.GetPoolInfos("phoenix-1", 10)
@@ -130,7 +130,7 @@ func TestGetPoolInfosMalformedJSONDoesNotMapToFallbackError(t *testing.T) {
 	repo, mock := newMockRepo(t)
 	ts := time.Date(2026, 5, 19, 1, 2, 3, 0, time.UTC)
 	rows := sqlmock.NewRows([]string{"chain_id", "height", "pool_infos", "created_at", "updated_at"}).
-		AddRow("phoenix-1", 10, schemas.CollectorJSON(`{bad json`), ts, ts)
+		AddRow("phoenix-1", 10, schemas.CollectorJSON(`{bad json`), ts.Unix(), ts.Unix())
 	mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "collector_pool_snapshots"`)).WillReturnRows(rows)
 
 	_, err := repo.GetPoolInfos("phoenix-1", 10)
@@ -157,8 +157,8 @@ func TestSaveHeightUpsertsBlockPoolAndSyncedHeight(t *testing.T) {
 	ts := time.Date(2026, 5, 19, 1, 2, 3, 0, time.UTC)
 
 	mock.ExpectBegin()
-	expectUpsert(mock, `collector_blocks`)
-	expectUpsert(mock, `collector_pool_snapshots`)
+	expectUpsert(mock, `collector_blocks`, `"chain_id","height","block_time","txs"`)
+	expectUpsert(mock, `collector_pool_snapshots`, `"chain_id","height","pool_infos"`)
 	expectSyncedHeightInsert(mock)
 	mock.ExpectCommit()
 
@@ -180,7 +180,7 @@ func TestSaveHeightWithoutPoolSnapshotSkipsPoolUpsert(t *testing.T) {
 	ts := time.Date(2026, 5, 19, 1, 2, 3, 0, time.UTC)
 
 	mock.ExpectBegin()
-	expectUpsert(mock, `collector_blocks`)
+	expectUpsert(mock, `collector_blocks`, `"chain_id","height","block_time","txs"`)
 	expectSyncedHeightInsert(mock)
 	mock.ExpectCommit()
 
@@ -217,7 +217,7 @@ func TestSaveHeightRollsBackWhenPoolUpsertFails(t *testing.T) {
 	expected := errors.New("pool insert failed")
 
 	mock.ExpectBegin()
-	expectUpsert(mock, `collector_blocks`)
+	expectUpsert(mock, `collector_blocks`, `"chain_id","height","block_time","txs"`)
 	mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO "collector_pool_snapshots"`)).
 		WillReturnError(expected)
 	mock.ExpectRollback()
@@ -233,7 +233,7 @@ func TestSaveHeightRollsBackWhenSyncedHeightUpsertFails(t *testing.T) {
 	expected := errors.New("synced insert failed")
 
 	mock.ExpectBegin()
-	expectUpsert(mock, `collector_blocks`)
+	expectUpsert(mock, `collector_blocks`, `"chain_id","height","block_time","txs"`)
 	mock.ExpectExec(syncedHeightInsertPattern()).
 		WillReturnError(expected)
 	mock.ExpectRollback()
@@ -255,11 +255,11 @@ func TestIsUndefinedTableRejectsUnrelatedDoesNotExistErrors(t *testing.T) {
 	require.False(t, isUndefinedTable(errors.New(`role "etl" does not exist`)))
 }
 
-func expectUpsert(mock sqlmock.Sqlmock, table string) {
+func expectUpsert(mock sqlmock.Sqlmock, table string, columns string) {
 	mock.ExpectExec(
-		regexp.QuoteMeta(
-			`INSERT INTO "`+table+`"`) +
-			`.*` + regexp.QuoteMeta(`ON CONFLICT`),
+		regexp.QuoteMeta(`INSERT INTO "`+table+`" (`+columns+`) VALUES`) +
+			`.*` + regexp.QuoteMeta(`ON CONFLICT`) +
+			`.*` + regexp.QuoteMeta(`"updated_at"="excluded"."updated_at"`),
 	).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 }
@@ -270,7 +270,9 @@ func expectSyncedHeightInsert(mock sqlmock.Sqlmock) {
 }
 
 func syncedHeightInsertPattern() string {
-	return regexp.QuoteMeta(`INSERT INTO "collector_synced_heights"`) +
+	return regexp.QuoteMeta(`INSERT INTO "collector_synced_heights" ("chain_id","height") VALUES`) +
 		`.*` +
-		regexp.QuoteMeta(`GREATEST(collector_synced_heights.height, EXCLUDED.height)`)
+		regexp.QuoteMeta(`GREATEST(collector_synced_heights.height, EXCLUDED.height)`) +
+		`.*` +
+		regexp.QuoteMeta(`EXCLUDED.updated_at`)
 }
