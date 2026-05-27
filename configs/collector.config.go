@@ -1,5 +1,15 @@
 package configs
 
+import (
+	"fmt"
+)
+
+const (
+	defaultCollectorStartHeight          = 1
+	defaultCollectorPollInterval         = 5
+	defaultCollectorPoolSnapshotInterval = 1000
+)
+
 type CollectorConfig struct {
 	ChainId                    string     `mapstructure:"chainid"`
 	PairFactoryContractAddress string     `mapstructure:"pair_factory_contract_address"`
@@ -7,6 +17,7 @@ type CollectorConfig struct {
 	FcdConfig                  FcdConfig  `mapstructure:"fcd"`
 	StartHeight                uint64     `mapstructure:"start_height"`
 	UntilHeight                uint64     `mapstructure:"until_height"`
+	PollIntervalSec            uint64     `mapstructure:"poll_interval_sec"`
 	PoolSnapshotInterval       uint       `mapstructure:"pool_snapshot_interval"`
 }
 
@@ -15,19 +26,41 @@ type FcdConfig struct {
 	TargetAddresses []string `mapstructure:"target_addresses"`
 }
 
-// NodeConfigWithFallback resolves node settings for collectors migrating from
-// parser-owned node configuration while preserving collector endpoint overrides.
-func (c CollectorConfig) NodeConfigWithFallback(fallback NodeConfig) NodeConfig {
-	if c.NodeConfig.RestClientConfig.RpcHost == "" && c.NodeConfig.RestClientConfig.LcdHost == "" {
-		return fallback
+func defaultCollectorConfig() CollectorConfig {
+	return CollectorConfig{
+		NodeConfig: NodeConfig{
+			HttpClientConfig: defaultHttpClientConfig,
+		},
+		StartHeight:          defaultCollectorStartHeight,
+		PollIntervalSec:      defaultCollectorPollInterval,
+		PoolSnapshotInterval: defaultCollectorPoolSnapshotInterval,
+	}
+}
+
+func (c CollectorConfig) Validate() error {
+	if c.ChainId == "" {
+		return fmt.Errorf("missing chain id: set collector.chainid")
 	}
 
-	nodeConfig := c.NodeConfig
-	if nodeConfig.RestClientConfig.RpcHost == "" {
-		nodeConfig.RestClientConfig.RpcHost = fallback.RestClientConfig.RpcHost
+	if c.PairFactoryContractAddress == "" {
+		return fmt.Errorf("missing pair factory contract address: set collector.pair_factory_contract_address")
 	}
-	if nodeConfig.RestClientConfig.LcdHost == "" {
-		nodeConfig.RestClientConfig.LcdHost = fallback.RestClientConfig.LcdHost
+
+	if c.NodeConfig.RestClientConfig.RpcHost == "" {
+		return fmt.Errorf("missing RPC host: set collector.node.rest.rpc")
 	}
-	return nodeConfig
+
+	if c.NodeConfig.RestClientConfig.LcdHost == "" {
+		return fmt.Errorf("missing LCD host: set collector.node.rest.lcd")
+	}
+
+	if c.StartHeight == 0 {
+		return fmt.Errorf("invalid start height: set collector.start_height to a value greater than 0")
+	}
+
+	if c.PollIntervalSec == 0 {
+		return fmt.Errorf("invalid poll interval: set collector.poll_interval_sec to a value greater than 0")
+	}
+
+	return nil
 }

@@ -10,6 +10,9 @@ collector:
       noTls: # true - direct IP connection / false - tls is enabled that its cert should be set first
     failover_lcd_host:
   pair_factory_contract_address:
+  start_height: # uint first source height, default 1
+  poll_interval_sec: # uint poll source height every N seconds, default 5
+  pool_snapshot_interval: # uint save pool status every interval, default 1000
 
 parser:
   dex:
@@ -17,8 +20,8 @@ parser:
     factoryAddress: #string
     errTolerance: # uint
     targetApp: # dezswap, terraswap
-    poolSnapshotInterval: # uint save pools' status every interval default 100
-    validationInterval: # uint validate every interval default 100
+    poolSnapshotInterval: # uint save pools' status every interval default 1000
+    validationInterval: # uint validate every interval default 1000
     node:
       rest:
         lcd:

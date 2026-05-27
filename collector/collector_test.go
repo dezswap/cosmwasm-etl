@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	collectorrepo "github.com/dezswap/cosmwasm-etl/collector/repo"
+	"github.com/dezswap/cosmwasm-etl/collector/repo"
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/parser/dex"
@@ -29,7 +29,7 @@ type savedHeight struct {
 }
 
 func (m *sourceRepoMock) GetSyncedHeight(string) (uint64, error) {
-	if len(m.saved) > 0 && (errors.Is(m.syncedErr, collectorrepo.ErrNotFound) || errors.Is(m.syncedErr, collectorrepo.ErrUnavailable)) {
+	if len(m.saved) > 0 && (errors.Is(m.syncedErr, repo.ErrNotFound) || errors.Is(m.syncedErr, repo.ErrUnavailable)) {
 		return m.syncedHeight, nil
 	}
 	return m.syncedHeight, m.syncedErr
@@ -86,7 +86,7 @@ func (m *sourceStoreMock) GetPoolInfos(height uint64) ([]dex.PoolInfo, error) {
 }
 
 func TestDoCollectSourceCollectsFromStartHeightToUntilHeight(t *testing.T) {
-	repo := &sourceRepoMock{syncedErr: collectorrepo.ErrNotFound}
+	repo := &sourceRepoMock{syncedErr: repo.ErrNotFound}
 	source := &sourceStoreMock{
 		syncedHeight: 10,
 		txs: map[uint64]parser.RawTxs{
@@ -115,8 +115,8 @@ func TestDoCollectSourceCollectsFromStartHeightToUntilHeight(t *testing.T) {
 	require.Equal(t, []dex.PoolInfo{{ContractAddr: "pair6"}}, repo.saved[1].poolInfos)
 }
 
-func TestDoCollectSourceUsesChainAndSnapshotIntervalFallbacks(t *testing.T) {
-	repo := &sourceRepoMock{syncedErr: collectorrepo.ErrUnavailable}
+func TestDoCollectSourceUsesConfiguredChainAndSnapshotInterval(t *testing.T) {
+	repo := &sourceRepoMock{syncedErr: repo.ErrUnavailable}
 	source := &sourceStoreMock{
 		syncedHeight: 3,
 		txs: map[uint64]parser.RawTxs{
@@ -132,7 +132,7 @@ func TestDoCollectSourceUsesChainAndSnapshotIntervalFallbacks(t *testing.T) {
 	err := DoCollect(
 		repo,
 		source,
-		configs.CollectorConfig{ChainId: "chain", UntilHeight: 3, PoolSnapshotInterval: 2},
+		configs.CollectorConfig{ChainId: "chain", StartHeight: 1, UntilHeight: 3, PoolSnapshotInterval: 2},
 		logging.Discard,
 	)
 
@@ -146,13 +146,13 @@ func TestDoCollectSourceUsesChainAndSnapshotIntervalFallbacks(t *testing.T) {
 
 func TestDoCollectSourceReturnsSourceTxError(t *testing.T) {
 	expected := errors.New("tx source failed")
-	repo := &sourceRepoMock{syncedErr: collectorrepo.ErrNotFound}
+	repo := &sourceRepoMock{syncedErr: repo.ErrNotFound}
 	source := &sourceStoreMock{syncedHeight: 1, txsErr: expected}
 
 	err := DoCollect(
 		repo,
 		source,
-		configs.CollectorConfig{ChainId: "chain", UntilHeight: 1},
+		configs.CollectorConfig{ChainId: "chain", StartHeight: 1, UntilHeight: 1},
 		logging.Discard,
 	)
 
@@ -162,7 +162,7 @@ func TestDoCollectSourceReturnsSourceTxError(t *testing.T) {
 
 func TestDoCollectSourceReturnsPoolInfoError(t *testing.T) {
 	expected := errors.New("pool source failed")
-	repo := &sourceRepoMock{syncedErr: collectorrepo.ErrNotFound}
+	repo := &sourceRepoMock{syncedErr: repo.ErrNotFound}
 	source := &sourceStoreMock{
 		syncedHeight: 1,
 		txs:          map[uint64]parser.RawTxs{1: {{Hash: "tx1"}}},
@@ -172,7 +172,7 @@ func TestDoCollectSourceReturnsPoolInfoError(t *testing.T) {
 	err := DoCollect(
 		repo,
 		source,
-		configs.CollectorConfig{ChainId: "chain", UntilHeight: 1, PoolSnapshotInterval: 1},
+		configs.CollectorConfig{ChainId: "chain", StartHeight: 1, UntilHeight: 1, PoolSnapshotInterval: 1},
 		logging.Discard,
 	)
 
@@ -187,7 +187,7 @@ func TestDoCollectReturnsRepositoryHeightError(t *testing.T) {
 	err := DoCollect(
 		repo,
 		&sourceStoreMock{syncedHeight: 1},
-		configs.CollectorConfig{ChainId: "chain", UntilHeight: 1},
+		configs.CollectorConfig{ChainId: "chain", StartHeight: 1, UntilHeight: 1},
 		logging.Discard,
 	)
 
@@ -197,12 +197,12 @@ func TestDoCollectReturnsRepositoryHeightError(t *testing.T) {
 
 func TestDoCollectReturnsSourceHeightError(t *testing.T) {
 	expected := errors.New("source height failed")
-	repo := &sourceRepoMock{syncedErr: collectorrepo.ErrNotFound}
+	repo := &sourceRepoMock{syncedErr: repo.ErrNotFound}
 
 	err := DoCollect(
 		repo,
 		&sourceStoreMock{syncedErr: expected},
-		configs.CollectorConfig{ChainId: "chain", UntilHeight: 1},
+		configs.CollectorConfig{ChainId: "chain", StartHeight: 1, UntilHeight: 1},
 		logging.Discard,
 	)
 
@@ -212,7 +212,7 @@ func TestDoCollectReturnsSourceHeightError(t *testing.T) {
 
 func TestDoCollectReturnsSaveHeightError(t *testing.T) {
 	expected := errors.New("save height failed")
-	repo := &sourceRepoMock{syncedErr: collectorrepo.ErrNotFound, saveErr: expected}
+	repo := &sourceRepoMock{syncedErr: repo.ErrNotFound, saveErr: expected}
 	source := &sourceStoreMock{
 		syncedHeight: 1,
 		txs:          map[uint64]parser.RawTxs{1: {{Hash: "tx1"}}},
@@ -221,7 +221,7 @@ func TestDoCollectReturnsSaveHeightError(t *testing.T) {
 	err := DoCollect(
 		repo,
 		source,
-		configs.CollectorConfig{ChainId: "chain", UntilHeight: 1},
+		configs.CollectorConfig{ChainId: "chain", StartHeight: 1, UntilHeight: 1},
 		logging.Discard,
 	)
 
@@ -229,12 +229,161 @@ func TestDoCollectReturnsSaveHeightError(t *testing.T) {
 	require.Empty(t, repo.saved)
 }
 
-func TestCollectorStartHeight(t *testing.T) {
-	require.Equal(t, uint64(1), collectorStartHeight(configs.CollectorConfig{}))
-	require.Equal(t, uint64(42), collectorStartHeight(configs.CollectorConfig{StartHeight: 42}))
+type heightCollectorMock struct {
+	localHeight   uint64
+	localErr      error
+	sourceHeight  uint64
+	sourceHeights []uint64
+	sourceCalls   int
+	sourceErr     error
+	collectErr    error
+	collected     []uint64
 }
 
-func TestCollectorPoolSnapshotInterval(t *testing.T) {
-	require.Equal(t, uint(7), collectorPoolSnapshotInterval(configs.CollectorConfig{PoolSnapshotInterval: 7}))
-	require.Equal(t, uint(configs.PARSER_POOL_SNAPSHOT_INTERVAL), collectorPoolSnapshotInterval(configs.CollectorConfig{}))
+func (m *heightCollectorMock) LocalHeight() (uint64, error) {
+	return m.localHeight, m.localErr
+}
+
+func (m *heightCollectorMock) SourceHeight() (uint64, error) {
+	if len(m.sourceHeights) > 0 {
+		height := m.sourceHeights[m.sourceCalls]
+		if m.sourceCalls < len(m.sourceHeights)-1 {
+			m.sourceCalls++
+		}
+		return height, m.sourceErr
+	}
+	return m.sourceHeight, m.sourceErr
+}
+
+func (m *heightCollectorMock) CollectHeight(height uint64) error {
+	if m.collectErr != nil {
+		return m.collectErr
+	}
+	m.collected = append(m.collected, height)
+	m.localHeight = height
+	return nil
+}
+
+func TestCollectHeightsCollectsBoundedRange(t *testing.T) {
+	collector := &heightCollectorMock{
+		localHeight:  3,
+		sourceHeight: 10,
+	}
+
+	err := collectHeights(collector, heightCollectorConfig{
+		StartHeight: 5,
+		UntilHeight: 7,
+	}, logging.Discard)
+
+	require.NoError(t, err)
+	require.Equal(t, []uint64{5, 6, 7}, collector.collected)
+}
+
+func TestCollectHeightsStopsWhenUntilHeightAlreadyReached(t *testing.T) {
+	collector := &heightCollectorMock{
+		localHeight:  7,
+		sourceHeight: 10,
+	}
+
+	err := collectHeights(collector, heightCollectorConfig{
+		StartHeight: 5,
+		UntilHeight: 7,
+	}, logging.Discard)
+
+	require.NoError(t, err)
+	require.Empty(t, collector.collected)
+}
+
+func TestCollectHeightsPollsUntilSourceAdvances(t *testing.T) {
+	collector := &heightCollectorMock{
+		localHeight:   1,
+		sourceHeights: []uint64{1, 2},
+	}
+
+	err := collectHeights(collector, heightCollectorConfig{
+		StartHeight: 1,
+		UntilHeight: 2,
+	}, logging.Discard)
+
+	require.NoError(t, err)
+	require.Equal(t, []uint64{2}, collector.collected)
+}
+
+func TestCollectHeightsPollsUntilConfiguredStartHeightIsAvailable(t *testing.T) {
+	collector := &heightCollectorMock{
+		sourceHeights: []uint64{4, 5},
+	}
+
+	err := collectHeights(collector, heightCollectorConfig{
+		StartHeight: 5,
+		UntilHeight: 5,
+	}, logging.Discard)
+
+	require.NoError(t, err)
+	require.Equal(t, []uint64{5}, collector.collected)
+}
+
+func TestCollectHeightsRejectsUntilHeightBeforeStartHeight(t *testing.T) {
+	collector := &heightCollectorMock{}
+
+	err := collectHeights(collector, heightCollectorConfig{
+		StartHeight: 5,
+		UntilHeight: 4,
+	}, logging.Discard)
+
+	require.EqualError(t, err, "invalid height range: start_height=5 until_height=4")
+	require.Empty(t, collector.collected)
+}
+
+func TestCollectHeightsReturnsSourceError(t *testing.T) {
+	expected := errors.New("source height failed")
+	collector := &heightCollectorMock{
+		localHeight: 0,
+		sourceErr:   expected,
+	}
+
+	err := collectHeights(collector, heightCollectorConfig{
+		UntilHeight: 1,
+	}, logging.Discard)
+
+	require.ErrorIs(t, err, expected)
+}
+
+func TestCollectHeightsReturnsLocalError(t *testing.T) {
+	expected := errors.New("local height failed")
+	collector := &heightCollectorMock{localErr: expected}
+
+	err := collectHeights(collector, heightCollectorConfig{
+		UntilHeight: 1,
+	}, logging.Discard)
+
+	require.ErrorIs(t, err, expected)
+}
+
+func TestCollectHeightsReturnsCollectError(t *testing.T) {
+	expected := errors.New("collect height failed")
+	collector := &heightCollectorMock{
+		localHeight:  0,
+		sourceHeight: 1,
+		collectErr:   expected,
+	}
+
+	err := collectHeights(collector, heightCollectorConfig{
+		UntilHeight: 1,
+	}, logging.Discard)
+
+	require.ErrorIs(t, err, expected)
+	require.Empty(t, collector.collected)
+}
+
+func TestBoundedTargetHeight(t *testing.T) {
+	require.Equal(t, uint64(7), boundedTargetHeight(10, 7))
+	require.Equal(t, uint64(10), boundedTargetHeight(10, 0))
+	require.Equal(t, uint64(5), boundedTargetHeight(5, 7))
+}
+
+func TestReachedUntilHeight(t *testing.T) {
+	require.True(t, reachedUntilHeight(7, 7))
+	require.False(t, reachedUntilHeight(6, 7))
+	require.False(t, reachedUntilHeight(7, 0))
 }
