@@ -2,8 +2,10 @@ package db
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/dezswap/cosmwasm-etl/configs"
@@ -17,18 +19,27 @@ type GormOption func(*gorm.Config, *postgres.Config)
 
 // OpenGormPostgres opens a GORM Postgres connection from repository database configuration.
 func OpenGormPostgres(dbConfig configs.RdbConfig, opts ...GormOption) (*gorm.DB, error) {
+	logLevel, err := GormLogLevelFromConfig(dbConfig.GormLogLevel)
+	if err != nil {
+		return nil, err
+	}
+
 	pq := PostgresDb{}
 	if err := pq.Init(dbConfig); err != nil {
 		return nil, err
 	}
-	return OpenGormPostgresWithConn(pq.Db, opts...)
+	return openGormPostgresWithConn(pq.Db, logLevel, opts...)
 }
 
 // OpenGormPostgresWithConn opens a GORM Postgres connection using an existing sql.DB.
 func OpenGormPostgresWithConn(conn *sql.DB, opts ...GormOption) (*gorm.DB, error) {
+	return openGormPostgresWithConn(conn, logger.Silent, opts...)
+}
+
+func openGormPostgresWithConn(conn *sql.DB, logLevel logger.LogLevel, opts ...GormOption) (*gorm.DB, error) {
 	postgresConfig := &postgres.Config{Conn: conn}
 	gormConfig := &gorm.Config{
-		Logger: NewGormLogger(logger.Silent),
+		Logger: NewGormLogger(logLevel),
 	}
 	for _, opt := range opts {
 		opt(gormConfig, postgresConfig)
@@ -36,10 +47,19 @@ func OpenGormPostgresWithConn(conn *sql.DB, opts ...GormOption) (*gorm.DB, error
 	return gorm.Open(postgres.New(*postgresConfig), gormConfig)
 }
 
-// WithGormLogLevel configures the shared GORM logger with the given log level.
-func WithGormLogLevel(logLevel logger.LogLevel) GormOption {
-	return func(gormConfig *gorm.Config, _ *postgres.Config) {
-		gormConfig.Logger = NewGormLogger(logLevel)
+// GormLogLevelFromConfig parses an optional GORM log level from config.
+func GormLogLevelFromConfig(value string) (logger.LogLevel, error) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", "silent":
+		return logger.Silent, nil
+	case "error":
+		return logger.Error, nil
+	case "warn", "warning":
+		return logger.Warn, nil
+	case "info":
+		return logger.Info, nil
+	default:
+		return logger.Silent, fmt.Errorf("invalid gorm log level %q", value)
 	}
 }
 

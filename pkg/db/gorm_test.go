@@ -23,16 +23,45 @@ func TestOpenGormPostgresWithConn_DefaultLoggerIsSilent(t *testing.T) {
 	require.Empty(t, strings.TrimSpace(output))
 }
 
-func TestOpenGormPostgresWithConn_LogLevelOptionOverridesDefault(t *testing.T) {
-	output := triggerGormQueryError(t, func() GormOption {
-		return WithGormLogLevel(logger.Error)
-	})
+func TestOpenGormPostgresWithConn_ConfiguredLoggerLogsErrors(t *testing.T) {
+	output := triggerGormQueryError(t, logger.Error)
 
 	require.Contains(t, output, "boom")
 	require.Contains(t, output, `SELECT * FROM "gorm_log_probes"`)
 }
 
-func triggerGormQueryError(t *testing.T, optFactories ...func() GormOption) string {
+func TestGormLogLevelFromConfig(t *testing.T) {
+	tests := []struct {
+		name      string
+		value     string
+		want      logger.LogLevel
+		wantError bool
+	}{
+		{name: "empty defaults to silent", value: "", want: logger.Silent},
+		{name: "silent", value: "silent", want: logger.Silent},
+		{name: "error", value: "error", want: logger.Error},
+		{name: "warn", value: "warn", want: logger.Warn},
+		{name: "warning", value: "warning", want: logger.Warn},
+		{name: "info", value: "info", want: logger.Info},
+		{name: "case insensitive", value: " ERROR ", want: logger.Error},
+		{name: "invalid", value: "debug", wantError: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := GormLogLevelFromConfig(tt.value)
+			if tt.wantError {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func triggerGormQueryError(t *testing.T, logLevels ...logger.LogLevel) string {
 	t.Helper()
 
 	sqlDB, mock, err := sqlmock.New()
@@ -43,12 +72,12 @@ func triggerGormQueryError(t *testing.T, optFactories ...func() GormOption) stri
 		WillReturnError(errors.New("boom"))
 
 	output := captureStdout(t, func() {
-		opts := make([]GormOption, 0, len(optFactories))
-		for _, factory := range optFactories {
-			opts = append(opts, factory())
+		logLevel := logger.Silent
+		if len(logLevels) > 0 {
+			logLevel = logLevels[0]
 		}
 
-		gormDB, err := OpenGormPostgresWithConn(sqlDB, opts...)
+		gormDB, err := openGormPostgresWithConn(sqlDB, logLevel)
 		require.NoError(t, err)
 
 		err = gormDB.Find(&[]gormLogProbe{}).Error

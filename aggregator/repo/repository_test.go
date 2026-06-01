@@ -303,7 +303,10 @@ func initDb(config configs.RdbConfig) (*sql.DB, *gorm.DB, error) {
 	}
 
 	// verify
-	gormDb, _ := db.OpenGormPostgresWithConn(pq.Db)
+	gormDb, err := db.OpenGormPostgresWithConn(pq.Db)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	return pq.Db, gormDb, nil
 }

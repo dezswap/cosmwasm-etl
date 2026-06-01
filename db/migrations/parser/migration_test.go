@@ -14,7 +14,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 )
 
 const batch_size = 100
@@ -23,7 +22,7 @@ func Test_ParserMigration(t *testing.T) {
 	c := configs.New()
 	faker.MigFakerInit()
 	p_dex.FakerCustomGenerator()
-	dbCon, err := db.OpenGormPostgres(c.Rdb, db.WithGormLogLevel(logger.Error))
+	dbCon, err := db.OpenGormPostgres(c.Rdb)
 	if err != nil {
 		panic(err)
 	}

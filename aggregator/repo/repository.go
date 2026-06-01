@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"gorm.io/gorm/logger"
 
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/pkg/db"
@@ -49,7 +48,7 @@ type repoImpl struct {
 }
 
 func New(chainId string, dbConfig configs.RdbConfig) Repo {
-	gormDB, err := db.OpenGormPostgres(dbConfig, db.WithGormLogLevel(logger.Error))
+	gormDB, err := db.OpenGormPostgres(dbConfig)
 	if err != nil {
 		panic(err)
 	}

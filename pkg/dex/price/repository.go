@@ -7,7 +7,6 @@ import (
 	"github.com/lib/pq"
 	"github.com/pkg/errors"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 )
 
 type SrcRepo interface {
@@ -31,7 +30,7 @@ type srcRepoImpl struct {
 }
 
 func NewRepo(chainId string, dbConfig configs.RdbConfig) SrcRepo {
-	gormDB, err := db.OpenGormPostgres(dbConfig, db.WithGormLogLevel(logger.Error))
+	gormDB, err := db.OpenGormPostgres(dbConfig)
 	if err != nil {
 		panic(err)
 	}

@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
@@ -35,7 +36,12 @@ func (s *baseSuite) SetupSuite() {
 	db, s.Mock, err = sqlmock.New()
 	require.NoError(s.T(), err)
 
-	s.DB, err = rootdb.OpenGormPostgresWithConn(db)
+	s.DB, err = rootdb.OpenGormPostgresWithConn(
+		db,
+		func(_ *gorm.Config, postgresConfig *postgres.Config) {
+			postgresConfig.PreferSimpleProtocol = true
+		},
+	)
 	require.NoError(s.T(), err)
 
 	s.Repo = repoImpl{mapper: &parserMapperImpl{}, db: s.DB, chainId: "local"}

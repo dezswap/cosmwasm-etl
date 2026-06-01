@@ -34,6 +34,7 @@ func Test_RdbConfig_EnvVars(t *testing.T) {
 	t.Setenv("APP_RDB_USERNAME", "user1")
 	t.Setenv("APP_RDB_PASSWORD", "secret")
 	t.Setenv("APP_RDB_SSLMODE", "require")
+	t.Setenv("APP_RDB_GORMLOGLEVEL", "error")
 
 	tmp := t.TempDir()
 	defer withTestBasepath(t, tmp)()
@@ -45,6 +46,7 @@ func Test_RdbConfig_EnvVars(t *testing.T) {
 	require.Equal(t, "user1", cfg.Rdb.Username)
 	require.Equal(t, "secret", cfg.Rdb.Password)
 	require.Equal(t, "require", cfg.Rdb.SslMode)
+	require.Equal(t, "error", cfg.Rdb.GormLogLevel)
 }
 
 func Test_RdbConfig_Defaults(t *testing.T) {
@@ -61,6 +63,7 @@ func Test_RdbConfig_Defaults(t *testing.T) {
 	require.Equal(t, defaultRdbConfig.Username, cfg.Rdb.Username)
 	require.Equal(t, defaultRdbConfig.Password, cfg.Rdb.Password)
 	require.Equal(t, defaultRdbConfig.SslMode, cfg.Rdb.SslMode)
+	require.Equal(t, defaultRdbConfig.GormLogLevel, cfg.Rdb.GormLogLevel)
 }
 
 func Test_RdbConfig_PostgresURL(t *testing.T) {

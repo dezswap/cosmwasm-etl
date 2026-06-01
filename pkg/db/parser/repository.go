@@ -13,7 +13,6 @@ import (
 	"github.com/pkg/errors"
 
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 )
 
 type ReadRepository interface {
@@ -54,7 +53,7 @@ type readRepoImpl struct {
 var _ ReadRepository = &readRepoImpl{}
 
 func NewReadRepo(chainId string, dbConfig configs.RdbConfig) ReadRepository {
-	gormDB, err := db.OpenGormPostgres(dbConfig, db.WithGormLogLevel(logger.Error))
+	gormDB, err := db.OpenGormPostgres(dbConfig)
 	if err != nil {
 		panic(err)
 	}

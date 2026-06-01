@@ -16,7 +16,6 @@ import (
 	"github.com/dezswap/cosmwasm-etl/pkg/terra/fcd"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	glogger "gorm.io/gorm/logger"
 )
 
 var columbus4_pairs = []string{
@@ -55,7 +54,6 @@ func main() {
 		func(gormConfig *gorm.Config, _ *postgres.Config) {
 			gormConfig.NowFunc = func() time.Time { return time.Now().UTC() }
 		},
-		db.WithGormLogLevel(glogger.Warn),
 	)
 	if err != nil {
 		panic(err)
