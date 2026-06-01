@@ -13,7 +13,6 @@ import (
 	"github.com/dezswap/cosmwasm-etl/pkg/db/schemas"
 	"github.com/lib/pq"
 	pkgerrors "github.com/pkg/errors"
-	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -40,12 +39,7 @@ type repository struct {
 var _ Repository = (*repository)(nil)
 
 func New(dbConfig configs.RdbConfig) Repository {
-	pqDB := db.PostgresDb{}
-	if err := pqDB.Init(dbConfig); err != nil {
-		panic(err)
-	}
-
-	gormDB, err := gorm.Open(postgres.New(postgres.Config{Conn: pqDB.Db}), &gorm.Config{})
+	gormDB, err := db.OpenGormPostgres(dbConfig)
 	if err != nil {
 		panic(err)
 	}

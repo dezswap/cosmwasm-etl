@@ -1,19 +1,15 @@
 package repo
 
 import (
-	"log"
-	"os"
 	"time"
 
 	"github.com/pkg/errors"
-	"gorm.io/gorm/logger"
 
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/pkg/db"
 	"github.com/dezswap/cosmwasm-etl/pkg/db/schemas"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 	"github.com/dezswap/cosmwasm-etl/pkg/util"
-	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
@@ -52,27 +48,7 @@ type repoImpl struct {
 }
 
 func New(chainId string, dbConfig configs.RdbConfig) Repo {
-	newLogger := logger.New(
-		log.New(os.Stdout, "\r\n", log.LstdFlags), // io writer
-		logger.Config{
-			SlowThreshold:             time.Second,  // Slow SQL threshold
-			LogLevel:                  logger.Error, // Log level
-			IgnoreRecordNotFoundError: true,         // Ignore ErrRecordNotFound error for logger
-			Colorful:                  false,        // Disable color
-		},
-	)
-
-	pq := db.PostgresDb{}
-	err := pq.Init(dbConfig)
-	if err != nil {
-		panic(err)
-	}
-
-	gormDB, err := gorm.Open(postgres.New(postgres.Config{
-		Conn: pq.Db,
-	}), &gorm.Config{
-		Logger: newLogger,
-	})
+	gormDB, err := db.OpenGormPostgres(dbConfig)
 	if err != nil {
 		panic(err)
 	}

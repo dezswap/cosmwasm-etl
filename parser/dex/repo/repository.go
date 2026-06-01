@@ -9,7 +9,6 @@ import (
 	"github.com/dezswap/cosmwasm-etl/pkg/db/schemas"
 	"github.com/pkg/errors"
 
-	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
@@ -20,16 +19,7 @@ type repoImpl struct {
 }
 
 func New(chainId string, dbConfig configs.RdbConfig) dex.Repo {
-	pq := db.PostgresDb{}
-	err := pq.Init(dbConfig)
-	if err != nil {
-		panic(err)
-	}
-
-	gormDB, err := gorm.Open(postgres.New(postgres.Config{
-		Conn: pq.Db,
-	}), &gorm.Config{})
-
+	gormDB, err := db.OpenGormPostgres(dbConfig)
 	if err != nil {
 		panic(err)
 	}

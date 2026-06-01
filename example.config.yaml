@@ -70,6 +70,8 @@ rdb:
   database:
   username:
   password:
+  # optional: silent, error, warn, info
+  gormLogLevel:
 
 s3:
   bucket:

@@ -13,7 +13,6 @@ import (
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 	"github.com/dezswap/cosmwasm-etl/pkg/util"
 	"github.com/stretchr/testify/assert"
-	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
@@ -304,9 +303,10 @@ func initDb(config configs.RdbConfig) (*sql.DB, *gorm.DB, error) {
 	}
 
 	// verify
-	gormDb, _ := gorm.Open(postgres.New(postgres.Config{
-		Conn: pq.Db,
-	}), &gorm.Config{})
+	gormDb, err := db.OpenGormPostgresWithConn(pq.Db)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	return pq.Db, gormDb, nil
 }

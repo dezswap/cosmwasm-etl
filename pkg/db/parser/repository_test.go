@@ -13,14 +13,13 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/parser/dex"
-	"github.com/dezswap/cosmwasm-etl/pkg/db"
+	pkgdb "github.com/dezswap/cosmwasm-etl/pkg/db"
 	"github.com/dezswap/cosmwasm-etl/pkg/db/schemas"
 	"github.com/dezswap/cosmwasm-etl/pkg/faker"
 	"github.com/dezswap/cosmwasm-etl/pkg/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
-	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
@@ -180,9 +179,7 @@ func (s *baseSuite) SetupSuite() {
 	db, s.Mock, err = sqlmock.New()
 	require.NoError(s.T(), err)
 
-	s.DB, err = gorm.Open(postgres.New(postgres.Config{
-		Conn: db,
-	}), &gorm.Config{})
+	s.DB, err = pkgdb.OpenGormPostgresWithConn(db)
 	require.NoError(s.T(), err)
 
 	s.Repo = readRepoImpl{db: s.DB, chainId: "local"}
@@ -341,13 +338,11 @@ func (s *aggregatorReadRepoSuite) SetupSuite() {
 	s.C = configs.NewWithFileName(configName).Aggregator.SrcDb
 	s.Repo = NewReadRepo(chainName, s.C)
 
-	pq := db.PostgresDb{}
+	pq := pkgdb.PostgresDb{}
 	err := pq.Init(s.C)
 	require.NoError(s.T(), err)
 
-	s.DB, err = gorm.Open(postgres.New(postgres.Config{
-		Conn: pq.Db,
-	}), &gorm.Config{})
+	s.DB, err = pkgdb.OpenGormPostgresWithConn(pq.Db)
 	require.NoError(s.T(), err)
 }
 

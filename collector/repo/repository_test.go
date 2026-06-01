@@ -9,13 +9,13 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/parser/dex"
+	"github.com/dezswap/cosmwasm-etl/pkg/db"
 	"github.com/dezswap/cosmwasm-etl/pkg/db/schemas"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 	"github.com/lib/pq"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 )
 
 func newMockRepo(t *testing.T) (*repository, sqlmock.Sqlmock) {
@@ -23,10 +23,12 @@ func newMockRepo(t *testing.T) (*repository, sqlmock.Sqlmock) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = sqlDB.Close() })
 
-	gormDB, err := gorm.Open(postgres.New(postgres.Config{
-		Conn:                 sqlDB,
-		PreferSimpleProtocol: true,
-	}), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	gormDB, err := db.OpenGormPostgresWithConn(
+		sqlDB,
+		func(_ *gorm.Config, postgresConfig *postgres.Config) {
+			postgresConfig.PreferSimpleProtocol = true
+		},
+	)
 	require.NoError(t, err)
 
 	return NewWithDB(gormDB).(*repository), mock

@@ -4,8 +4,6 @@
 package main
 
 import (
-	"log"
-	"os"
 	"testing"
 
 	"github.com/dezswap/cosmwasm-etl/configs"
@@ -15,9 +13,6 @@ import (
 	"github.com/dezswap/cosmwasm-etl/pkg/faker"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm/logger"
-
 	"gorm.io/gorm"
 )
 
@@ -27,22 +22,7 @@ func Test_ParserMigration(t *testing.T) {
 	c := configs.New()
 	faker.MigFakerInit()
 	p_dex.FakerCustomGenerator()
-	pdb := db.PostgresDb{}
-	if err := pdb.Init(c.Rdb); err != nil {
-		panic(err)
-	}
-	myLogger := logger.New(
-		log.New(os.Stdout, "\r\n", log.LstdFlags), // io writer
-		logger.Config{
-			LogLevel:                  logger.Error, // Log level
-			IgnoreRecordNotFoundError: true,         // Ignore ErrRecordNotFound error for logger
-		},
-	)
-	dbCon, err := gorm.Open(postgres.New(postgres.Config{
-		Conn: pdb.Db,
-	}), &gorm.Config{
-		Logger: myLogger,
-	})
+	dbCon, err := db.OpenGormPostgres(c.Rdb)
 	if err != nil {
 		panic(err)
 	}

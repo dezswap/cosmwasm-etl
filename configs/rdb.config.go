@@ -9,12 +9,13 @@ import (
 
 // db contains configs for other services
 type RdbConfig struct {
-	Host     string `mapstructure:"host"`
-	Port     int    `mapstructure:"port"`
-	Database string `mapstructure:"database"`
-	Username string `mapstructure:"username"`
-	Password string `mapstructure:"password"`
-	SslMode  string `mapstructure:"sslmode"`
+	Host         string `mapstructure:"host"`
+	Port         int    `mapstructure:"port"`
+	Database     string `mapstructure:"database"`
+	Username     string `mapstructure:"username"`
+	Password     string `mapstructure:"password"`
+	SslMode      string `mapstructure:"sslmode"`
+	GormLogLevel string `mapstructure:"gormloglevel"`
 }
 
 var defaultRdbConfig = RdbConfig{
@@ -68,4 +69,5 @@ func SetDefaultRdbConfig(v *viper.Viper) {
 	v.SetDefault("rdb.username", defaultRdbConfig.Username)
 	v.SetDefault("rdb.password", defaultRdbConfig.Password)
 	v.SetDefault("rdb.sslmode", defaultRdbConfig.SslMode)
+	v.SetDefault("rdb.gormloglevel", defaultRdbConfig.GormLogLevel)
 }
