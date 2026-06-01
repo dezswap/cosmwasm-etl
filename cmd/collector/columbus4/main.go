@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"io"
 	"log"
 	"math"
@@ -52,9 +51,8 @@ func main() {
 	cfg := configs.New()
 	fcdCfg := cfg.Collector.FcdConfig
 	dbCon := cfg.Rdb
-	dbDsn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", dbCon.Host, dbCon.Port, dbCon.Username, dbCon.Password, dbCon.Database)
 	writer := io.MultiWriter(os.Stdout)
-	db, err := gorm.Open(postgres.Open(dbDsn), &gorm.Config{
+	db, err := gorm.Open(postgres.Open(dbCon.PostgresURL()), &gorm.Config{
 		NowFunc: func() time.Time {
 			return time.Now().UTC()
 		},

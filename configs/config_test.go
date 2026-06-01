@@ -1,6 +1,7 @@
 package configs
 
 import (
+	"net/url"
 	"testing"
 	"time"
 
@@ -60,6 +61,48 @@ func Test_RdbConfig_Defaults(t *testing.T) {
 	require.Equal(t, defaultRdbConfig.Username, cfg.Rdb.Username)
 	require.Equal(t, defaultRdbConfig.Password, cfg.Rdb.Password)
 	require.Equal(t, defaultRdbConfig.SslMode, cfg.Rdb.SslMode)
+}
+
+func Test_RdbConfig_PostgresURL(t *testing.T) {
+	cfg := RdbConfig{
+		Host:     "db.example.com",
+		Port:     5433,
+		Database: "cosmwasm_etl",
+		Username: "user:name",
+		Password: "p@ss word:/?#%+",
+		SslMode:  "require",
+	}
+
+	got := cfg.PostgresURL()
+	require.Contains(t, got, "p%40ss%20word")
+	require.NotContains(t, got, "p%40ss+word")
+
+	parsed, err := url.Parse(got)
+	require.NoError(t, err)
+	require.Equal(t, "postgres", parsed.Scheme)
+	require.Equal(t, "db.example.com:5433", parsed.Host)
+	require.Equal(t, "/cosmwasm_etl", parsed.Path)
+	require.Equal(t, "user:name", parsed.User.Username())
+	password, ok := parsed.User.Password()
+	require.True(t, ok)
+	require.Equal(t, "p@ss word:/?#%+", password)
+	require.Equal(t, "require", parsed.Query().Get("sslmode"))
+}
+
+func Test_RdbConfig_MigrationURL(t *testing.T) {
+	cfg := RdbConfig{
+		Host:     "localhost",
+		Port:     5432,
+		Database: "cosmwasm_etl",
+		Username: "app",
+		Password: "appPW",
+		SslMode:  "disable",
+	}
+
+	parsed, err := url.Parse(cfg.MigrationURL("collector_migration"))
+	require.NoError(t, err)
+	require.Equal(t, "disable", parsed.Query().Get("sslmode"))
+	require.Equal(t, "collector_migration", parsed.Query().Get("x-migrations-table"))
 }
 
 func Test_S3Config_EnvVars(t *testing.T) {

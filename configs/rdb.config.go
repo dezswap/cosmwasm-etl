@@ -1,6 +1,7 @@
 package configs
 
 import (
+	"net/url"
 	"strconv"
 
 	"github.com/spf13/viper"
@@ -27,6 +28,37 @@ var defaultRdbConfig = RdbConfig{
 
 func (c RdbConfig) Endpoint() string {
 	return c.Host + ":" + strconv.Itoa(c.Port)
+}
+
+func (c RdbConfig) PostgresURL() string {
+	return c.postgresURL(url.Values{})
+}
+
+func (c RdbConfig) MigrationURL(migrationTable string) string {
+	values := url.Values{}
+	values.Set("x-migrations-table", migrationTable)
+
+	return c.postgresURL(values)
+}
+
+func (c RdbConfig) postgresURL(extraQuery url.Values) string {
+	u := url.URL{
+		Scheme: "postgres",
+		User:   url.UserPassword(c.Username, c.Password),
+		Host:   c.Endpoint(),
+		Path:   c.Database,
+	}
+
+	query := u.Query()
+	query.Set("sslmode", c.SslMode)
+	for key, values := range extraQuery {
+		for _, value := range values {
+			query.Add(key, value)
+		}
+	}
+	u.RawQuery = query.Encode()
+
+	return u.String()
 }
 
 func SetDefaultRdbConfig(v *viper.Viper) {
