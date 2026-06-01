@@ -3,10 +3,7 @@ package parser
 import (
 	"database/sql"
 	"fmt"
-	"log"
-	"os"
 	"strings"
-	"time"
 
 	"github.com/dezswap/cosmwasm-etl/pkg/util"
 
@@ -15,7 +12,6 @@ import (
 	"github.com/dezswap/cosmwasm-etl/pkg/db/schemas"
 	"github.com/pkg/errors"
 
-	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -58,27 +54,7 @@ type readRepoImpl struct {
 var _ ReadRepository = &readRepoImpl{}
 
 func NewReadRepo(chainId string, dbConfig configs.RdbConfig) ReadRepository {
-	newLogger := logger.New(
-		log.New(os.Stdout, "\r\n", log.LstdFlags), // io writer
-		logger.Config{
-			SlowThreshold:             time.Second,  // Slow SQL threshold
-			LogLevel:                  logger.Error, // Log level
-			IgnoreRecordNotFoundError: true,         // Ignore ErrRecordNotFound error for logger
-			Colorful:                  false,        // Disable color
-		},
-	)
-
-	pq := db.PostgresDb{}
-	err := pq.Init(dbConfig)
-	if err != nil {
-		panic(err)
-	}
-
-	gormDB, err := gorm.Open(postgres.New(postgres.Config{
-		Conn: pq.Db,
-	}), &gorm.Config{
-		Logger: newLogger,
-	})
+	gormDB, err := db.OpenGormPostgres(dbConfig, db.WithGormLogLevel(logger.Error))
 	if err != nil {
 		panic(err)
 	}

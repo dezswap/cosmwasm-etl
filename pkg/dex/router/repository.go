@@ -1,16 +1,11 @@
 package router
 
 import (
-	"log"
-	"os"
-	"time"
-
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/pkg/db"
 	"github.com/dezswap/cosmwasm-etl/pkg/db/schemas"
 	"github.com/lib/pq"
 	"github.com/pkg/errors"
-	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"gorm.io/gorm/logger"
@@ -29,27 +24,7 @@ type srcRepoImpl struct {
 }
 
 func NewSrcRepo(chainId string, dbConfig configs.RdbConfig) SrcRepo {
-	newLogger := logger.New(
-		log.New(os.Stdout, "\r\n", log.LstdFlags), // io writer
-		logger.Config{
-			SlowThreshold:             time.Second,  // Slow SQL threshold
-			LogLevel:                  logger.Error, // Log level
-			IgnoreRecordNotFoundError: true,         // Ignore ErrRecordNotFound error for logger
-			Colorful:                  false,        // Disable color
-		},
-	)
-
-	pq := db.PostgresDb{}
-	err := pq.Init(dbConfig)
-	if err != nil {
-		panic(err)
-	}
-
-	gormDB, err := gorm.Open(postgres.New(postgres.Config{
-		Conn: pq.Db,
-	}), &gorm.Config{
-		Logger: newLogger,
-	})
+	gormDB, err := db.OpenGormPostgres(dbConfig, db.WithGormLogLevel(logger.Error))
 	if err != nil {
 		panic(err)
 	}

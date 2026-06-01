@@ -9,11 +9,11 @@ import (
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/parser/dex"
+	rootdb "github.com/dezswap/cosmwasm-etl/pkg/db"
 	"github.com/dezswap/cosmwasm-etl/pkg/faker"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
-	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
@@ -35,9 +35,7 @@ func (s *baseSuite) SetupSuite() {
 	db, s.Mock, err = sqlmock.New()
 	require.NoError(s.T(), err)
 
-	s.DB, err = gorm.Open(postgres.New(postgres.Config{
-		Conn: db,
-	}), &gorm.Config{})
+	s.DB, err = rootdb.OpenGormPostgresWithConn(db)
 	require.NoError(s.T(), err)
 
 	s.Repo = repoImpl{mapper: &parserMapperImpl{}, db: s.DB, chainId: "local"}

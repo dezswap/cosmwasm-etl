@@ -1,8 +1,6 @@
 package main
 
 import (
-	"io"
-	"log"
 	"math"
 	"net/http"
 	"os"
@@ -12,6 +10,7 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	fcd_collector "github.com/dezswap/cosmwasm-etl/collector/terra/fcd"
 	"github.com/dezswap/cosmwasm-etl/configs"
+	"github.com/dezswap/cosmwasm-etl/pkg/db"
 	"github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 	"github.com/dezswap/cosmwasm-etl/pkg/terra/fcd"
@@ -51,21 +50,13 @@ func main() {
 	cfg := configs.New()
 	fcdCfg := cfg.Collector.FcdConfig
 	dbCon := cfg.Rdb
-	writer := io.MultiWriter(os.Stdout)
-	db, err := gorm.Open(postgres.Open(dbCon.PostgresURL()), &gorm.Config{
-		NowFunc: func() time.Time {
-			return time.Now().UTC()
+	db, err := db.OpenGormPostgres(
+		dbCon,
+		func(gormConfig *gorm.Config, _ *postgres.Config) {
+			gormConfig.NowFunc = func() time.Time { return time.Now().UTC() }
 		},
-		Logger: glogger.New(
-			log.New(writer, "\r\n", log.LstdFlags),
-			glogger.Config{
-				IgnoreRecordNotFoundError: true,
-				SlowThreshold:             time.Second,
-				Colorful:                  false,
-				LogLevel:                  glogger.Warn,
-			},
-		),
-	})
+		db.WithGormLogLevel(glogger.Warn),
+	)
 	if err != nil {
 		panic(err)
 	}
