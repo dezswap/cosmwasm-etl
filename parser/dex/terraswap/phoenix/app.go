@@ -56,7 +56,7 @@ func (p *terraswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx,
 	txDtos := []dex.ParsedTx{}
 	createPairTxs, err := p.Parsers.CreatePairParser.Parse(tx.LogResults, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp}, nil)
 	if err != nil {
-		return nil, errors.Wrap(err, "phoenix.terraswapApp.ParseTxs")
+		return nil, errors.Wrapf(err, "phoenix.ParseTxs create_pair tx_hash=%s", tx.Hash)
 	}
 	for _, ctx := range createPairTxs {
 		p.pairs[ctx.ContractAddr] = dex.Pair{
@@ -79,21 +79,21 @@ func (p *terraswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx,
 		}
 		ptxs, err := p.Parsers.PairActionParser.Parse(eventlog.LogResults{raw}, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
 		if err != nil {
-			return nil, errors.Wrap(err, "phoenix.terraswapApp.ParseTxs")
+			return nil, errors.Wrapf(err, "phoenix.ParseTxs pair_action tx_hash=%s", tx.Hash)
 		}
 		pairTxs = append(pairTxs, ptxs...)
 		// find initial provide to a pair
 		if p.HasProvide(ptxs) {
 			ipTxs, err := p.Parsers.InitialProvide.Parse(eventlog.LogResults{raw}, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
 			if err != nil {
-				return nil, errors.Wrap(err, "parseTxs")
+				return nil, errors.Wrapf(err, "phoenix.ParseTxs initial_provide tx_hash=%s", tx.Hash)
 			}
 			pairTxs = append(pairTxs, ipTxs...)
 		}
 
 		wtxs, err := p.Parsers.WasmTransfer.Parse(eventlog.LogResults{raw}, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
 		if err != nil {
-			return nil, errors.Wrap(err, "phoenix.terraswapApp.ParseTxs")
+			return nil, errors.Wrapf(err, "phoenix.ParseTxs wasm_transfer tx_hash=%s", tx.Hash)
 		}
 		wasmTxs = append(wasmTxs, wtxs...)
 
@@ -105,19 +105,19 @@ func (p *terraswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx,
 			}
 			attrs, err := eventlog.SortAttributes(raw.Attributes, filter)
 			if err != nil {
-				return nil, errors.Wrap(err, "phoenix.terraswapApp.ParseTxs")
+				return nil, errors.Wrapf(err, "phoenix.ParseTxs sort_transfer_attrs tx_hash=%s", tx.Hash)
 			}
 			raw.Attributes = *attrs
 		}
 		transfers, err := p.Parsers.Transfer.Parse(eventlog.LogResults{raw}, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
 		if err != nil {
-			return nil, errors.Wrap(err, "phoenix.terraswapApp.ParseTxs")
+			return nil, errors.Wrapf(err, "phoenix.ParseTxs transfer tx_hash=%s", tx.Hash)
 		}
 		transferTxs = append(transferTxs, transfers...)
 
 		burns, err := p.Parsers.BurnParser.Parse(eventlog.LogResults{raw}, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
 		if err != nil {
-			return nil, errors.Wrap(err, "phoenix.terraswapApp.ParseTxs")
+			return nil, errors.Wrapf(err, "phoenix.ParseTxs burn tx_hash=%s", tx.Hash)
 		}
 		burnTxs = append(burnTxs, burns...)
 	}

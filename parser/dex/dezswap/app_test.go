@@ -2,6 +2,7 @@ package dezswap
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -106,6 +107,30 @@ func Test_ParseTxs(t *testing.T) {
 		assert.NoError(err, msg)
 		assert.Equal(tc.expected, txs, msg)
 	}
+}
+
+func Test_ParseTxs_ReturnsStageAndTxHashOnError(t *testing.T) {
+	createPairParser := dex.ParserMock{}
+	repo := dex.RepoMock{}
+
+	app := dezswapApp{
+		PairRepo:    &repo,
+		Parsers:     &dex.PairParsers{CreatePairParser: &createPairParser},
+		DexMixin:    dex.DexMixin{},
+		chainId:     chainId,
+		pairs:       map[string]dex.Pair{pairAddr: testPair},
+		lpPairAddrs: map[string]string{lpAddr: pairAddr},
+	}
+	tx := parser.RawTx{Sender: txSender, Hash: txHash}
+
+	createPairParser.On("parse", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return([]*dex.ParsedTx{}, errors.New("parser failed"))
+
+	_, err := app.ParseTxs(tx, 100)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "dezswap.ParseTxs create_pair")
+	assert.Contains(t, err.Error(), "tx_hash="+txHash)
 }
 
 func Test_IsValidationExceptionCandidate(t *testing.T) {
