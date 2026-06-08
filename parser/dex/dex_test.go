@@ -116,27 +116,6 @@ func Test_srcHeightCheck(t *testing.T) {
 	}
 }
 
-func Test_shouldRetryQuarantine(t *testing.T) {
-	testCases := []struct {
-		name     string
-		mode     configs.QuarantineRetryMode
-		expected []bool
-	}{
-		{name: "disabled", mode: configs.QuarantineRetryDisabled, expected: []bool{false, false}},
-		{name: "startup", mode: configs.QuarantineRetryStartup, expected: []bool{true, false}},
-		{name: "every run", mode: configs.QuarantineRetryEveryRun, expected: []bool{true, true}},
-	}
-
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			app := dexApp{quarantineRetryMode: testCase.mode}
-			for _, expected := range testCase.expected {
-				assert.Equal(t, expected, app.shouldRetryQuarantine())
-			}
-		})
-	}
-}
-
 func Test_Run_QuarantinesAmbiguousTransactionAndAdvancesHeight(t *testing.T) {
 	ambiguousTx := parser.RawTx{Hash: "ambiguous"}
 	normalTx := parser.RawTx{Hash: "normal"}

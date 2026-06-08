@@ -84,6 +84,9 @@ func (app *dexApp) Run() error {
 		if err := app.retryPendingQuarantines(tokenExceptions); err != nil {
 			return fmt.Errorf("app.Run retry quarantine: %w", err)
 		}
+		if app.quarantineRetryMode == configs.QuarantineRetryStartup {
+			app.startupRetryAttempted = true
+		}
 	}
 
 	localSynced, err := app.GetSyncedHeight()
@@ -179,11 +182,7 @@ func (app *dexApp) shouldRetryQuarantine() bool {
 	case configs.QuarantineRetryEveryRun:
 		return true
 	case configs.QuarantineRetryStartup:
-		if app.startupRetryAttempted {
-			return false
-		}
-		app.startupRetryAttempted = true
-		return true
+		return !app.startupRetryAttempted
 	default:
 		return false
 	}
