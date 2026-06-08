@@ -21,6 +21,7 @@ var defaultConfig = Config{
 	Collector: defaultCollectorConfig(),
 	Parser: ParserConfig{
 		DexConfig: ParserDexConfig{
+			QuarantineRetryMode: QuarantineRetryDisabled,
 			NodeConfig: NodeConfig{
 				HttpClientConfig: defaultHttpClientConfig,
 			},
