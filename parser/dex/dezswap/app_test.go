@@ -2,6 +2,7 @@ package dezswap
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -105,6 +106,232 @@ func Test_ParseTxs(t *testing.T) {
 		txs, err := app.ParseTxs(tx, height)
 		assert.NoError(err, msg)
 		assert.Equal(tc.expected, txs, msg)
+	}
+}
+
+func Test_ParseTxs_CreatePairUpdatesPairState(t *testing.T) {
+	createPairParser := dex.ParserMock{}
+	repo := dex.RepoMock{}
+	newPairAddr := "new_pair"
+	newLpAddr := "new_lp"
+	newAssets := [2]dex.Asset{{Addr: "new_asset_0"}, {Addr: "new_asset_1"}}
+	createPairTx := &dex.ParsedTx{
+		Hash:         txHash,
+		Type:         dex.CreatePair,
+		ContractAddr: newPairAddr,
+		LpAddr:       newLpAddr,
+		Assets:       newAssets,
+	}
+	createPairParser.On("parse", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return([]*dex.ParsedTx{createPairTx}, nil)
+
+	app := dezswapApp{
+		PairRepo:    &repo,
+		Parsers:     &dex.PairParsers{CreatePairParser: &createPairParser},
+		DexMixin:    dex.DexMixin{},
+		chainId:     chainId,
+		pairs:       map[string]dex.Pair{},
+		lpPairAddrs: map[string]string{},
+	}
+	tx := parser.RawTx{Sender: txSender, Hash: txHash}
+
+	txs, err := app.ParseTxs(tx, 100)
+
+	assert.NoError(t, err)
+	assert.Equal(t, []dex.ParsedTx{{
+		Hash:         txHash,
+		Type:         dex.CreatePair,
+		Sender:       txSender,
+		ContractAddr: newPairAddr,
+		LpAddr:       newLpAddr,
+		Assets:       newAssets,
+	}}, txs)
+	assert.Equal(t, dex.Pair{
+		ContractAddr: newPairAddr,
+		LpAddr:       newLpAddr,
+		Assets:       []string{newAssets[0].Addr, newAssets[1].Addr},
+	}, app.pairs[newPairAddr])
+	assert.Equal(t, newPairAddr, app.lpPairAddrs[newLpAddr])
+}
+
+func Test_ParseTxs_AppendsInitialProvideWhenPairActionHasProvide(t *testing.T) {
+	emptyParser := func() *dex.ParserMock {
+		p := dex.ParserMock{}
+		p.On("parse", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return([]*dex.ParsedTx{}, nil)
+		return &p
+	}
+	pairActionParser := dex.ParserMock{}
+	pairActionTx := &dex.ParsedTx{
+		Hash:         txHash,
+		Type:         dex.Provide,
+		ContractAddr: pairAddr,
+		Assets:       [2]dex.Asset{{Addr: asset1, Amount: "10"}, {Addr: asset2, Amount: "20"}},
+	}
+	pairActionParser.On("parse", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return([]*dex.ParsedTx{pairActionTx}, nil)
+	initialProvideParser := dex.ParserMock{}
+	initialProvideTx := &dex.ParsedTx{
+		Hash:         txHash,
+		Type:         dex.InitialProvide,
+		ContractAddr: pairAddr,
+		LpAddr:       lpAddr,
+		LpAmount:     "30",
+	}
+	initialProvideParser.On("parse", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return([]*dex.ParsedTx{initialProvideTx}, nil)
+	repo := dex.RepoMock{}
+	app := dezswapApp{
+		PairRepo: &repo,
+		Parsers: &dex.PairParsers{
+			CreatePairParser: emptyParser(),
+			PairActionParser: &pairActionParser,
+			InitialProvide:   &initialProvideParser,
+			WasmTransfer:     emptyParser(),
+			Transfer:         emptyParser(),
+			BurnParser:       emptyParser(),
+		},
+		DexMixin:    dex.DexMixin{},
+		chainId:     chainId,
+		pairs:       map[string]dex.Pair{pairAddr: testPair},
+		lpPairAddrs: map[string]string{lpAddr: pairAddr},
+	}
+	tx := parser.RawTx{
+		Sender:     txSender,
+		Hash:       txHash,
+		LogResults: eventlog.LogResults{{Type: eventlog.WasmType}},
+	}
+
+	txs, err := app.ParseTxs(tx, 100)
+
+	assert.NoError(t, err)
+	assert.Equal(t, []dex.ParsedTx{
+		{
+			Hash:         txHash,
+			Type:         dex.Provide,
+			Sender:       txSender,
+			ContractAddr: pairAddr,
+			Assets:       [2]dex.Asset{{Addr: asset1, Amount: "10"}, {Addr: asset2, Amount: "20"}},
+		},
+		{
+			Hash:         txHash,
+			Type:         dex.InitialProvide,
+			Sender:       txSender,
+			ContractAddr: pairAddr,
+			LpAddr:       lpAddr,
+			LpAmount:     "30",
+		},
+	}, txs)
+}
+
+func Test_ParseTxs_ReturnsStageAndTxHashOnError(t *testing.T) {
+	type testcase struct {
+		stage       string
+		setup       func(*dex.PairParsers)
+		logResults  eventlog.LogResults
+		expectedMsg string
+	}
+
+	errParser := func() *dex.ParserMock {
+		p := dex.ParserMock{}
+		p.On("parse", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return([]*dex.ParsedTx{}, errors.New("parser failed"))
+		return &p
+	}
+	emptyParser := func() *dex.ParserMock {
+		p := dex.ParserMock{}
+		p.On("parse", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return([]*dex.ParsedTx{}, nil)
+		return &p
+	}
+	provideParser := func() *dex.ParserMock {
+		p := dex.ParserMock{}
+		p.On("parse", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return([]*dex.ParsedTx{{Type: dex.Provide}}, nil)
+		return &p
+	}
+
+	logResults := eventlog.LogResults{{Type: eventlog.WasmType}}
+	tcs := []testcase{
+		{
+			stage:      "create_pair",
+			logResults: eventlog.LogResults{},
+			setup: func(parsers *dex.PairParsers) {
+				parsers.CreatePairParser = errParser()
+			},
+			expectedMsg: "dezswap.ParseTxs create_pair",
+		},
+		{
+			stage:      "pair_action",
+			logResults: logResults,
+			setup: func(parsers *dex.PairParsers) {
+				parsers.PairActionParser = errParser()
+			},
+			expectedMsg: "dezswap.ParseTxs pair_action",
+		},
+		{
+			stage:      "initial_provide",
+			logResults: logResults,
+			setup: func(parsers *dex.PairParsers) {
+				parsers.PairActionParser = provideParser()
+				parsers.InitialProvide = errParser()
+			},
+			expectedMsg: "dezswap.ParseTxs initial_provide",
+		},
+		{
+			stage:      "wasm_transfer",
+			logResults: logResults,
+			setup: func(parsers *dex.PairParsers) {
+				parsers.WasmTransfer = errParser()
+			},
+			expectedMsg: "dezswap.ParseTxs wasm_transfer",
+		},
+		{
+			stage:      "transfer",
+			logResults: logResults,
+			setup: func(parsers *dex.PairParsers) {
+				parsers.Transfer = errParser()
+			},
+			expectedMsg: "dezswap.ParseTxs transfer",
+		},
+		{
+			stage:      "burn",
+			logResults: logResults,
+			setup: func(parsers *dex.PairParsers) {
+				parsers.BurnParser = errParser()
+			},
+			expectedMsg: "dezswap.ParseTxs burn",
+		},
+	}
+
+	for _, tc := range tcs {
+		t.Run(tc.stage, func(t *testing.T) {
+			repo := dex.RepoMock{}
+			parsers := &dex.PairParsers{
+				CreatePairParser: emptyParser(),
+				PairActionParser: emptyParser(),
+				InitialProvide:   emptyParser(),
+				WasmTransfer:     emptyParser(),
+				Transfer:         emptyParser(),
+				BurnParser:       emptyParser(),
+			}
+			tc.setup(parsers)
+			app := dezswapApp{
+				PairRepo:    &repo,
+				Parsers:     parsers,
+				DexMixin:    dex.DexMixin{},
+				chainId:     chainId,
+				pairs:       map[string]dex.Pair{pairAddr: testPair},
+				lpPairAddrs: map[string]string{lpAddr: pairAddr},
+			}
+			tx := parser.RawTx{Sender: txSender, Hash: txHash, LogResults: tc.logResults}
+
+			_, err := app.ParseTxs(tx, 100)
+
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), tc.expectedMsg)
+			assert.Contains(t, err.Error(), "tx_hash="+txHash)
+		})
 	}
 }
 

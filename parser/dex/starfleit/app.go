@@ -55,7 +55,7 @@ func (p *starfleitApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx,
 	txDtos := []dex.ParsedTx{}
 	createPairTxs, err := p.Parsers.CreatePairParser.Parse(tx.LogResults, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp}, nil)
 	if err != nil {
-		return nil, errors.Wrap(err, "starfleit.starfleitApp.ParseTxs")
+		return nil, errors.Wrapf(err, "starfleit.ParseTxs create_pair tx_hash=%s", tx.Hash)
 	}
 	for _, ctx := range createPairTxs {
 		p.pairs[ctx.ContractAddr] = dex.Pair{
@@ -75,7 +75,7 @@ func (p *starfleitApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx,
 	for _, raw := range tx.LogResults {
 		ptxs, err := p.Parsers.PairActionParser.Parse(eventlog.LogResults{raw}, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
 		if err != nil {
-			return nil, errors.Wrap(err, "starfleit.starfleitApp.ParseTxs")
+			return nil, errors.Wrapf(err, "starfleit.ParseTxs pair_action tx_hash=%s", tx.Hash)
 		}
 		pairTxs = append(pairTxs, ptxs...)
 
@@ -83,7 +83,7 @@ func (p *starfleitApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx,
 		if p.HasProvide(ptxs) {
 			ipTxs, err := p.Parsers.InitialProvide.Parse(eventlog.LogResults{raw}, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
 			if err != nil {
-				return nil, errors.Wrap(err, "starfleit.starfleitApp.ParseTxs")
+				return nil, errors.Wrapf(err, "starfleit.ParseTxs initial_provide tx_hash=%s", tx.Hash)
 			}
 			pairTxs = append(pairTxs, ipTxs...)
 		}
@@ -91,19 +91,19 @@ func (p *starfleitApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx,
 		// find transfer from user
 		wtxs, err := p.Parsers.WasmTransfer.Parse(eventlog.LogResults{raw}, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
 		if err != nil {
-			return nil, errors.Wrap(err, "starfleit.starfleitApp.ParseTxs")
+			return nil, errors.Wrapf(err, "starfleit.ParseTxs wasm_transfer tx_hash=%s", tx.Hash)
 		}
 		wasmTxs = append(wasmTxs, wtxs...)
 
 		transfers, err := p.Parsers.Transfer.Parse(eventlog.LogResults{raw}, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
 		if err != nil {
-			return nil, errors.Wrap(err, "starfleit.starfleitApp.ParseTxs")
+			return nil, errors.Wrapf(err, "starfleit.ParseTxs transfer tx_hash=%s", tx.Hash)
 		}
 		transferTxs = append(transferTxs, transfers...)
 
 		burns, err := p.Parsers.BurnParser.Parse(eventlog.LogResults{raw}, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
 		if err != nil {
-			return nil, errors.Wrap(err, "starfleit.starfleitApp.ParseTxs")
+			return nil, errors.Wrapf(err, "starfleit.ParseTxs burn tx_hash=%s", tx.Hash)
 		}
 		burnTxs = append(burnTxs, burns...)
 	}

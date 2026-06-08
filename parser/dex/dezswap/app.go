@@ -56,7 +56,7 @@ func (p *dezswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx, e
 	txDtos := []dex.ParsedTx{}
 	createPairTxs, err := p.Parsers.CreatePairParser.Parse(tx.LogResults, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp}, nil)
 	if err != nil {
-		return nil, errors.Wrap(err, "parseTxs")
+		return nil, errors.Wrapf(err, "dezswap.ParseTxs create_pair tx_hash=%s", tx.Hash)
 	}
 	for _, ctx := range createPairTxs {
 		p.pairs[ctx.ContractAddr] = dex.Pair{
@@ -76,7 +76,7 @@ func (p *dezswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx, e
 	for _, raw := range tx.LogResults {
 		ptxs, err := p.Parsers.PairActionParser.Parse(eventlog.LogResults{raw}, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
 		if err != nil {
-			return nil, errors.Wrap(err, "parseTxs")
+			return nil, errors.Wrapf(err, "dezswap.ParseTxs pair_action tx_hash=%s", tx.Hash)
 		}
 		pairTxs = append(pairTxs, ptxs...)
 
@@ -84,26 +84,26 @@ func (p *dezswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx, e
 		if p.HasProvide(ptxs) {
 			ipTxs, err := p.Parsers.InitialProvide.Parse(eventlog.LogResults{raw}, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
 			if err != nil {
-				return nil, errors.Wrap(err, "parseTxs")
+				return nil, errors.Wrapf(err, "dezswap.ParseTxs initial_provide tx_hash=%s", tx.Hash)
 			}
 			pairTxs = append(pairTxs, ipTxs...)
 		}
 
 		wtxs, err := p.Parsers.WasmTransfer.Parse(eventlog.LogResults{raw}, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
 		if err != nil {
-			return nil, errors.Wrap(err, "parseTxs")
+			return nil, errors.Wrapf(err, "dezswap.ParseTxs wasm_transfer tx_hash=%s", tx.Hash)
 		}
 		wasmTransferTxs = append(wasmTransferTxs, wtxs...)
 
 		transfers, err := p.Parsers.Transfer.Parse(eventlog.LogResults{raw}, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
 		if err != nil {
-			return nil, errors.Wrap(err, "parseTxs")
+			return nil, errors.Wrapf(err, "dezswap.ParseTxs transfer tx_hash=%s", tx.Hash)
 		}
 		transferTxs = append(transferTxs, transfers...)
 
 		burns, err := p.Parsers.BurnParser.Parse(eventlog.LogResults{raw}, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
 		if err != nil {
-			return nil, errors.Wrap(err, "parseTxs")
+			return nil, errors.Wrapf(err, "dezswap.ParseTxs burn tx_hash=%s", tx.Hash)
 		}
 		burnTxs = append(burnTxs, burns...)
 	}

@@ -51,7 +51,7 @@ func (p *terraswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]p_dex.ParsedT
 	txDtos := []p_dex.ParsedTx{}
 	createPairTxs, err := p.Parsers.CreatePairParser.Parse(tx.LogResults, p_dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp}, nil)
 	if err != nil {
-		return nil, errors.Wrap(err, "parseTxs")
+		return nil, errors.Wrapf(err, "columbusv1.ParseTxs create_pair tx_hash=%s", tx.Hash)
 	}
 	for _, ctx := range createPairTxs {
 		p.pairs[ctx.ContractAddr] = p_dex.Pair{
@@ -72,19 +72,19 @@ func (p *terraswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]p_dex.ParsedT
 		}
 		ptxs, err := p.Parsers.PairActionParser.Parse(eventlog.LogResults{raw}, p_dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
 		if err != nil {
-			return nil, errors.Wrap(err, "parseTxs")
+			return nil, errors.Wrapf(err, "columbusv1.ParseTxs pair_action tx_hash=%s", tx.Hash)
 		}
 		pairTxs = append(pairTxs, ptxs...)
 
 		wtxs, err := p.Parsers.WasmTransfer.Parse(eventlog.LogResults{raw}, p_dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
 		if err != nil {
-			return nil, errors.Wrap(err, "parseTxs")
+			return nil, errors.Wrapf(err, "columbusv1.ParseTxs wasm_transfer tx_hash=%s", tx.Hash)
 		}
 		wasmTxs = append(wasmTxs, wtxs...)
 
 		transfers, err := p.Parsers.Transfer.Parse(eventlog.LogResults{raw}, p_dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
 		if err != nil {
-			return nil, errors.Wrap(err, "parseTxs")
+			return nil, errors.Wrapf(err, "columbusv1.ParseTxs transfer tx_hash=%s", tx.Hash)
 		}
 		transferTxs = append(transferTxs, transfers...)
 	}
