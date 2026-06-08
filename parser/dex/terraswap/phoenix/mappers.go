@@ -42,7 +42,15 @@ func (m *pairMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...
 }
 
 func (m *pairMapper) swapMatchedToParsedTx(res eventlog.MatchedResult, pair dex.Pair) ([]*dex.ParsedTx, error) {
-	matchMap, err := eventlog.ResultToItemMap(res)
+	matchMap, err := eventlog.ResultToItemMapForKeys(
+		res,
+		phoenix.PairAddrKey,
+		pdex.PairSwapOfferAssetKey,
+		pdex.PairSwapOfferAmountKey,
+		pdex.PairSwapReturnAmountKey,
+		pdex.PairSwapSenderKey,
+		pdex.PairSwapCommissionAmountKey,
+	)
 	if err != nil {
 		return nil, errors.Wrap(err, "pairMapper.swapMatchedToParsedTx")
 	}
@@ -73,7 +81,14 @@ func (m *pairMapper) swapMatchedToParsedTx(res eventlog.MatchedResult, pair dex.
 }
 
 func (m *pairMapper) provideMatchedToParsedTx(res eventlog.MatchedResult, pair dex.Pair) ([]*dex.ParsedTx, error) {
-	matchMap, err := eventlog.ResultToItemMap(res)
+	matchMap, err := eventlog.ResultToItemMapForKeys(
+		res,
+		phoenix.PairAddrKey,
+		phoenix.PairProvideAssetsKey,
+		phoenix.PairProvideSenderKey,
+		phoenix.PairProvideShareKey,
+		phoenix.PairProvideRefundAssetKey,
+	)
 	if err != nil {
 		return nil, errors.Wrap(err, "pairMapper.provideMatchedToParsedTx")
 	}
@@ -115,7 +130,13 @@ func (m *pairMapper) provideMatchedToParsedTx(res eventlog.MatchedResult, pair d
 }
 
 func (m *pairMapper) withdrawMatchedToParsedTx(res eventlog.MatchedResult, pair dex.Pair) ([]*dex.ParsedTx, error) {
-	matchMap, err := eventlog.ResultToItemMap(res)
+	matchMap, err := eventlog.ResultToItemMapForKeys(
+		res,
+		phoenix.PairAddrKey,
+		phoenix.PairWithdrawRefundAssetsKey,
+		phoenix.PairWithdrawSenderKey,
+		phoenix.PairWithdrawWithdrawShareKey,
+	)
 	if err != nil {
 		return nil, errors.Wrap(err, "pairMapper.withdrawMatchedToParsedTx")
 	}

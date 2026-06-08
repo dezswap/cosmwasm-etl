@@ -69,7 +69,13 @@ func (m *wasmCommonTransferMapper) MatchedToParsedTx(res eventlog.MatchedResult,
 		return nil, nil
 	}
 
-	matchMap, err := eventlog.ResultToItemMap(res)
+	matchMap, err := eventlog.ResultToItemMapForKeys(
+		res,
+		m.cw20AddrKey,
+		pdex.WasmTransferFromKey,
+		pdex.WasmTransferToKey,
+		pdex.WasmTransferAmountKey,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("transferMapper.MatchedToParsedTx: %w (cw20=%s)", err, cw20Addr)
 	}
@@ -148,7 +154,12 @@ func NewTransferMapper(pairSet map[string]Pair) parser.Mapper[ParsedTx] {
 
 // match implements mapper
 func (m *transferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) ([]*ParsedTx, error) {
-	matchMap, err := eventlog.ResultToItemMap(res)
+	matchMap, err := eventlog.ResultToItemMapForKeys(
+		res,
+		pdex.TransferSenderKey,
+		pdex.TransferRecipientKey,
+		pdex.TransferAmountKey,
+	)
 	if err != nil {
 		return nil, errors.Wrap(err, "transferMapper.MatchedToParsedTx")
 	}
@@ -228,7 +239,12 @@ func (m *initialProvideMapper) MatchedToParsedTx(res eventlog.MatchedResult, opt
 	if err := m.CheckResult(res, pdex.PairInitialProvideMatchedLen); err != nil {
 		return nil, errors.Wrap(err, "initialProvideMapper.MatchedToParsedTx")
 	}
-	matchMap, err := eventlog.ResultToItemMap(res)
+	matchMap, err := eventlog.ResultToItemMapForKeys(
+		res,
+		pdex.PairInitialProvideToKey,
+		pdex.PairInitialProvideAddrKey,
+		pdex.PairInitialProvideAmountKey,
+	)
 	if err != nil {
 		return nil, errors.Wrap(err, "transferMapper.MatchedToParsedTx")
 	}
@@ -252,7 +268,7 @@ func (m *taxPaymentMapper) MatchedToParsedTx(res eventlog.MatchedResult, optiona
 	if err := m.CheckResult(res, pdex.PairTaxPaymentTaxMatchedLen); err != nil {
 		return nil, errors.Wrap(err, "taxPaymentMapper.MatchedToParsedTx")
 	}
-	matchMap, err := eventlog.ResultToItemMap(res)
+	matchMap, err := eventlog.ResultToItemMapForKeys(res, pdex.PairTaxPaymentTaxAmountKey)
 	if err != nil {
 		return nil, errors.Wrap(err, "taxPaymentMapper.MatchedToParsedTx")
 	}
@@ -278,7 +294,12 @@ func (m *burnMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...
 	if err := m.CheckResult(res, pdex.BurnMatchedLen); err != nil {
 		return nil, errors.Wrap(err, "burnMapper.MatchedToParsedTx")
 	}
-	matchMap, err := eventlog.ResultToItemMap(res)
+	matchMap, err := eventlog.ResultToItemMapForKeys(
+		res,
+		pdex.BurnAmountKey,
+		pdex.BurnFromKey,
+		pdex.BurnAddrKey,
+	)
 	if err != nil {
 		return nil, errors.Wrap(err, "burnMapper.MatchedToParsedTx")
 	}

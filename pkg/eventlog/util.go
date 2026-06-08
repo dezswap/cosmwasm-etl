@@ -3,6 +3,7 @@ package eventlog
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/pkg/errors"
 )
@@ -37,13 +38,71 @@ func SortAttributes(attrs Attributes, filter []string) (*Attributes, error) {
 	return &filtered, nil
 }
 
-func ResultToItemMap(res MatchedResult) (map[string]MatchedItem, error) {
-	m := make(map[string]MatchedItem)
-	for _, r := range res {
-		if _, ok := m[r.Key]; ok {
-			return nil, errors.New(fmt.Sprintf("duplicated key(%s)", r.Key))
-		}
-		m[r.Key] = r
+type AmbiguousEventError struct {
+	Contract string
+	Action   string
+	Key      string
+	Values   []string
+	MsgIndex int
+}
+
+func (e *AmbiguousEventError) Error() string {
+	return fmt.Sprintf(
+		"ambiguous event key(%s) contract(%s) action(%s) values(%s) msg_index(%d)",
+		e.Key, e.Contract, e.Action, strings.Join(e.Values, ","), e.MsgIndex,
+	)
+}
+
+// ResultToItemMapForKeys returns a single-value map for the event attributes a mapper actually reads.
+//
+// consumedKeys must contain only keys whose values are consumed by the caller. Duplicate attributes
+// outside this list are ignored because Cosmos events permit repeated keys. Duplicate values for a
+// consumed key are returned as AmbiguousEventError; selecting first or last is contract-specific and
+// must be implemented in the protocol mapper, not here.
+func ResultToItemMapForKeys(res MatchedResult, consumedKeys ...string) (map[string]MatchedItem, error) {
+	targets := make(map[string]struct{}, len(consumedKeys))
+	for _, key := range consumedKeys {
+		targets[key] = struct{}{}
 	}
-	return m, nil
+
+	items := make(map[string][]MatchedItem, len(consumedKeys))
+	for _, item := range res {
+		if _, ok := targets[item.Key]; !ok {
+			continue
+		}
+		items[item.Key] = append(items[item.Key], item)
+	}
+
+	result := make(map[string]MatchedItem, len(consumedKeys))
+	for _, key := range consumedKeys {
+		matches := items[key]
+		if len(matches) > 1 {
+			values := make([]string, 0, len(matches))
+			for _, item := range matches {
+				values = append(values, item.Value)
+			}
+			return nil, &AmbiguousEventError{
+				Contract: firstResultValue(res, "_contract_address", "contract_address"),
+				Action:   firstResultValue(res, "action"),
+				Key:      key,
+				Values:   values,
+				MsgIndex: matches[0].MsgIndex,
+			}
+		}
+		if len(matches) == 1 {
+			result[key] = matches[0]
+		}
+	}
+	return result, nil
+}
+
+func firstResultValue(res MatchedResult, keys ...string) string {
+	for _, item := range res {
+		for _, key := range keys {
+			if item.Key == key {
+				return item.Value
+			}
+		}
+	}
+	return ""
 }

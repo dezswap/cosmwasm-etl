@@ -6,11 +6,31 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dezswap/cosmwasm-etl/configs"
+	"github.com/dezswap/cosmwasm-etl/parser"
+	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
+
+type quarantineTargetApp struct {
+	parse func(tx parser.RawTx, height uint64) ([]ParsedTx, error)
+}
+
+func (a *quarantineTargetApp) ParseTxs(tx parser.RawTx, height uint64) ([]ParsedTx, error) {
+	return a.parse(tx, height)
+}
+
+func (*quarantineTargetApp) IsValidationExceptionCandidate(string) bool {
+	return false
+}
+
+func (*quarantineTargetApp) UpdateParsers(map[string]bool, uint64) error {
+	return nil
+}
 
 // insert implements parser
 func Test_insert(t *testing.T) {
@@ -94,6 +114,173 @@ func Test_srcHeightCheck(t *testing.T) {
 			app.lastSrcHeight = tc.srcHeight
 		}
 	}
+}
+
+func Test_shouldRetryQuarantine(t *testing.T) {
+	testCases := []struct {
+		name     string
+		mode     configs.QuarantineRetryMode
+		expected []bool
+	}{
+		{name: "disabled", mode: configs.QuarantineRetryDisabled, expected: []bool{false, false}},
+		{name: "startup", mode: configs.QuarantineRetryStartup, expected: []bool{true, false}},
+		{name: "every run", mode: configs.QuarantineRetryEveryRun, expected: []bool{true, true}},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			app := dexApp{quarantineRetryMode: testCase.mode}
+			for _, expected := range testCase.expected {
+				assert.Equal(t, expected, app.shouldRetryQuarantine())
+			}
+		})
+	}
+}
+
+func Test_Run_QuarantinesAmbiguousTransactionAndAdvancesHeight(t *testing.T) {
+	ambiguousTx := parser.RawTx{Hash: "ambiguous"}
+	normalTx := parser.RawTx{Hash: "normal"}
+	expectedTx := ParsedTx{
+		Hash:         normalTx.Hash,
+		Type:         Transfer,
+		Sender:       "sender",
+		ContractAddr: "pair",
+		Assets:       [2]Asset{{Addr: "asset0", Amount: "1"}, {Addr: "asset1", Amount: "0"}},
+	}
+
+	target := &quarantineTargetApp{parse: func(tx parser.RawTx, _ uint64) ([]ParsedTx, error) {
+		if tx.Hash == ambiguousTx.Hash {
+			return nil, &eventlog.AmbiguousEventError{
+				Contract: "token",
+				Action:   "transfer",
+				Key:      "amount",
+				Values:   []string{"1", "2"},
+			}
+		}
+		return []ParsedTx{expectedTx}, nil
+	}}
+	repo := &RepoMock{}
+	srcStore := &RawStoreMock{}
+	app := &dexApp{
+		TargetApp:            target,
+		Repo:                 repo,
+		SourceDataStore:      srcStore,
+		logger:               logging.Discard,
+		poolSnapshotInterval: 100,
+		sameHeightTolerance:  3,
+		quarantineRetryMode:  configs.QuarantineRetryDisabled,
+	}
+
+	repo.On("GetTokenExceptions").Return(map[string]bool{}, nil)
+	repo.On("GetSyncedHeight").Return(uint64(0), nil)
+	srcStore.On("GetSourceSyncedHeight").Return(uint64(1), nil)
+	srcStore.On("GetSourceTxs", uint64(1)).Return(parser.RawTxs{ambiguousTx, normalTx}, nil)
+	repo.On("UpsertParseQuarantine", mock.MatchedBy(func(q ParseQuarantine) bool {
+		return q.Height == 1 &&
+			q.Hash == ambiguousTx.Hash &&
+			q.Stage == "unknown" &&
+			q.Contract == "token" &&
+			q.Action == "transfer"
+	})).Return(nil)
+	repo.On("Insert", uint64(0), uint64(1), []ParsedTx{expectedTx}, []PoolInfo{}, []Pair{}).Return(nil)
+
+	require.NoError(t, app.Run())
+	repo.AssertExpectations(t)
+	srcStore.AssertExpectations(t)
+}
+
+func Test_Run_DoesNotQuarantineCreatePairTransaction(t *testing.T) {
+	tx := parser.RawTx{
+		Hash: "create-pair",
+		LogResults: eventlog.LogResults{{
+			Type: eventlog.WasmType,
+			Attributes: eventlog.Attributes{
+				{Key: "action", Value: string(CreatePair)},
+			},
+		}},
+	}
+	target := &quarantineTargetApp{parse: func(parser.RawTx, uint64) ([]ParsedTx, error) {
+		return nil, &eventlog.AmbiguousEventError{Key: "pair", Values: []string{"a", "b"}}
+	}}
+	repo := &RepoMock{}
+	srcStore := &RawStoreMock{}
+	app := &dexApp{
+		TargetApp:            target,
+		Repo:                 repo,
+		SourceDataStore:      srcStore,
+		logger:               logging.Discard,
+		poolSnapshotInterval: 100,
+		sameHeightTolerance:  3,
+		quarantineRetryMode:  configs.QuarantineRetryDisabled,
+	}
+
+	repo.On("GetTokenExceptions").Return(map[string]bool{}, nil)
+	repo.On("GetSyncedHeight").Return(uint64(0), nil)
+	srcStore.On("GetSourceSyncedHeight").Return(uint64(1), nil)
+	srcStore.On("GetSourceTxs", uint64(1)).Return(parser.RawTxs{tx}, nil)
+
+	err := app.Run()
+	require.Error(t, err)
+	repo.AssertNotCalled(t, "UpsertParseQuarantine", mock.Anything)
+	repo.AssertNotCalled(t, "Insert", mock.Anything)
+}
+
+func Test_retryPendingQuarantines_ResolvesSuccessfulReplay(t *testing.T) {
+	rawTx := parser.RawTx{Hash: "replay"}
+	parsedTx := ParsedTx{
+		Hash:         rawTx.Hash,
+		Type:         Transfer,
+		Sender:       "sender",
+		ContractAddr: "pair",
+		Assets:       [2]Asset{{Addr: "asset0", Amount: "1"}, {Addr: "asset1", Amount: "0"}},
+	}
+	target := &quarantineTargetApp{parse: func(tx parser.RawTx, height uint64) ([]ParsedTx, error) {
+		require.Equal(t, rawTx, tx)
+		require.Equal(t, uint64(10), height)
+		return []ParsedTx{parsedTx}, nil
+	}}
+	repo := &RepoMock{}
+	app := &dexApp{
+		TargetApp: target,
+		Repo:      repo,
+		logger:    logging.Discard,
+	}
+	quarantine := ParseQuarantine{
+		ID:     7,
+		Height: 10,
+		Hash:   rawTx.Hash,
+		RawTx:  rawTx,
+	}
+	repo.On("PendingParseQuarantines").Return([]ParseQuarantine{quarantine}, nil)
+	repo.On("ResolveParseQuarantine", uint64(7), uint64(10), []ParsedTx{parsedTx}).Return(nil)
+
+	require.NoError(t, app.retryPendingQuarantines(map[string]bool{}))
+	repo.AssertExpectations(t)
+}
+
+func Test_retryPendingQuarantines_LeavesAmbiguousReplayPending(t *testing.T) {
+	rawTx := parser.RawTx{Hash: "still-ambiguous"}
+	target := &quarantineTargetApp{parse: func(parser.RawTx, uint64) ([]ParsedTx, error) {
+		return nil, &eventlog.AmbiguousEventError{
+			Key:    "amount",
+			Values: []string{"1", "2"},
+		}
+	}}
+	repo := &RepoMock{}
+	app := &dexApp{
+		TargetApp: target,
+		Repo:      repo,
+		logger:    logging.Discard,
+	}
+	repo.On("PendingParseQuarantines").Return([]ParseQuarantine{{
+		ID:     8,
+		Height: 11,
+		Hash:   rawTx.Hash,
+		RawTx:  rawTx,
+	}}, nil)
+
+	require.NoError(t, app.retryPendingQuarantines(map[string]bool{}))
+	repo.AssertNotCalled(t, "ResolveParseQuarantine", mock.Anything)
 }
 func Test_validate(t *testing.T) {
 	tcs := []struct {
