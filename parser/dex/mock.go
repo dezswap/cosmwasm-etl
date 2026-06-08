@@ -119,3 +119,18 @@ func (m *RepoMock) SetValidationHeight(_ uint64) error {
 func (m *RepoMock) ClearValidationHeight() error {
 	return nil
 }
+
+func (m *RepoMock) UpsertParseQuarantine(quarantine ParseQuarantine) error {
+	args := m.MethodCalled("UpsertParseQuarantine", quarantine)
+	return args.Error(0)
+}
+
+func (m *RepoMock) PendingParseQuarantines() ([]ParseQuarantine, error) {
+	args := m.MethodCalled("PendingParseQuarantines")
+	return args.Get(0).([]ParseQuarantine), args.Error(1)
+}
+
+func (m *RepoMock) ResolveParseQuarantine(id uint64, height uint64, txs []ParsedTx) error {
+	args := m.MethodCalled("ResolveParseQuarantine", id, height, txs)
+	return args.Error(0)
+}

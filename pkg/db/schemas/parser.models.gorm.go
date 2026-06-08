@@ -7,6 +7,8 @@ import (
 	"fmt"
 )
 
+type JSON json.RawMessage
+
 func (ParsedTx) TableName() string {
 	return "parsed_tx"
 }
@@ -24,6 +26,9 @@ func (PairValidationException) TableName() string {
 }
 func (TokenParseException) TableName() string {
 	return "token_parse_exception"
+}
+func (ParseQuarantine) TableName() string {
+	return "parse_quarantine"
 }
 
 func (Meta) GormDataType() string {
@@ -47,4 +52,24 @@ func (j Meta) Value() (driver.Value, error) {
 		return nil, nil
 	}
 	return json.Marshal(j)
+}
+
+func (JSON) GormDataType() string {
+	return "json"
+}
+
+func (j *JSON) Scan(value interface{}) error {
+	bytes, ok := value.([]byte)
+	if !ok {
+		return errors.New(fmt.Sprint("Failed to unmarshal JSON value:", value))
+	}
+	*j = append((*j)[:0], bytes...)
+	return nil
+}
+
+func (j JSON) Value() (driver.Value, error) {
+	if len(j) == 0 {
+		return nil, nil
+	}
+	return []byte(j), nil
 }

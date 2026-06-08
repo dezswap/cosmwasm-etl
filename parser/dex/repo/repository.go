@@ -1,15 +1,18 @@
 package repo
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/dezswap/cosmwasm-etl/configs"
+	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/parser/dex"
 	"github.com/dezswap/cosmwasm-etl/pkg/db"
 	"github.com/dezswap/cosmwasm-etl/pkg/db/schemas"
 	"github.com/pkg/errors"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type repoImpl struct {
@@ -212,4 +215,100 @@ func (r *repoImpl) ClearValidationHeight() error {
 		return fmt.Errorf("ClearValidationHeight: no row found for chain_id %s", r.chainId)
 	}
 	return nil
+}
+
+func (r *repoImpl) UpsertParseQuarantine(quarantine dex.ParseQuarantine) error {
+	rawTx, err := json.Marshal(quarantine.RawTx)
+	if err != nil {
+		return errors.Wrap(err, "repo.UpsertParseQuarantine")
+	}
+
+	row := schemas.ParseQuarantine{
+		ChainId:  r.chainId,
+		Height:   quarantine.Height,
+		Hash:     quarantine.Hash,
+		Stage:    quarantine.Stage,
+		Contract: quarantine.Contract,
+		Action:   quarantine.Action,
+		Error:    quarantine.Error,
+		RawTx:    schemas.JSON(rawTx),
+		Status:   dex.QuarantineStatusPending,
+	}
+	tx := r.db.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "chain_id"}, {Name: "hash"}},
+		DoUpdates: clause.Assignments(map[string]interface{}{
+			"height":      row.Height,
+			"stage":       row.Stage,
+			"contract":    row.Contract,
+			"action":      row.Action,
+			"error":       row.Error,
+			"raw_tx":      row.RawTx,
+			"status":      row.Status,
+			"resolved_at": nil,
+			"updated_at":  gorm.Expr("EXTRACT(EPOCH FROM NOW())"),
+		}),
+	}).Create(&row)
+	if tx.Error != nil {
+		return errors.Wrap(tx.Error, "repo.UpsertParseQuarantine")
+	}
+	return nil
+}
+
+func (r *repoImpl) PendingParseQuarantines() ([]dex.ParseQuarantine, error) {
+	var rows []schemas.ParseQuarantine
+	tx := r.db.Where("chain_id = ? AND status = ?", r.chainId, dex.QuarantineStatusPending).
+		Order("height ASC, id ASC").
+		Find(&rows)
+	if tx.Error != nil {
+		return nil, errors.Wrap(tx.Error, "repo.PendingParseQuarantines")
+	}
+
+	result := make([]dex.ParseQuarantine, 0, len(rows))
+	for _, row := range rows {
+		var rawTx parser.RawTx
+		if err := json.Unmarshal(row.RawTx, &rawTx); err != nil {
+			return nil, errors.Wrapf(err, "repo.PendingParseQuarantines id=%d", row.Id)
+		}
+		result = append(result, dex.ParseQuarantine{
+			ID:       row.Id,
+			Height:   row.Height,
+			Hash:     row.Hash,
+			Stage:    row.Stage,
+			Contract: row.Contract,
+			Action:   row.Action,
+			Error:    row.Error,
+			RawTx:    rawTx,
+		})
+	}
+	return result, nil
+}
+
+func (r *repoImpl) ResolveParseQuarantine(id uint64, height uint64, txs []dex.ParsedTx) error {
+	parsedTxs := make([]schemas.ParsedTx, 0, len(txs))
+	for _, tx := range txs {
+		parsedTxs = append(parsedTxs, r.toParsedTxModel(r.chainId, height, tx))
+	}
+
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		// The whole transaction is persisted here to avoid partial, non-idempotent replay results.
+		if len(parsedTxs) > 0 {
+			if err := tx.Model(schemas.ParsedTx{}).Omit("Id").CreateInBatches(parsedTxs, len(parsedTxs)).Error; err != nil {
+				return errors.Wrap(err, "repo.ResolveParseQuarantine.ParsedTx")
+			}
+		}
+		result := tx.Model(&schemas.ParseQuarantine{}).
+			Where("id = ? AND chain_id = ? AND status = ?", id, r.chainId, dex.QuarantineStatusPending).
+			Updates(map[string]interface{}{
+				"status":      dex.QuarantineStatusResolved,
+				"resolved_at": gorm.Expr("EXTRACT(EPOCH FROM NOW())"),
+				"updated_at":  gorm.Expr("EXTRACT(EPOCH FROM NOW())"),
+			})
+		if result.Error != nil {
+			return errors.Wrap(result.Error, "repo.ResolveParseQuarantine.Quarantine")
+		}
+		if result.RowsAffected != 1 {
+			return errors.Errorf("repo.ResolveParseQuarantine: pending quarantine not found id=%d", id)
+		}
+		return nil
+	})
 }
