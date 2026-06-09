@@ -8,6 +8,7 @@ import (
 
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/parser"
+	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 )
 
@@ -45,6 +46,9 @@ type dexApp struct {
 	validationMu                 sync.Mutex
 	validationSignal             chan struct{}
 	latestValidationSyncedHeight uint64
+
+	quarantineRetryMode   configs.QuarantineRetryMode
+	startupRetryAttempted bool
 }
 
 type DexMixin struct{}
@@ -53,6 +57,10 @@ var _ parser.ParserApp[ParsedTx] = &dexApp{}
 var _ DexParserApp = &dexApp{}
 
 func NewDexApp(app TargetApp, srcStore SourceDataStore, repo Repo, logger logging.Logger, c configs.ParserDexConfig) parser.ParserApp[ParsedTx] {
+	retryMode := c.QuarantineRetryMode
+	if retryMode == "" {
+		retryMode = configs.QuarantineRetryDisabled
+	}
 	return &dexApp{
 		TargetApp:            app,
 		SourceDataStore:      srcStore,
@@ -63,6 +71,7 @@ func NewDexApp(app TargetApp, srcStore SourceDataStore, repo Repo, logger loggin
 		poolSnapshotInterval: c.PoolSnapshotInterval,
 		validationInterval:   c.ValidationInterval,
 		validationSignal:     make(chan struct{}, 1),
+		quarantineRetryMode:  retryMode,
 	}
 }
 
@@ -70,6 +79,14 @@ func (app *dexApp) Run() error {
 	tokenExceptions, err := app.GetTokenExceptions()
 	if err != nil {
 		return fmt.Errorf("app.Run: %w", err)
+	}
+	if app.shouldRetryQuarantine() {
+		if err := app.retryPendingQuarantines(tokenExceptions); err != nil {
+			return fmt.Errorf("app.Run retry quarantine: %w", err)
+		}
+		if app.quarantineRetryMode == configs.QuarantineRetryStartup {
+			app.startupRetryAttempted = true
+		}
 	}
 
 	localSynced, err := app.GetSyncedHeight()
@@ -116,6 +133,23 @@ func (app *dexApp) Run() error {
 		for _, tx := range txs {
 			txs, err := app.ParseTxs(tx, cur)
 			if err != nil {
+				var ambiguity *eventlog.AmbiguousEventError
+				if errors.As(err, &ambiguity) && !rawTxContainsCreatePair(tx) {
+					// Raw transactions remain available, so parser progress does not prevent deterministic replay.
+					if err := app.UpsertParseQuarantine(ParseQuarantine{
+						Height:   cur,
+						Hash:     tx.Hash,
+						Stage:    parseStage(err),
+						Contract: ambiguity.Contract,
+						Action:   ambiguity.Action,
+						Error:    err.Error(),
+						RawTx:    tx,
+					}); err != nil {
+						return fmt.Errorf("app.Run quarantine tx_hash=%s: %w", tx.Hash, err)
+					}
+					app.logger.Errorf("quarantined ambiguous transaction height=%d tx_hash=%s err=%s", cur, tx.Hash, err)
+					continue
+				}
 				return fmt.Errorf("app.Run: %w", err)
 			}
 			parsedTxs = append(parsedTxs, txs...)
@@ -140,6 +174,79 @@ func (app *dexApp) Run() error {
 	app.lastSrcHeight = srcHeight
 
 	return nil
+}
+
+// shouldRetryQuarantine applies the configured retry mode to each parser run.
+func (app *dexApp) shouldRetryQuarantine() bool {
+	switch app.quarantineRetryMode {
+	case configs.QuarantineRetryEveryRun:
+		return true
+	case configs.QuarantineRetryStartup:
+		return !app.startupRetryAttempted
+	default:
+		return false
+	}
+}
+
+// retryPendingQuarantines replays unresolved raw transactions and resolves only successful parses.
+func (app *dexApp) retryPendingQuarantines(tokenExceptions map[string]bool) error {
+	quarantines, err := app.PendingParseQuarantines()
+	if err != nil {
+		return err
+	}
+
+	for _, quarantine := range quarantines {
+		if err := app.UpdateParsers(tokenExceptions, quarantine.Height); err != nil {
+			return fmt.Errorf("update parsers for quarantine id=%d: %w", quarantine.ID, err)
+		}
+		txs, err := app.ParseTxs(quarantine.RawTx, quarantine.Height)
+		if err != nil {
+			var ambiguity *eventlog.AmbiguousEventError
+			if errors.As(err, &ambiguity) {
+				continue
+			}
+			return fmt.Errorf("reparse quarantine id=%d tx_hash=%s: %w", quarantine.ID, quarantine.Hash, err)
+		}
+		if err := app.ResolveParseQuarantine(quarantine.ID, quarantine.Height, txs); err != nil {
+			return err
+		}
+		app.logger.Infof("resolved quarantined transaction height=%d tx_hash=%s", quarantine.Height, quarantine.Hash)
+	}
+	return nil
+}
+
+// rawTxContainsCreatePair guards parser state changes from being skipped into quarantine.
+func rawTxContainsCreatePair(tx parser.RawTx) bool {
+	for _, log := range tx.LogResults {
+		for _, attr := range log.Attributes {
+			if attr.Key == "action" && attr.Value == string(CreatePair) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// parseStage extracts the explicit ParseTxs wrapper stage for quarantine diagnostics.
+func parseStage(err error) string {
+	for _, candidate := range []struct {
+		marker string
+		stage  string
+	}{
+		{marker: "ParseTxs create_pair", stage: "create_pair"},
+		{marker: "ParseTxs pair_action", stage: "pair_action"},
+		{marker: "ParseTxs initial_provide", stage: "initial_provide"},
+		{marker: "ParseTxs wasm_transfer", stage: "wasm_transfer"},
+		{marker: "ParseTxs tax_payment", stage: "tax_payment"},
+		{marker: "ParseTxs sort_transfer_attrs", stage: "sort_transfer_attrs"},
+		{marker: "ParseTxs transfer", stage: "transfer"},
+		{marker: "ParseTxs burn", stage: "burn"},
+	} {
+		if strings.Contains(err.Error(), candidate.marker) {
+			return candidate.stage
+		}
+	}
+	return "unknown"
 }
 
 // insert implements parser

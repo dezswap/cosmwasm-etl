@@ -1,6 +1,8 @@
 package schemas
 
-import "github.com/dezswap/cosmwasm-etl/parser/dex"
+import (
+	"github.com/dezswap/cosmwasm-etl/parser/dex"
+)
 
 type Meta map[string]interface{}
 
@@ -64,4 +66,18 @@ type PairValidationException struct {
 type TokenParseException struct {
 	ChainId  string `json:"chainId"`
 	Contract string `json:"contract"`
+}
+
+type ParseQuarantine struct {
+	Id         uint64   `json:"id"`
+	ChainId    string   `json:"chainId"`
+	Height     uint64   `json:"height"`
+	Hash       string   `json:"hash"`
+	Stage      string   `json:"stage"`
+	Contract   string   `json:"contract"`
+	Action     string   `json:"action"`
+	Error      string   `json:"error"`
+	RawTx      JSON     `json:"rawTx"`
+	Status     string   `json:"status"`
+	ResolvedAt *float64 `json:"resolvedAt"`
 }

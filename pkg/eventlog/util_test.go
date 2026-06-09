@@ -1,7 +1,9 @@
 package eventlog
 
 import (
+	"errors"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"testing"
 )
 
@@ -125,4 +127,36 @@ func TestSortAttributes(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestResultToItemMapForKeys(t *testing.T) {
+	t.Run("ignores duplicate unused keys", func(t *testing.T) {
+		result, err := ResultToItemMapForKeys(MatchedResult{
+			{Key: "_contract_address", Value: "token"},
+			{Key: "action", Value: "transfer"},
+			{Key: "metadata", Value: "first"},
+			{Key: "metadata", Value: "second"},
+			{Key: "amount", Value: "10"},
+		}, "amount")
+
+		require.NoError(t, err)
+		require.Equal(t, "10", result["amount"].Value)
+	})
+
+	t.Run("rejects duplicate consumed keys", func(t *testing.T) {
+		_, err := ResultToItemMapForKeys(MatchedResult{
+			{Key: "_contract_address", Value: "token"},
+			{Key: "action", Value: "transfer"},
+			{Key: "amount", Value: "10", MsgIndex: 3},
+			{Key: "amount", Value: "20", MsgIndex: 3},
+		}, "amount")
+
+		var ambiguity *AmbiguousEventError
+		require.True(t, errors.As(err, &ambiguity))
+		require.Equal(t, "token", ambiguity.Contract)
+		require.Equal(t, "transfer", ambiguity.Action)
+		require.Equal(t, "amount", ambiguity.Key)
+		require.Equal(t, []string{"10", "20"}, ambiguity.Values)
+		require.Equal(t, 3, ambiguity.MsgIndex)
+	})
 }

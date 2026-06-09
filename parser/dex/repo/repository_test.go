@@ -2,14 +2,17 @@ package repo
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"testing"
 
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
 	"github.com/dezswap/cosmwasm-etl/configs"
+	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/parser/dex"
 	rootdb "github.com/dezswap/cosmwasm-etl/pkg/db"
+	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 	"github.com/dezswap/cosmwasm-etl/pkg/faker"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -320,6 +323,74 @@ func (s *validationHeightSuite) Test_ClearValidationHeight() {
 	s.NoError(s.Repo.ClearValidationHeight())
 }
 
+type parseQuarantineSuite struct {
+	baseSuite
+}
+
+func (s *parseQuarantineSuite) Test_UpsertParseQuarantine() {
+	quarantine := dex.ParseQuarantine{
+		Height:   10,
+		Hash:     "tx-hash",
+		Stage:    "wasm_transfer",
+		Contract: "token",
+		Action:   "transfer",
+		Error:    "ambiguous amount",
+		RawTx: parser.RawTx{
+			Hash: "tx-hash",
+		},
+	}
+
+	s.Mock.ExpectBegin()
+	s.Mock.ExpectQuery(`INSERT INTO "parse_quarantine" (.+) ON CONFLICT (.+) DO UPDATE SET (.+)"updated_at"=EXTRACT\(EPOCH FROM NOW\(\)\)(.+)RETURNING "id"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+	s.Mock.ExpectCommit()
+
+	s.NoError(s.Repo.UpsertParseQuarantine(quarantine))
+}
+
+func (s *parseQuarantineSuite) Test_PendingParseQuarantines() {
+	rawTx := parser.RawTx{
+		Hash:   "tx-hash",
+		Sender: "sender",
+		LogResults: eventlog.LogResults{{
+			Type: eventlog.WasmType,
+			Attributes: eventlog.Attributes{
+				{Key: "action", Value: "transfer"},
+			},
+		}},
+	}
+	rawTxJSON, err := json.Marshal(rawTx)
+	s.Require().NoError(err)
+
+	rows := sqlmock.NewRows([]string{
+		"id", "chain_id", "height", "hash", "stage", "contract", "action",
+		"error", "raw_tx", "status", "resolved_at",
+	}).AddRow(
+		1, s.Repo.chainId, 10, rawTx.Hash, "wasm_transfer", "token", "transfer",
+		"ambiguous amount", rawTxJSON, dex.QuarantineStatusPending, nil,
+	)
+	s.Mock.ExpectQuery(`SELECT \* FROM "parse_quarantine" WHERE chain_id = \$1 AND status = \$2 ORDER BY height ASC, id ASC`).
+		WithArgs(s.Repo.chainId, dex.QuarantineStatusPending).
+		WillReturnRows(rows)
+
+	quarantines, err := s.Repo.PendingParseQuarantines()
+	s.NoError(err)
+	s.Require().Len(quarantines, 1)
+	s.Equal(rawTx, quarantines[0].RawTx)
+	s.Equal(uint64(10), quarantines[0].Height)
+	s.Equal("wasm_transfer", quarantines[0].Stage)
+}
+
+func (s *parseQuarantineSuite) Test_ResolveParseQuarantine() {
+	s.Mock.ExpectBegin()
+	s.Mock.ExpectExec(`UPDATE "parse_quarantine" SET "resolved_at"=EXTRACT\(EPOCH FROM NOW\(\)\),"status"=\$1,"updated_at"=EXTRACT\(EPOCH FROM NOW\(\)\) WHERE id = \$2 AND chain_id = \$3 AND status = \$4`).
+		WithArgs(dex.QuarantineStatusResolved, uint64(1), s.Repo.chainId, dex.QuarantineStatusPending).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	s.Mock.ExpectCommit()
+
+	s.NoError(s.Repo.ResolveParseQuarantine(1, 10, nil))
+}
+
 func Test_repo(t *testing.T) {
 	dex.FakerCustomGenerator()
 	faker.CustomGenerator()
@@ -328,4 +399,5 @@ func Test_repo(t *testing.T) {
 	suite.Run(t, new(insertSuite))
 	suite.Run(t, new(validationExceptionSuite))
 	suite.Run(t, new(validationHeightSuite))
+	suite.Run(t, new(parseQuarantineSuite))
 }

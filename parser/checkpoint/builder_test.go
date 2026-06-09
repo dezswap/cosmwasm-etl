@@ -56,6 +56,18 @@ func (m *MockRepo) ClearValidationHeight() error {
 	return nil
 }
 
+func (m *MockRepo) UpsertParseQuarantine(_ dex.ParseQuarantine) error {
+	return nil
+}
+
+func (m *MockRepo) PendingParseQuarantines() ([]dex.ParseQuarantine, error) {
+	return nil, nil
+}
+
+func (m *MockRepo) ResolveParseQuarantine(_ uint64, _ uint64, _ []dex.ParsedTx) error {
+	return nil
+}
+
 // MockSourceDataStore implements pdex.SourceDataStore for testing
 type MockSourceDataStore struct {
 	syncedHeight uint64

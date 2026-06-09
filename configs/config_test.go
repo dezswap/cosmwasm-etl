@@ -307,6 +307,7 @@ func Test_ParserConfig_EnvVars(t *testing.T) {
 	t.Setenv("APP_PARSER_DEX_FACTORYADDRESS", "terra1factory")
 	t.Setenv("APP_PARSER_DEX_SAMEHEIGHTTOLERANCE", "5")
 	t.Setenv("APP_PARSER_DEX_ERRTOLERANCE", "2")
+	t.Setenv("APP_PARSER_DEX_QUARANTINERETRYMODE", "every_run")
 	t.Setenv("APP_PARSER_DEX_NODE_GRPC_HOST", "grpc.example.com")
 	t.Setenv("APP_PARSER_DEX_NODE_GRPC_PORT", "9090")
 	t.Setenv("APP_PARSER_DEX_NODE_FAILOVER_LCD_HOST", "lcd-failover.example.com")
@@ -322,11 +323,45 @@ func Test_ParserConfig_EnvVars(t *testing.T) {
 	require.Equal(t, "terra1factory", p.FactoryAddress)
 	require.Equal(t, uint(5), p.SameHeightTolerance)
 	require.Equal(t, uint(2), p.ErrTolerance)
+	require.Equal(t, QuarantineRetryEveryRun, p.QuarantineRetryMode)
 	require.Equal(t, "grpc.example.com", p.NodeConfig.GrpcConfig.Host)
 	require.Equal(t, 9090, p.NodeConfig.GrpcConfig.Port)
 	require.Equal(t, "lcd-failover.example.com", p.NodeConfig.FailoverLcdHost)
 	require.Equal(t, "https://lcd.example.com", p.NodeConfig.RestClientConfig.LcdHost)
 	require.Equal(t, "https://rpc.example.com", p.NodeConfig.RestClientConfig.RpcHost)
+}
+
+func Test_ParserConfig_QuarantineRetryMode(t *testing.T) {
+	base := ParserDexConfig{
+		ChainId:        "phoenix-1",
+		FactoryAddress: "terra1factory",
+		TargetApp:      "terraswap",
+	}
+
+	for _, mode := range []QuarantineRetryMode{
+		"",
+		QuarantineRetryDisabled,
+		QuarantineRetryStartup,
+		QuarantineRetryEveryRun,
+	} {
+		config := base
+		config.QuarantineRetryMode = mode
+		require.NoError(t, config.Validate())
+	}
+
+	config := base
+	config.QuarantineRetryMode = "sometimes"
+	require.EqualError(t, config.Validate(), "invalid quarantine retry mode(sometimes)")
+}
+
+func Test_ParserConfig_QuarantineRetryModeDefault(t *testing.T) {
+	t.Setenv("APP_LOG_ENV", "local")
+	t.Setenv("APP_LOG_CHAINID", "testnet-1")
+
+	tmp := t.TempDir()
+	defer withTestBasepath(t, tmp)()
+
+	require.Equal(t, QuarantineRetryDisabled, New().Parser.DexConfig.QuarantineRetryMode)
 }
 
 func Test_HttpClientConfig_EnvVars(t *testing.T) {

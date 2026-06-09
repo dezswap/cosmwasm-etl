@@ -96,7 +96,14 @@ func (m *pairMapperMixin) swapMatchedToParsedTx(res eventlog.MatchedResult, pair
 		return nil, errors.Wrap(err, "pairMapper.swapMatchedToParsedTx")
 	}
 
-	matchMap, err := eventlog.ResultToItemMap(res)
+	matchMap, err := eventlog.ResultToItemMapForKeys(
+		res,
+		pdex.PairSwapOfferAssetKey,
+		pdex.PairSwapOfferAmountKey,
+		pdex.PairSwapReturnAmountKey,
+		pdex.PairSwapSenderKey,
+		pdex.PairSwapCommissionAmountKey,
+	)
 	if err != nil {
 		return nil, errors.Wrap(err, "pairMapperMixin.swapMatchedToParsedTx")
 	}
