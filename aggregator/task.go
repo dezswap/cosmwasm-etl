@@ -695,7 +695,22 @@ func (t *accountStatsUpdateTask) Execute(start time.Time, end time.Time) error {
 	}
 
 	if len(stats) > 0 {
+		addresses := uniqueAccountAddresses(stats)
+		if err := t.destDb.CreateAccounts(addresses); err != nil {
+			return err
+		}
+
+		accountIds, err := t.destDb.AccountIds(addresses)
+		if err != nil {
+			return err
+		}
+
 		for i, s := range stats {
+			accountId, ok := accountIds[s.Address]
+			if !ok {
+				return errors.Errorf("accountStatsUpdateTask.Execute: account id not found for address %s", s.Address)
+			}
+
 			s.YearUtc = end.Year()
 			s.MonthUtc = int(end.Month())
 			s.DayUtc = end.Day()
@@ -703,6 +718,7 @@ func (t *accountStatsUpdateTask) Execute(start time.Time, end time.Time) error {
 			s.MinuteUtc = end.Minute()
 			s.Timestamp = endEpoch
 			s.ChainId = t.chainId
+			s.AccountId = accountId
 			stats[i] = s
 		}
 
@@ -720,6 +736,20 @@ func (t *accountStatsUpdateTask) Execute(start time.Time, end time.Time) error {
 	t.logger.Infof("Complete account stats update for the timeframe '%s - %s'.", start.String(), end.String())
 
 	return nil
+}
+
+func uniqueAccountAddresses(stats []schemas.AccountStats30m) []string {
+	addressMap := make(map[string]bool, len(stats))
+	addresses := make([]string, 0, len(stats))
+	for _, stat := range stats {
+		if addressMap[stat.Address] {
+			continue
+		}
+		addressMap[stat.Address] = true
+		addresses = append(addresses, stat.Address)
+	}
+
+	return addresses
 }
 
 func waitUntilReachingHeight(parentTasks *[]task, targetHeight uint64) {

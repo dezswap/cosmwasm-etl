@@ -209,6 +209,11 @@ func (r *repoMock) CreateAccounts(addresses []string) error {
 	return nil
 }
 
+func (r *repoMock) AccountIds(_ []string) (map[string]uint64, error) {
+	args := r.Mock.MethodCalled("AccountIds")
+	return args.Get(0).(map[string]uint64), args.Error(1)
+}
+
 func (r *repoMock) HoldingPairIds(_ uint64) ([]uint64, error) {
 	args := r.Mock.MethodCalled("HoldingPairIds")
 	return args.Get(0).([]uint64), args.Error(1)

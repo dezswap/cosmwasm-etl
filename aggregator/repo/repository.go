@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"gorm.io/gorm/clause"
 
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/pkg/db"
@@ -37,6 +38,7 @@ type Repo interface {
 	UpdatePairStats(stats []schemas.PairStats30m) error
 	UpdateAccountStats(stats []schemas.AccountStats30m) error
 	CreateAccounts(addresses []string) error
+	AccountIds(addresses []string) (map[string]uint64, error)
 	HoldingPairIds(accountId uint64) ([]uint64, error)
 	Accounts(endTs float64) (map[uint64]string, error)
 	Close() error
@@ -211,7 +213,29 @@ func (r *repoImpl) UpdatePairStats(stats []schemas.PairStats30m) error {
 }
 
 func (r *repoImpl) UpdateAccountStats(stats []schemas.AccountStats30m) error {
-	if tx := r.db.Omit("Id", "CreatedAt").Create(&stats); tx.Error != nil {
+	if len(stats) == 0 {
+		return nil
+	}
+
+	tx := r.db.Omit("Id", "CreatedAt").Clauses(clause.OnConflict{
+		Columns: []clause.Column{
+			{Name: "chain_id"},
+			{Name: "timestamp"},
+			{Name: "account_id"},
+			{Name: "pair_id"},
+		},
+		DoUpdates: clause.Assignments(map[string]interface{}{
+			"year_utc":    gorm.Expr("excluded.year_utc"),
+			"month_utc":   gorm.Expr("excluded.month_utc"),
+			"day_utc":     gorm.Expr("excluded.day_utc"),
+			"hour_utc":    gorm.Expr("excluded.hour_utc"),
+			"minute_utc":  gorm.Expr("excluded.minute_utc"),
+			"address":     gorm.Expr("excluded.address"),
+			"tx_cnt":      gorm.Expr("excluded.tx_cnt"),
+			"modified_at": gorm.Expr("date_part('epoch'::text, now())"),
+		}),
+	}).Create(&stats)
+	if tx.Error != nil {
 		return tx.Error
 	}
 
@@ -246,6 +270,24 @@ INSERT INTO account(address) VALUES($1) ON CONFLICT DO NOTHING
 	}
 
 	return nil
+}
+
+func (r *repoImpl) AccountIds(addresses []string) (map[string]uint64, error) {
+	if len(addresses) == 0 {
+		return map[string]uint64{}, nil
+	}
+
+	var accounts []schemas.Account
+	if tx := r.db.Model(schemas.Account{}).Where("address in ?", addresses).Find(&accounts); tx.Error != nil {
+		return nil, tx.Error
+	}
+
+	accountIds := make(map[string]uint64, len(accounts))
+	for _, account := range accounts {
+		accountIds[account.Address] = account.Id
+	}
+
+	return accountIds, nil
 }
 
 func (r *repoImpl) HoldingPairIds(accountId uint64) ([]uint64, error) {

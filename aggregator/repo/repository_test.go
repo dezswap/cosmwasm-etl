@@ -46,6 +46,7 @@ var (
 			MinuteUtc: 30,
 			Timestamp: 1665636627,
 			ChainId:   chainName,
+			AccountId: accounts[0].Id,
 			Address:   accounts[0].Address,
 			PairId:    0,
 			TxCnt:     2,
@@ -58,6 +59,7 @@ var (
 			MinuteUtc: 30,
 			Timestamp: 1665636627,
 			ChainId:   chainName,
+			AccountId: accounts[1].Id,
 			Address:   accounts[1].Address,
 			PairId:    1,
 			TxCnt:     1,
@@ -174,7 +176,7 @@ func TestUpdatePairStats(t *testing.T) {
 func TestUpdateAccountStats(t *testing.T) {
 	assert := assert.New(t)
 
-	expected := schemas.NewAccountStat30min(chainName, util.ToTime(1665637200), 3, "xplaaabb")
+	expected := schemas.NewAccountStat30min(chainName, util.ToTime(1665637200), 3, 1, "xplaaabb")
 	expected.TxCnt = 1
 
 	db, gormDb, err := initDb(testConfig.Aggregator.DestDb)
@@ -201,6 +203,8 @@ func TestUpdateAccountStats(t *testing.T) {
 	assert.Equal(expected.HourUtc, actual[0].HourUtc)
 	assert.Equal(expected.MinuteUtc, actual[0].MinuteUtc)
 	assert.Equal(expected.Timestamp, actual[0].Timestamp)
+	assert.Equal(expected.AccountId, actual[0].AccountId)
+	assert.Equal(expected.Address, actual[0].Address)
 	assert.Equal(expected.PairId, actual[0].PairId)
 	assert.Equal(expected.TxCnt, actual[0].TxCnt)
 }

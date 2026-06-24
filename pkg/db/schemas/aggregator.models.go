@@ -111,6 +111,7 @@ type AccountStats30m struct {
 	DayUtc    int     `json:"day_utc"`
 	HourUtc   int     `json:"hour_utc"`
 	MinuteUtc int     `json:"minute_utc"`
+	AccountId uint64  `json:"account_id"`
 	Address   string  `json:"address"`
 	PairId    uint64  `json:"pair_id"`
 	ChainId   string  `json:"chain_id"`
@@ -132,7 +133,7 @@ func NewPairStat30min(chainId string, priceToken string, end time.Time, pairId u
 	}
 }
 
-func NewAccountStat30min(chainId string, end time.Time, pairId uint64, accountAddress string) AccountStats30m {
+func NewAccountStat30min(chainId string, end time.Time, pairId uint64, accountId uint64, accountAddress string) AccountStats30m {
 	return AccountStats30m{
 		YearUtc:   end.Year(),
 		MonthUtc:  int(end.Month()),
@@ -140,6 +141,7 @@ func NewAccountStat30min(chainId string, end time.Time, pairId uint64, accountAd
 		HourUtc:   end.Hour(),
 		MinuteUtc: end.Minute(),
 		Timestamp: util.ToEpoch(end),
+		AccountId: accountId,
 		Address:   accountAddress,
 		PairId:    pairId,
 		ChainId:   chainId,

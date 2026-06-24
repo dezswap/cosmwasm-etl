@@ -290,6 +290,7 @@ func TestExecuteAccountStatsUpdateTask(t *testing.T) {
 
 	end := time.Unix(1666765800, 0).UTC() // 2022-10-26 06:30:00 UTC
 	accountAddress := "terra0wal1let2"
+	accountId := uint64(7)
 	pairId := uint64(1)
 	txCnt := uint64(5)
 
@@ -301,6 +302,7 @@ func TestExecuteAccountStatsUpdateTask(t *testing.T) {
 			HourUtc:   end.Hour(),
 			MinuteUtc: end.Minute(),
 			Timestamp: util.ToEpoch(end),
+			AccountId: accountId,
 			Address:   accountAddress,
 			PairId:    pairId,
 			TxCnt:     txCnt,
@@ -309,6 +311,7 @@ func TestExecuteAccountStatsUpdateTask(t *testing.T) {
 
 	rp := repoMock{}
 	rp.On("AccountStats", mock.Anything, mock.Anything).Return([]schemas.AccountStats30m{{Address: accountAddress, PairId: pairId, TxCnt: txCnt}}, nil)
+	rp.On("AccountIds").Return(map[string]uint64{accountAddress: accountId}, nil)
 	rp.On("HeightOnTimestamp").Return(uint64(0), nil)
 
 	task := accountStatsUpdateTask{
@@ -323,4 +326,27 @@ func TestExecuteAccountStatsUpdateTask(t *testing.T) {
 
 	assert.NoError(err)
 	assert.Equal(expected, rp.updatedAccountStats)
+}
+
+func TestExecuteAccountStatsUpdateTaskNoStats(t *testing.T) {
+	assert := assert.New(t)
+
+	rp := repoMock{}
+	rp.On("AccountStats", mock.Anything, mock.Anything).Return([]schemas.AccountStats30m{}, nil)
+	rp.On("HeightOnTimestamp").Return(uint64(10), nil)
+
+	task := accountStatsUpdateTask{
+		taskImpl: taskImpl{
+			chainId: "cube_47-5",
+			destDb:  &rp,
+			logger:  logging.Discard,
+		},
+		srcDb: &rp,
+	}
+	err := task.Execute(time.Time{}, time.Unix(1666765800, 0).UTC())
+
+	assert.NoError(err)
+	assert.Empty(rp.updatedAccounts)
+	assert.Empty(rp.updatedAccountStats)
+	assert.Equal(uint64(10), task.LastProcessedHeight())
 }

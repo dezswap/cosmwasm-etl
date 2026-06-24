@@ -435,7 +435,7 @@ func (r *readRepoImpl) latestPairStat(pairId uint64) (schemas.PairStats30m, erro
 
 func (r *readRepoImpl) AccountStats(startTs float64, endTs float64) ([]schemas.AccountStats30m, error) {
 	query := `
-select pt.sender address, p.id pair_id, count(*) tx_cnt
+select pt.sender address, p.id pair_id, count(distinct pt.hash) tx_cnt
 from parsed_tx pt
     join pair p on p.chain_id = pt.chain_id and p.contract = pt.contract
 where pt.chain_id = ?
