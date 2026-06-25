@@ -106,16 +106,28 @@ type PairStats30m struct {
 }
 
 type AccountStats30m struct {
-	YearUtc   int     `json:"year_utc"`
-	MonthUtc  int     `json:"month_utc"`
-	DayUtc    int     `json:"day_utc"`
-	HourUtc   int     `json:"hour_utc"`
-	MinuteUtc int     `json:"minute_utc"`
-	Address   string  `json:"address"`
-	PairId    uint64  `json:"pair_id"`
-	ChainId   string  `json:"chain_id"`
-	TxCnt     uint64  `json:"tx_cnt"`
-	Timestamp float64 `json:"timestamp"`
+	YearUtc              int     `json:"year_utc"`
+	MonthUtc             int     `json:"month_utc"`
+	DayUtc               int     `json:"day_utc"`
+	HourUtc              int     `json:"hour_utc"`
+	MinuteUtc            int     `json:"minute_utc"`
+	AccountId            uint64  `json:"account_id"`
+	Address              string  `json:"address"`
+	PairId               uint64  `json:"pair_id"`
+	ChainId              string  `json:"chain_id"`
+	TxCnt                uint64  `json:"tx_cnt"`
+	SwapTxCnt            uint64  `json:"swap_tx_cnt"`
+	ProvideTxCnt         uint64  `json:"provide_tx_cnt"`
+	WithdrawTxCnt        uint64  `json:"withdraw_tx_cnt"`
+	SwapVolumeInPrice    string  `json:"swap_volume_in_price"`
+	ProvideValueInPrice  string  `json:"provide_value_in_price"`
+	WithdrawValueInPrice string  `json:"withdraw_value_in_price"`
+	NetFlowInPrice       string  `json:"net_flow_in_price"`
+	PriceToken           string  `json:"price_token"`
+	NetAsset0Amount      string  `json:"net_asset0_amount"`
+	NetAsset1Amount      string  `json:"net_asset1_amount"`
+	NetLpAmount          string  `json:"net_lp_amount"`
+	Timestamp            float64 `json:"timestamp"`
 }
 
 func NewPairStat30min(chainId string, priceToken string, end time.Time, pairId uint64) PairStats30m {
@@ -132,16 +144,24 @@ func NewPairStat30min(chainId string, priceToken string, end time.Time, pairId u
 	}
 }
 
-func NewAccountStat30min(chainId string, end time.Time, pairId uint64, accountAddress string) AccountStats30m {
+func NewAccountStat30min(chainId string, end time.Time, pairId uint64, accountId uint64, accountAddress string) AccountStats30m {
 	return AccountStats30m{
-		YearUtc:   end.Year(),
-		MonthUtc:  int(end.Month()),
-		DayUtc:    end.Day(),
-		HourUtc:   end.Hour(),
-		MinuteUtc: end.Minute(),
-		Timestamp: util.ToEpoch(end),
-		Address:   accountAddress,
-		PairId:    pairId,
-		ChainId:   chainId,
+		YearUtc:              end.Year(),
+		MonthUtc:             int(end.Month()),
+		DayUtc:               end.Day(),
+		HourUtc:              end.Hour(),
+		MinuteUtc:            end.Minute(),
+		Timestamp:            util.ToEpoch(end),
+		AccountId:            accountId,
+		Address:              accountAddress,
+		PairId:               pairId,
+		ChainId:              chainId,
+		SwapVolumeInPrice:    "0",
+		ProvideValueInPrice:  "0",
+		WithdrawValueInPrice: "0",
+		NetFlowInPrice:       "0",
+		NetAsset0Amount:      "0",
+		NetAsset1Amount:      "0",
+		NetLpAmount:          "0",
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 	"github.com/dezswap/cosmwasm-etl/pkg/util"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
 
@@ -39,28 +40,49 @@ var (
 
 	accountStats = []schemas.AccountStats30m{
 		{
-			YearUtc:   2022,
-			MonthUtc:  10,
-			DayUtc:    13,
-			HourUtc:   4,
-			MinuteUtc: 30,
-			Timestamp: 1665636627,
-			ChainId:   chainName,
-			Address:   accounts[0].Address,
-			PairId:    0,
-			TxCnt:     2,
+			YearUtc:              2022,
+			MonthUtc:             10,
+			DayUtc:               13,
+			HourUtc:              4,
+			MinuteUtc:            30,
+			Timestamp:            1665636627,
+			ChainId:              chainName,
+			AccountId:            accounts[0].Id,
+			Address:              accounts[0].Address,
+			PairId:               0,
+			TxCnt:                2,
+			SwapTxCnt:            1,
+			ProvideTxCnt:         1,
+			SwapVolumeInPrice:    "10",
+			ProvideValueInPrice:  "20",
+			WithdrawValueInPrice: "0",
+			NetFlowInPrice:       "30",
+			PriceToken:           "uusd",
+			NetAsset0Amount:      "100",
+			NetAsset1Amount:      "200",
+			NetLpAmount:          "300",
 		},
 		{
-			YearUtc:   2022,
-			MonthUtc:  10,
-			DayUtc:    13,
-			HourUtc:   4,
-			MinuteUtc: 30,
-			Timestamp: 1665636627,
-			ChainId:   chainName,
-			Address:   accounts[1].Address,
-			PairId:    1,
-			TxCnt:     1,
+			YearUtc:              2022,
+			MonthUtc:             10,
+			DayUtc:               13,
+			HourUtc:              4,
+			MinuteUtc:            30,
+			Timestamp:            1665636627,
+			ChainId:              chainName,
+			AccountId:            accounts[1].Id,
+			Address:              accounts[1].Address,
+			PairId:               1,
+			TxCnt:                1,
+			ProvideTxCnt:         1,
+			SwapVolumeInPrice:    "0",
+			ProvideValueInPrice:  "50",
+			WithdrawValueInPrice: "0",
+			NetFlowInPrice:       "50",
+			PriceToken:           "uusd",
+			NetAsset0Amount:      "1000",
+			NetAsset1Amount:      "2000",
+			NetLpAmount:          "400",
 		},
 	}
 )
@@ -174,8 +196,13 @@ func TestUpdatePairStats(t *testing.T) {
 func TestUpdateAccountStats(t *testing.T) {
 	assert := assert.New(t)
 
-	expected := schemas.NewAccountStat30min(chainName, util.ToTime(1665637200), 3, "xplaaabb")
+	expected := schemas.NewAccountStat30min(chainName, util.ToTime(1665637200), 3, 1, "xplaaabb")
 	expected.TxCnt = 1
+	expected.SwapTxCnt = 1
+	expected.SwapVolumeInPrice = "100"
+	expected.PriceToken = "uusd"
+	expected.NetAsset0Amount = "-1000000"
+	expected.NetAsset1Amount = "2000000"
 
 	db, gormDb, err := initDb(testConfig.Aggregator.DestDb)
 	assert.NoError(err)
@@ -201,8 +228,96 @@ func TestUpdateAccountStats(t *testing.T) {
 	assert.Equal(expected.HourUtc, actual[0].HourUtc)
 	assert.Equal(expected.MinuteUtc, actual[0].MinuteUtc)
 	assert.Equal(expected.Timestamp, actual[0].Timestamp)
+	assert.Equal(expected.AccountId, actual[0].AccountId)
+	assert.Equal(expected.Address, actual[0].Address)
 	assert.Equal(expected.PairId, actual[0].PairId)
 	assert.Equal(expected.TxCnt, actual[0].TxCnt)
+	assert.Equal(expected.SwapTxCnt, actual[0].SwapTxCnt)
+	assert.Equal(expected.SwapVolumeInPrice, actual[0].SwapVolumeInPrice)
+	assert.Equal(expected.PriceToken, actual[0].PriceToken)
+	assert.Equal(expected.NetAsset0Amount, actual[0].NetAsset0Amount)
+	assert.Equal(expected.NetAsset1Amount, actual[0].NetAsset1Amount)
+}
+
+func TestUpdateAccountStatsUpsertsOnAccountIdPairTimestamp(t *testing.T) {
+	assert := assert.New(t)
+	require := require.New(t)
+
+	ts := util.ToTime(1665637200)
+	initial := schemas.NewAccountStat30min(chainName, ts, 3, 1, "terra0old")
+	initial.TxCnt = 1
+	initial.SwapTxCnt = 1
+	initial.SwapVolumeInPrice = "100"
+	initial.PriceToken = "uusd"
+	initial.NetAsset0Amount = "10"
+	initial.NetAsset1Amount = "20"
+	initial.NetLpAmount = "30"
+
+	updated := schemas.NewAccountStat30min(chainName, ts, 3, 1, "terra0new")
+	updated.TxCnt = 7
+	updated.SwapTxCnt = 2
+	updated.ProvideTxCnt = 3
+	updated.WithdrawTxCnt = 2
+	updated.SwapVolumeInPrice = "200"
+	updated.ProvideValueInPrice = "300"
+	updated.WithdrawValueInPrice = "400"
+	updated.NetFlowInPrice = "500"
+	updated.PriceToken = "uusd"
+	updated.NetAsset0Amount = "-60"
+	updated.NetAsset1Amount = "70"
+	updated.NetLpAmount = "-80"
+
+	db, gormDb, err := initDb(testConfig.Aggregator.DestDb)
+	require.NoError(err)
+	defer db.Close()
+	require.NoError(gormDb.Exec(`TRUNCATE TABLE account_stats_30m`).Error)
+
+	repo := New(chainName, testConfig.Aggregator.DestDb)
+	defer repo.Close()
+	require.NoError(repo.UpdateAccountStats([]schemas.AccountStats30m{initial}))
+	require.NoError(repo.UpdateAccountStats([]schemas.AccountStats30m{updated}))
+
+	var count int64
+	require.NoError(gormDb.Model(&schemas.AccountStats30m{}).Count(&count).Error)
+	assert.EqualValues(1, count)
+
+	var actual schemas.AccountStats30m
+	require.NoError(gormDb.First(&actual).Error)
+	assert.Equal(updated.Address, actual.Address)
+	assert.Equal(updated.TxCnt, actual.TxCnt)
+	assert.Equal(updated.SwapTxCnt, actual.SwapTxCnt)
+	assert.Equal(updated.ProvideTxCnt, actual.ProvideTxCnt)
+	assert.Equal(updated.WithdrawTxCnt, actual.WithdrawTxCnt)
+	assert.Equal(updated.SwapVolumeInPrice, actual.SwapVolumeInPrice)
+	assert.Equal(updated.ProvideValueInPrice, actual.ProvideValueInPrice)
+	assert.Equal(updated.WithdrawValueInPrice, actual.WithdrawValueInPrice)
+	assert.Equal(updated.NetFlowInPrice, actual.NetFlowInPrice)
+	assert.Equal(updated.NetAsset0Amount, actual.NetAsset0Amount)
+	assert.Equal(updated.NetAsset1Amount, actual.NetAsset1Amount)
+	assert.Equal(updated.NetLpAmount, actual.NetLpAmount)
+}
+
+func TestUpdateAccountStatsNoopOnEmptyInput(t *testing.T) {
+	assert := assert.New(t)
+	require := require.New(t)
+
+	db, gormDb, err := initDb(testConfig.Aggregator.DestDb)
+	require.NoError(err)
+	defer db.Close()
+	require.NoError(gormDb.Exec(`TRUNCATE TABLE account_stats_30m`).Error)
+
+	existing := schemas.NewAccountStat30min(chainName, util.ToTime(1665637200), 3, 1, "terra0existing")
+	existing.TxCnt = 1
+	require.NoError(gormDb.Omit("Id", "CreatedAt").Create(&existing).Error)
+
+	repo := New(chainName, testConfig.Aggregator.DestDb)
+	defer repo.Close()
+	err = repo.UpdateAccountStats([]schemas.AccountStats30m{})
+
+	var count int64
+	require.NoError(gormDb.Model(&schemas.AccountStats30m{}).Count(&count).Error)
+	assert.NoError(err)
+	assert.EqualValues(1, count)
 }
 
 func TestCreateAccounts(t *testing.T) {
@@ -240,6 +355,28 @@ func TestCreateAccounts(t *testing.T) {
 	assert.EqualValues(expected, actual)
 }
 
+func TestAccountIdsReturnsOnlyExistingAccounts(t *testing.T) {
+	assert := assert.New(t)
+	require := require.New(t)
+
+	db, gormDb, err := initDb(testConfig.Aggregator.DestDb)
+	require.NoError(err)
+	defer db.Close()
+
+	createTestAccounts(gormDb)
+
+	repo := New(chainName, testConfig.Aggregator.DestDb)
+	defer repo.Close()
+	actual, err := repo.AccountIds([]string{accounts[0].Address, "terra0missing"})
+
+	assert.NoError(err)
+	assert.Equal(map[string]uint64{accounts[0].Address: accounts[0].Id}, actual)
+
+	empty, err := repo.AccountIds([]string{})
+	assert.NoError(err)
+	assert.Empty(empty)
+}
+
 func TestHoldingPairIds(t *testing.T) {
 	assert := assert.New(t)
 
@@ -259,6 +396,33 @@ func TestHoldingPairIds(t *testing.T) {
 	// verify
 	assert.NoError(err)
 	assert.EqualValues(expected, actual)
+}
+
+func TestHoldingPairIdsExcludesZeroOrNegativeNetLp(t *testing.T) {
+	assert := assert.New(t)
+	require := require.New(t)
+
+	db, gormDb, err := initDb(testConfig.Aggregator.SrcDb)
+	require.NoError(err)
+	defer db.Close()
+	require.NoError(gormDb.Exec(`TRUNCATE TABLE account_stats_30m`).Error)
+
+	stats := []schemas.AccountStats30m{
+		schemas.NewAccountStat30min(chainName, util.ToTime(1665637200), 1, accounts[0].Id, accounts[0].Address),
+		schemas.NewAccountStat30min(chainName, util.ToTime(1665637200), 2, accounts[0].Id, accounts[0].Address),
+		schemas.NewAccountStat30min(chainName, util.ToTime(1665637200), 3, accounts[0].Id, accounts[0].Address),
+	}
+	stats[0].NetLpAmount = "10"
+	stats[1].NetLpAmount = "0"
+	stats[2].NetLpAmount = "-5"
+	require.NoError(gormDb.Omit("Id", "CreatedAt").Create(&stats).Error)
+
+	repo := New(chainName, testConfig.Aggregator.SrcDb)
+	defer repo.Close()
+	actual, err := repo.HoldingPairIds(accounts[0].Id)
+
+	assert.NoError(err)
+	assert.EqualValues([]uint64{1}, actual)
 }
 
 func TestAccounts(t *testing.T) {
@@ -284,6 +448,94 @@ func TestAccounts(t *testing.T) {
 	// verify
 	assert.NoError(err)
 	assert.EqualValues(expected, actual)
+}
+
+func TestAccountsIncludesPositiveLpAccountsAndRecentlyCreatedAccounts(t *testing.T) {
+	assert := assert.New(t)
+	require := require.New(t)
+
+	endTs := float64(2000)
+	oldCreatedAt := float64(1000)
+	recentCreatedAt := float64(2000)
+	testAccounts := []schemas.Account{
+		{Id: 11, Address: "terra0lp", CreatedAt: oldCreatedAt},
+		{Id: 12, Address: "terra0recent", CreatedAt: recentCreatedAt},
+		{Id: 13, Address: "terra0old", CreatedAt: oldCreatedAt},
+	}
+
+	db, gormDb, err := initDb(testConfig.Aggregator.SrcDb)
+	require.NoError(err)
+	defer db.Close()
+	require.NoError(gormDb.Exec(`TRUNCATE TABLE account, account_stats_30m`).Error)
+	require.NoError(gormDb.Create(&testAccounts).Error)
+
+	stats := []schemas.AccountStats30m{
+		schemas.NewAccountStat30min(chainName, util.ToTime(1665637200), 1, testAccounts[0].Id, testAccounts[0].Address),
+		schemas.NewAccountStat30min(chainName, util.ToTime(1665637200), 2, testAccounts[2].Id, testAccounts[2].Address),
+	}
+	stats[0].NetLpAmount = "10"
+	stats[1].NetLpAmount = "0"
+	require.NoError(gormDb.Omit("Id", "CreatedAt").Create(&stats).Error)
+
+	repo := New(chainName, testConfig.Aggregator.SrcDb)
+	defer repo.Close()
+	actual, err := repo.Accounts(endTs)
+
+	assert.NoError(err)
+	assert.Equal(map[uint64]string{
+		testAccounts[0].Id: testAccounts[0].Address,
+		testAccounts[1].Id: testAccounts[1].Address,
+	}, actual)
+}
+
+func TestAccountStats30mMigrationDefaults(t *testing.T) {
+	assert := assert.New(t)
+	require := require.New(t)
+
+	db, gormDb, err := initDb(testConfig.Aggregator.DestDb)
+	require.NoError(err)
+	defer db.Close()
+	require.NoError(gormDb.Exec(`TRUNCATE TABLE account_stats_30m`).Error)
+	require.NoError(gormDb.Exec(`
+INSERT INTO account_stats_30m (
+    year_utc, month_utc, day_utc, hour_utc, minute_utc,
+    address, account_id, pair_id, chain_id, tx_cnt, timestamp
+) VALUES (
+    2022, 10, 13, 4, 30,
+    'terra0defaults', 1, 1, $1, 1, 1665636627
+)`, chainName).Error)
+
+	var actual schemas.AccountStats30m
+	require.NoError(gormDb.First(&actual).Error)
+	assert.Equal(uint64(0), actual.SwapTxCnt)
+	assert.Equal(uint64(0), actual.ProvideTxCnt)
+	assert.Equal(uint64(0), actual.WithdrawTxCnt)
+	assert.Equal("0", actual.SwapVolumeInPrice)
+	assert.Equal("0", actual.ProvideValueInPrice)
+	assert.Equal("0", actual.WithdrawValueInPrice)
+	assert.Equal("0", actual.NetFlowInPrice)
+	assert.Equal("", actual.PriceToken)
+	assert.Equal("0", actual.NetAsset0Amount)
+	assert.Equal("0", actual.NetAsset1Amount)
+	assert.Equal("0", actual.NetLpAmount)
+}
+
+func TestAccountSchemaDoesNotIncludeProfileColumns(t *testing.T) {
+	assert := assert.New(t)
+	require := require.New(t)
+
+	db, gormDb, err := initDb(testConfig.Aggregator.DestDb)
+	require.NoError(err)
+	defer db.Close()
+
+	var count int64
+	require.NoError(gormDb.Raw(`
+SELECT count(*)
+FROM information_schema.columns
+WHERE table_name = 'account'
+  AND column_name IN ('first_seen_at', 'last_seen_at', 'touched_pair_cnt')
+`).Scan(&count).Error)
+	assert.EqualValues(0, count)
 }
 
 func TestClose(t *testing.T) {
@@ -317,7 +569,7 @@ func createTestAccounts(db *gorm.DB) {
 }
 
 func createTestAccountStats(db *gorm.DB) {
-	db.Exec(`TRUNCATE TABLE h_account_stats_30m`)
+	db.Exec(`TRUNCATE TABLE account_stats_30m`)
 
 	for _, stats := range accountStats {
 		db.Omit("Id", "CreatedAt").Create(&stats)

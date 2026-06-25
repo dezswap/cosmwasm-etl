@@ -22,6 +22,7 @@ type repoMock struct {
 	updatedPairStats       []schemas.PairStats30m
 	updatedAccountStats    []schemas.AccountStats30m
 	updatedAccounts        []string
+	createAccountsErr      error
 }
 
 func TestMain(m *testing.M) {
@@ -171,8 +172,8 @@ func (r *repoMock) PairStats(_ float64, _ float64, _ string, _ map[uint64]schema
 	return args.Get(0).([]schemas.PairStats30m), args.Error(1)
 }
 
-func (r *repoMock) AccountStats(_ float64, _ float64) ([]schemas.AccountStats30m, error) {
-	args := r.Mock.MethodCalled("AccountStats")
+func (r *repoMock) AccountStats(startTs float64, endTs float64, priceToken string) ([]schemas.AccountStats30m, error) {
+	args := r.Mock.MethodCalled("AccountStats", startTs, endTs, priceToken)
 	return args.Get(0).([]schemas.AccountStats30m), args.Error(1)
 }
 
@@ -206,7 +207,12 @@ func (r *repoMock) UpdateAccountStats(stats []schemas.AccountStats30m) error {
 
 func (r *repoMock) CreateAccounts(addresses []string) error {
 	r.updatedAccounts = addresses
-	return nil
+	return r.createAccountsErr
+}
+
+func (r *repoMock) AccountIds(_ []string) (map[string]uint64, error) {
+	args := r.Mock.MethodCalled("AccountIds")
+	return args.Get(0).(map[string]uint64), args.Error(1)
 }
 
 func (r *repoMock) HoldingPairIds(_ uint64) ([]uint64, error) {
