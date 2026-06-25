@@ -30,7 +30,7 @@ type ReadRepository interface {
 	RecentPrices(startHeight uint64, endHeight uint64, targetTokens []string, priceToken string) (map[uint64][]schemas.Price, error)
 	GetParsedTxsWithPriceOfPair(pairId uint64, priceToken string, startTs float64, endTs float64) ([]schemas.ParsedTxWithPrice, error)
 	PairStats(startTs float64, endTs float64, priceToken string, prevStatsMap map[uint64]schemas.PairStats30m) ([]schemas.PairStats30m, error)
-	AccountStats(startTs float64, endTs float64) ([]schemas.AccountStats30m, error)
+	AccountStats(startTs float64, endTs float64, priceToken string) ([]schemas.AccountStats30m, error)
 	LiquiditiesOfPairStats(startTs float64, endTs float64, priceToken string) (map[uint64]schemas.PairStats30m, error)
 	OldestTxTimestamp() (float64, error)
 	LatestTxTimestamp() (float64, error)
@@ -433,19 +433,80 @@ func (r *readRepoImpl) latestPairStat(pairId uint64) (schemas.PairStats30m, erro
 	return stat, nil
 }
 
-func (r *readRepoImpl) AccountStats(startTs float64, endTs float64) ([]schemas.AccountStats30m, error) {
+func (r *readRepoImpl) AccountStats(startTs float64, endTs float64, priceToken string) ([]schemas.AccountStats30m, error) {
 	query := `
-select pt.sender address, p.id pair_id, count(distinct pt.hash) tx_cnt
-from parsed_tx pt
-    join pair p on p.chain_id = pt.chain_id and p.contract = pt.contract
-where pt.chain_id = ?
+WITH tx_values AS (
+    SELECT
+        pt.sender address,
+        p.id pair_id,
+        pt.hash,
+        pt.type,
+        pt.asset0_amount::numeric asset0_amount,
+        pt.asset1_amount::numeric asset1_amount,
+        CASE
+            WHEN pt.type = 'withdraw' THEN -abs(pt.lp_amount::numeric)
+            ELSE pt.lp_amount::numeric
+        END lp_amount,
+        abs(pt.asset0_amount::numeric) * coalesce(pr0.price, CASE WHEN t0.address = ? THEN 1 ELSE 0 END) / (10::numeric ^ t0.decimals) asset0_value_in_price,
+        abs(pt.asset1_amount::numeric) * coalesce(pr1.price, CASE WHEN t1.address = ? THEN 1 ELSE 0 END) / (10::numeric ^ t1.decimals) asset1_value_in_price,
+        pt.asset0_amount::numeric * coalesce(pr0.price, CASE WHEN t0.address = ? THEN 1 ELSE 0 END) / (10::numeric ^ t0.decimals) net_asset0_value_in_price,
+        pt.asset1_amount::numeric * coalesce(pr1.price, CASE WHEN t1.address = ? THEN 1 ELSE 0 END) / (10::numeric ^ t1.decimals) net_asset1_value_in_price
+    FROM parsed_tx pt
+    JOIN pair p ON p.chain_id = pt.chain_id AND p.contract = pt.contract
+    JOIN tokens t0 ON pt.chain_id = t0.chain_id AND pt.asset0 = t0.address
+    JOIN tokens t1 ON pt.chain_id = t1.chain_id AND pt.asset1 = t1.address
+    JOIN tokens price_token ON pt.chain_id = price_token.chain_id AND price_token.address = ?
+    LEFT JOIN LATERAL (
+        SELECT price
+        FROM price
+        WHERE token_id = t0.id
+          AND price_token_id = price_token.id
+          AND height <= pt.height
+          AND chain_id = ?
+        ORDER BY height DESC, id DESC
+        LIMIT 1
+    ) pr0 ON true
+    LEFT JOIN LATERAL (
+        SELECT price
+        FROM price
+        WHERE token_id = t1.id
+          AND price_token_id = price_token.id
+          AND height <= pt.height
+          AND chain_id = ?
+        ORDER BY height DESC, id DESC
+        LIMIT 1
+    ) pr1 ON true
+WHERE pt.chain_id = ?
   and pt.timestamp >= ?
   and pt.timestamp < ?
-  AND pt.type IN ('swap', 'provide', 'withdraw')
-group by pt.sender, p.id;
+  and pt.type in ('swap', 'provide', 'withdraw')
+)
+SELECT
+    address,
+    pair_id,
+    count(distinct hash) tx_cnt,
+    count(distinct hash) filter (where type = 'swap') swap_tx_cnt,
+    count(distinct hash) filter (where type = 'provide') provide_tx_cnt,
+    count(distinct hash) filter (where type = 'withdraw') withdraw_tx_cnt,
+    coalesce(sum(
+	    CASE
+			WHEN asset0_amount < 0 THEN asset0_value_in_price
+			WHEN asset1_amount < 0 THEN asset1_value_in_price
+			ELSE greatest(asset0_value_in_price, asset1_value_in_price)
+		END
+	) filter (where type = 'swap'), 0) swap_volume_in_price,
+    coalesce(sum(asset0_value_in_price + asset1_value_in_price) filter (where type = 'provide'), 0) provide_value_in_price,
+    coalesce(sum(asset0_value_in_price + asset1_value_in_price) filter (where type = 'withdraw'), 0) withdraw_value_in_price,
+    coalesce(sum(net_asset0_value_in_price + net_asset1_value_in_price), 0) net_flow_in_price,
+    ? price_token,
+    coalesce(sum(asset0_amount), 0) net_asset0_amount,
+    coalesce(sum(asset1_amount), 0) net_asset1_amount,
+    coalesce(sum(lp_amount), 0) net_lp_amount
+FROM tx_values
+GROUP BY address, pair_id;
 `
 	res := []schemas.AccountStats30m{}
-	if tx := r.db.Raw(query, r.chainId, startTs, endTs).Scan(&res); tx.Error != nil {
+	if tx := r.db.Raw(query, priceToken, priceToken, priceToken, priceToken, priceToken, r.chainId, r.chainId, r.chainId, startTs, endTs, priceToken).Scan(&res); tx.Error != nil {
 		return nil, errors.Wrap(tx.Error, "repo.AccountStats")
 	}
 

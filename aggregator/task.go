@@ -84,7 +84,8 @@ type pairStatsRecentUpdateTask struct {
 type accountStatsUpdateTask struct {
 	taskImpl
 
-	srcDb parser.ReadRepository
+	priceToken string
+	srcDb      parser.ReadRepository
 }
 
 func newLpHistoryTask(config configs.AggregatorConfig, srcRepo parser.ReadRepository, destRepo repo.Repo, logger logging.Logger) task {
@@ -659,7 +660,8 @@ func newAccountStatsUpdateTask(config configs.AggregatorConfig, srcRepo parser.R
 			destDb:  destRepo,
 			logger:  logger,
 		},
-		srcDb: srcRepo,
+		priceToken: config.PriceToken,
+		srcDb:      srcRepo,
 	}
 }
 
@@ -689,7 +691,7 @@ func (t *accountStatsUpdateTask) StartTimestamp(startTs time.Time) (time.Time, e
 func (t *accountStatsUpdateTask) Execute(start time.Time, end time.Time) error {
 	startEpoch, endEpoch := util.ToEpoch(start), util.ToEpoch(end)
 
-	stats, err := t.srcDb.AccountStats(startEpoch, endEpoch)
+	stats, err := t.srcDb.AccountStats(startEpoch, endEpoch, t.priceToken)
 	if err != nil {
 		return err
 	}

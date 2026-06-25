@@ -225,14 +225,25 @@ func (r *repoImpl) UpdateAccountStats(stats []schemas.AccountStats30m) error {
 			{Name: "pair_id"},
 		},
 		DoUpdates: clause.Assignments(map[string]interface{}{
-			"year_utc":    gorm.Expr("excluded.year_utc"),
-			"month_utc":   gorm.Expr("excluded.month_utc"),
-			"day_utc":     gorm.Expr("excluded.day_utc"),
-			"hour_utc":    gorm.Expr("excluded.hour_utc"),
-			"minute_utc":  gorm.Expr("excluded.minute_utc"),
-			"address":     gorm.Expr("excluded.address"),
-			"tx_cnt":      gorm.Expr("excluded.tx_cnt"),
-			"modified_at": gorm.Expr("date_part('epoch'::text, now())"),
+			"year_utc":                gorm.Expr("excluded.year_utc"),
+			"month_utc":               gorm.Expr("excluded.month_utc"),
+			"day_utc":                 gorm.Expr("excluded.day_utc"),
+			"hour_utc":                gorm.Expr("excluded.hour_utc"),
+			"minute_utc":              gorm.Expr("excluded.minute_utc"),
+			"address":                 gorm.Expr("excluded.address"),
+			"tx_cnt":                  gorm.Expr("excluded.tx_cnt"),
+			"swap_tx_cnt":             gorm.Expr("excluded.swap_tx_cnt"),
+			"provide_tx_cnt":          gorm.Expr("excluded.provide_tx_cnt"),
+			"withdraw_tx_cnt":         gorm.Expr("excluded.withdraw_tx_cnt"),
+			"swap_volume_in_price":    gorm.Expr("excluded.swap_volume_in_price"),
+			"provide_value_in_price":  gorm.Expr("excluded.provide_value_in_price"),
+			"withdraw_value_in_price": gorm.Expr("excluded.withdraw_value_in_price"),
+			"net_flow_in_price":       gorm.Expr("excluded.net_flow_in_price"),
+			"price_token":             gorm.Expr("excluded.price_token"),
+			"net_asset0_amount":       gorm.Expr("excluded.net_asset0_amount"),
+			"net_asset1_amount":       gorm.Expr("excluded.net_asset1_amount"),
+			"net_lp_amount":           gorm.Expr("excluded.net_lp_amount"),
+			"modified_at":             gorm.Expr("date_part('epoch'::text, now())"),
 		}),
 	}).Create(&stats)
 	if tx.Error != nil {
@@ -294,8 +305,8 @@ func (r *repoImpl) HoldingPairIds(accountId uint64) ([]uint64, error) {
 	query := `
 SELECT pair_id
 FROM (
-    SELECT pair_id, SUM(total_lp_amount) stla
-    FROM h_account_stats_30m
+    SELECT pair_id, SUM(net_lp_amount) stla
+    FROM account_stats_30m
     WHERE chain_id = $1
       AND account_id = $2
     GROUP BY pair_id) t
@@ -330,8 +341,8 @@ SELECT id, address
 FROM account
 WHERE id IN (
     SELECT t.account_id
-    FROM (SELECT account_id, SUM(total_lp_amount) tla_sum
-    	  FROM h_account_stats_30m
+    FROM (SELECT account_id, SUM(net_lp_amount) tla_sum
+    	  FROM account_stats_30m
           WHERE chain_id = $1
           GROUP BY account_id) t
     WHERE t.tla_sum > 0

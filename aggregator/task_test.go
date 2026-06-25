@@ -3,6 +3,7 @@ package aggregator
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 	"time"
 
@@ -293,24 +294,43 @@ func TestExecuteAccountStatsUpdateTask(t *testing.T) {
 	accountId := uint64(7)
 	pairId := uint64(1)
 	txCnt := uint64(5)
+	priceToken := "uusd"
 
 	expected := []schemas.AccountStats30m{
 		{
-			YearUtc:   end.Year(),
-			MonthUtc:  int(end.Month()),
-			DayUtc:    end.Day(),
-			HourUtc:   end.Hour(),
-			MinuteUtc: end.Minute(),
-			Timestamp: util.ToEpoch(end),
-			AccountId: accountId,
-			Address:   accountAddress,
-			PairId:    pairId,
-			TxCnt:     txCnt,
+			YearUtc:             end.Year(),
+			MonthUtc:            int(end.Month()),
+			DayUtc:              end.Day(),
+			HourUtc:             end.Hour(),
+			MinuteUtc:           end.Minute(),
+			Timestamp:           util.ToEpoch(end),
+			AccountId:           accountId,
+			Address:             accountAddress,
+			PairId:              pairId,
+			TxCnt:               txCnt,
+			SwapTxCnt:           3,
+			ProvideTxCnt:        1,
+			SwapVolumeInPrice:   "10",
+			ProvideValueInPrice: "20",
+			PriceToken:          priceToken,
+			NetLpAmount:         "30",
 		},
 	}
 
+	stats := []schemas.AccountStats30m{{
+		Address:             accountAddress,
+		PairId:              pairId,
+		TxCnt:               txCnt,
+		SwapTxCnt:           3,
+		ProvideTxCnt:        1,
+		SwapVolumeInPrice:   "10",
+		ProvideValueInPrice: "20",
+		PriceToken:          priceToken,
+		NetLpAmount:         "30",
+	}}
+
 	rp := repoMock{}
-	rp.On("AccountStats", mock.Anything, mock.Anything).Return([]schemas.AccountStats30m{{Address: accountAddress, PairId: pairId, TxCnt: txCnt}}, nil)
+	rp.On("AccountStats", mock.Anything, mock.Anything, priceToken).Return(stats, nil)
 	rp.On("AccountIds").Return(map[string]uint64{accountAddress: accountId}, nil)
 	rp.On("HeightOnTimestamp").Return(uint64(0), nil)
 
@@ -320,7 +340,8 @@ func TestExecuteAccountStatsUpdateTask(t *testing.T) {
 			destDb:  &rp,
 			logger:  logging.Discard,
 		},
-		srcDb: &rp,
+		priceToken: priceToken,
+		srcDb:      &rp,
 	}
 	err := task.Execute(time.Time{}, end)
 
@@ -328,11 +349,121 @@ func TestExecuteAccountStatsUpdateTask(t *testing.T) {
 	assert.Equal(expected, rp.updatedAccountStats)
 }
 
+func TestExecuteAccountStatsUpdateTaskDeduplicatesAccountCreation(t *testing.T) {
+	assert := assert.New(t)
+
+	priceToken := "uusd"
+	accountAddress := "terra0duplicated"
+	stats := []schemas.AccountStats30m{
+		{Address: accountAddress, PairId: 1, TxCnt: 1},
+		{Address: accountAddress, PairId: 2, TxCnt: 1},
+	}
+
+	rp := repoMock{}
+	rp.On("AccountStats", mock.Anything, mock.Anything, priceToken).Return(stats, nil)
+	rp.On("AccountIds").Return(map[string]uint64{accountAddress: 11}, nil)
+	rp.On("HeightOnTimestamp").Return(uint64(0), nil)
+
+	task := accountStatsUpdateTask{
+		taskImpl: taskImpl{
+			chainId: "cube_47-5",
+			destDb:  &rp,
+			logger:  logging.Discard,
+		},
+		priceToken: priceToken,
+		srcDb:      &rp,
+	}
+	err := task.Execute(time.Time{}, time.Unix(1666765800, 0).UTC())
+
+	assert.NoError(err)
+	assert.Equal([]string{accountAddress}, rp.updatedAccounts)
+	assert.Len(rp.updatedAccountStats, 2)
+	assert.Equal(uint64(11), rp.updatedAccountStats[0].AccountId)
+	assert.Equal(uint64(11), rp.updatedAccountStats[1].AccountId)
+}
+
+func TestExecuteAccountStatsUpdateTaskReturnsErrorWhenAccountIdMissing(t *testing.T) {
+	assert := assert.New(t)
+
+	priceToken := "uusd"
+	accountAddress := "terra0missing"
+	stats := []schemas.AccountStats30m{{Address: accountAddress, PairId: 1, TxCnt: 1}}
+
+	rp := repoMock{}
+	rp.On("AccountStats", mock.Anything, mock.Anything, priceToken).Return(stats, nil)
+	rp.On("AccountIds").Return(map[string]uint64{}, nil)
+
+	task := accountStatsUpdateTask{
+		taskImpl: taskImpl{
+			chainId: "cube_47-5",
+			destDb:  &rp,
+			logger:  logging.Discard,
+		},
+		priceToken: priceToken,
+		srcDb:      &rp,
+	}
+	err := task.Execute(time.Time{}, time.Unix(1666765800, 0).UTC())
+
+	assert.ErrorContains(err, "account id not found")
+	assert.Empty(rp.updatedAccountStats)
+}
+
+func TestExecuteAccountStatsUpdateTaskPropagatesCreateAccountsError(t *testing.T) {
+	assert := assert.New(t)
+
+	priceToken := "uusd"
+	createErr := errors.New("create accounts failed")
+	stats := []schemas.AccountStats30m{{Address: "terra0fail", PairId: 1, TxCnt: 1}}
+
+	rp := repoMock{createAccountsErr: createErr}
+	rp.On("AccountStats", mock.Anything, mock.Anything, priceToken).Return(stats, nil)
+
+	task := accountStatsUpdateTask{
+		taskImpl: taskImpl{
+			chainId: "cube_47-5",
+			destDb:  &rp,
+			logger:  logging.Discard,
+		},
+		priceToken: priceToken,
+		srcDb:      &rp,
+	}
+	err := task.Execute(time.Time{}, time.Unix(1666765800, 0).UTC())
+
+	assert.ErrorIs(err, createErr)
+	assert.Empty(rp.updatedAccountStats)
+	rp.AssertNotCalled(t, "AccountIds", mock.Anything)
+}
+
+func TestExecuteAccountStatsUpdateTaskPassesPriceToken(t *testing.T) {
+	assert := assert.New(t)
+
+	priceToken := "uusd"
+	end := time.Unix(1666765800, 0).UTC()
+
+	rp := repoMock{}
+	rp.On("AccountStats", util.ToEpoch(time.Time{}), util.ToEpoch(end), priceToken).Return([]schemas.AccountStats30m{}, nil)
+	rp.On("HeightOnTimestamp").Return(uint64(0), nil)
+
+	task := accountStatsUpdateTask{
+		taskImpl: taskImpl{
+			chainId: "cube_47-5",
+			destDb:  &rp,
+			logger:  logging.Discard,
+		},
+		priceToken: priceToken,
+		srcDb:      &rp,
+	}
+	err := task.Execute(time.Time{}, end)
+
+	assert.NoError(err)
+	rp.AssertCalled(t, "AccountStats", util.ToEpoch(time.Time{}), util.ToEpoch(end), priceToken)
+}
+
 func TestExecuteAccountStatsUpdateTaskNoStats(t *testing.T) {
 	assert := assert.New(t)
 
 	rp := repoMock{}
-	rp.On("AccountStats", mock.Anything, mock.Anything).Return([]schemas.AccountStats30m{}, nil)
+	rp.On("AccountStats", mock.Anything, mock.Anything, "").Return([]schemas.AccountStats30m{}, nil)
 	rp.On("HeightOnTimestamp").Return(uint64(10), nil)
 
 	task := accountStatsUpdateTask{
