@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -28,6 +29,22 @@ func (p ConnPool) QueryContext(_ context.Context, _ string, _ ...interface{}) (*
 func (p ConnPool) QueryRowContext(_ context.Context, _ string, _ ...interface{}) *sql.Row { return nil }
 func (p ConnPool) Commit() error                                                          { return nil }
 func (p ConnPool) Rollback() error                                                        { return nil }
+
+type completedTask struct {
+	height atomic.Uint64
+}
+
+func (t *completedTask) Execute(_ time.Time, _ time.Time) error {
+	return nil
+}
+
+func (t *completedTask) LastProcessedHeight() uint64 {
+	return t.height.Load()
+}
+
+func (t *completedTask) setLastProcessedHeight(height uint64) {
+	t.height.Store(height)
+}
 
 func TestLpHistoryTaskExecute(t *testing.T) {
 	assert := assert.New(t)
@@ -390,6 +407,7 @@ func TestExecuteAccountStatsUpdateTaskReturnsErrorWhenAccountIdMissing(t *testin
 	stats := []schemas.AccountStats30m{{Address: accountAddress, PairId: 1, TxCnt: 1}}
 
 	rp := repoMock{}
+	rp.On("HeightOnTimestamp").Return(uint64(0), nil)
 	rp.On("AccountStats", mock.Anything, mock.Anything, priceToken).Return(stats, nil)
 	rp.On("AccountIds").Return(map[string]uint64{}, nil)
 
@@ -416,6 +434,7 @@ func TestExecuteAccountStatsUpdateTaskPropagatesCreateAccountsError(t *testing.T
 	stats := []schemas.AccountStats30m{{Address: "terra0fail", PairId: 1, TxCnt: 1}}
 
 	rp := repoMock{createAccountsErr: createErr}
+	rp.On("HeightOnTimestamp").Return(uint64(0), nil)
 	rp.On("AccountStats", mock.Anything, mock.Anything, priceToken).Return(stats, nil)
 
 	task := accountStatsUpdateTask{
@@ -480,4 +499,54 @@ func TestExecuteAccountStatsUpdateTaskNoStats(t *testing.T) {
 	assert.Empty(rp.updatedAccounts)
 	assert.Empty(rp.updatedAccountStats)
 	assert.Equal(uint64(10), task.LastProcessedHeight())
+}
+
+func TestExecuteAccountStatsUpdateTaskWaitsForParentPriceTask(t *testing.T) {
+	assert := assert.New(t)
+
+	end := time.Unix(1666765800, 0).UTC()
+	endHeight := uint64(10)
+	accountStatsCalled := make(chan struct{}, 1)
+
+	rp := repoMock{}
+	rp.On("HeightOnTimestamp").Return(endHeight, nil)
+	rp.On("AccountStats", mock.Anything, mock.Anything, "").Run(func(_ mock.Arguments) {
+		accountStatsCalled <- struct{}{}
+	}).Return([]schemas.AccountStats30m{}, nil)
+
+	parent := &completedTask{}
+	parent.setLastProcessedHeight(endHeight - 1)
+	task := accountStatsUpdateTask{
+		taskImpl: taskImpl{
+			chainId:     "cube_47-5",
+			destDb:      &rp,
+			parentTasks: []task{parent},
+			logger:      logging.Discard,
+		},
+		srcDb: &rp,
+	}
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- task.Execute(time.Time{}, end)
+	}()
+
+	select {
+	case <-accountStatsCalled:
+		assert.Fail("AccountStats was called before the parent price task reached the target height")
+	case <-time.After(WaitPeriod / 2):
+	}
+
+	parent.setLastProcessedHeight(endHeight)
+
+	var err error
+	select {
+	case err = <-errCh:
+	case <-time.After(WaitPeriod * 2):
+		assert.Fail("account stats update task did not complete after the parent price task reached the target height")
+		return
+	}
+
+	assert.NoError(err)
+	assert.Equal(endHeight, task.LastProcessedHeight())
+	rp.AssertCalled(t, "AccountStats", util.ToEpoch(time.Time{}), util.ToEpoch(end), "")
 }

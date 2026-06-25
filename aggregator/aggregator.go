@@ -79,7 +79,7 @@ func initTaskSchedulers(config configs.AggregatorConfig, srcRepo parser.ReadRepo
 		newIntervalScheduler(pt, logger),
 		newIntervalScheduler(newPairStatsRecentUpdateTask(config, srcRepo, destRepo, logger, []task{pt}), logger),
 		newPredeterminedTimeScheduler(newPairStatsUpdateTask(config, srcRepo, destRepo, logger, []task{pt}), config.StartTs, logger),
-		newPredeterminedTimeScheduler(newAccountStatsUpdateTask(config, srcRepo, destRepo, logger), config.StartTs, logger),
+		newPredeterminedTimeScheduler(newAccountStatsUpdateTask(config, srcRepo, destRepo, logger, []task{pt}), config.StartTs, logger),
 	}, nil
 }
 

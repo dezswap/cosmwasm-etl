@@ -653,12 +653,13 @@ func (t *pairStatsUpdateTask) Execute(start time.Time, end time.Time) error {
 	return nil
 }
 
-func newAccountStatsUpdateTask(config configs.AggregatorConfig, srcRepo parser.ReadRepository, destRepo repo.Repo, logger logging.Logger) predeterminedTimeTask {
+func newAccountStatsUpdateTask(config configs.AggregatorConfig, srcRepo parser.ReadRepository, destRepo repo.Repo, logger logging.Logger, parentTasks []task) predeterminedTimeTask {
 	return &accountStatsUpdateTask{
 		taskImpl: taskImpl{
-			chainId: config.ChainId,
-			destDb:  destRepo,
-			logger:  logger,
+			chainId:     config.ChainId,
+			destDb:      destRepo,
+			parentTasks: parentTasks,
+			logger:      logger,
 		},
 		priceToken: config.PriceToken,
 		srcDb:      srcRepo,
@@ -690,6 +691,12 @@ func (t *accountStatsUpdateTask) StartTimestamp(startTs time.Time) (time.Time, e
 
 func (t *accountStatsUpdateTask) Execute(start time.Time, end time.Time) error {
 	startEpoch, endEpoch := util.ToEpoch(start), util.ToEpoch(end)
+
+	endHeight, err := t.srcDb.HeightOnTimestamp(endEpoch)
+	if err != nil {
+		return err
+	}
+	waitUntilReachingHeight(&t.parentTasks, endHeight)
 
 	stats, err := t.srcDb.AccountStats(startEpoch, endEpoch, t.priceToken)
 	if err != nil {
@@ -730,10 +737,7 @@ func (t *accountStatsUpdateTask) Execute(start time.Time, end time.Time) error {
 		}
 	}
 
-	t.lastProcessedHeight, err = t.srcDb.HeightOnTimestamp(util.ToEpoch(end))
-	if err != nil {
-		return err
-	}
+	t.lastProcessedHeight = endHeight
 
 	t.logger.Infof("Complete account stats update for the timeframe '%s - %s'.", start.String(), end.String())
 
