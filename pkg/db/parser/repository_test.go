@@ -779,6 +779,35 @@ func (s *aggregatorReadRepoSuite) Test_RecentPrices_FiltersByPriceTokenId() {
 	assert.Equal("9", actual[3002][1].Price)
 }
 
+func (s *aggregatorReadRepoSuite) Test_RecentPrices_ReturnsFirstInWindowPriceWithoutPreStartPrice() {
+	assert := assert.New(s.T())
+	require := require.New(s.T())
+
+	priceToken := "uusd"
+	asset := "terra0asset"
+
+	require.NoError(s.DB.Exec(`TRUNCATE TABLE price, tokens CASCADE`).Error)
+	require.NoError(s.DB.Exec(
+		`INSERT INTO tokens(id, chain_id, address, decimals) VALUES
+         (3100, $1, $2, 0),
+         (3101, $1, $3, 0)`,
+		chainName, priceToken, asset,
+	).Error)
+	require.NoError(s.DB.Exec(
+		`INSERT INTO price(height, chain_id, token_id, price, price_token_id, route_id) VALUES
+         (110, $1, 3101, '9', 3100, 0)`,
+		chainName,
+	).Error)
+
+	actual, err := s.Repo.RecentPrices(100, 120, []string{"3101"}, priceToken)
+
+	require.NoError(err)
+	require.Contains(actual, uint64(3101))
+	require.Len(actual[3101], 1)
+	assert.Equal(uint64(110), actual[3101][0].Height)
+	assert.Equal("9", actual[3101][0].Price)
+}
+
 func (s *aggregatorReadRepoSuite) Test_GetParsedTxsWithPriceOfPair_FiltersByPriceTokenId() {
 	assert := assert.New(s.T())
 	require := require.New(s.T())

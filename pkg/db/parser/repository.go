@@ -219,13 +219,13 @@ seed_price as (
 	    join price_token pt on tt.id = pt.id
 ),
 start_height as (
-	select p.token_id, max(p.height) height
-	from price p
-	    join price_token pt on p.price_token_id = pt.id
-	    join target_tokens tt on p.token_id = tt.id
-	where p.chain_id = ?
-	  and p.height <= ?
-	group by p.token_id
+	select tt.id token_id, coalesce(max(p.height), ?) height
+	from target_tokens tt
+	    left join price p on p.token_id = tt.id
+	        and p.price_token_id = (select id from price_token)
+	        and p.chain_id = ?
+			and p.height <= ?
+	group by tt.id
 )
 select height,
        token_id,
@@ -243,7 +243,7 @@ where p.chain_id = ?
 order by token_id, height
 	`
 	var res []schemas.Price
-	if tx := r.db.Raw(query, r.chainId, priceToken, pq.Array(targetTokens), r.chainId, r.chainId, startHeight, r.chainId, endHeight).Scan(&res); tx.Error != nil {
+	if tx := r.db.Raw(query, r.chainId, priceToken, pq.Array(targetTokens), r.chainId, startHeight, r.chainId, startHeight, r.chainId, endHeight).Scan(&res); tx.Error != nil {
 		return nil, errors.Wrap(tx.Error, "repo.RecentPrices")
 	}
 
