@@ -2,7 +2,6 @@ package parser
 
 import (
 	"database/sql"
-	"fmt"
 	"strings"
 
 	"github.com/dezswap/cosmwasm-etl/pkg/util"
@@ -10,6 +9,7 @@ import (
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/pkg/db"
 	"github.com/dezswap/cosmwasm-etl/pkg/db/schemas"
+	"github.com/lib/pq"
 	"github.com/pkg/errors"
 
 	"gorm.io/gorm"
@@ -197,30 +197,53 @@ where pt.chain_id = ?
 	return res, nil
 }
 
+// RecentPrices returns prices ordered by token and height because searchPrice scans each token's slice in order.
 func (r *readRepoImpl) RecentPrices(startHeight uint64, endHeight uint64, targetTokens []string, priceToken string) (map[uint64][]schemas.Price, error) {
 	query := `
-select 0 height,
-       id as token_id,
-       1 as price
-from tokens where address = ?
-union
+with price_token as (
+	select id
+	from tokens
+	where chain_id = ? and address = ?
+),
+target_tokens as (
+	select t.id
+	from tokens t
+	    join unnest(?::bigint[]) target(id) on t.id = target.id
+	where t.chain_id = ?
+),
+seed_price as (
+	select 0 height,
+	       tt.id token_id,
+	       1 price
+	from target_tokens tt
+	    join price_token pt on tt.id = pt.id
+),
+start_height as (
+	select tt.id token_id, coalesce(max(p.height), ?) height
+	from target_tokens tt
+	    left join price p on p.token_id = tt.id
+	        and p.price_token_id = (select id from price_token)
+	        and p.chain_id = ?
+			and p.height <= ?
+	group by tt.id
+)
+select height,
+       token_id,
+       price
+from seed_price
+union all
 select p.height,
        p.token_id,
        p.price
 from price p
-    join (
-    	select token_id, max(height) height
-    	from price p join tokens t on t.id = p.token_id
-    	where p.chain_id = ?
-    	  and p.height <= ?
-    	  %s
-    	group by p.token_id) t on p.token_id = t.token_id and p.height >= t.height
-where p.height <= ?
-order by height
-`
-	query = fmt.Sprintf(query, "and t.id in ("+strings.Join(targetTokens, ",")+")")
+    join start_height sh on p.token_id = sh.token_id and p.height >= sh.height
+    join price_token pt on p.price_token_id = pt.id
+where p.chain_id = ?
+  and p.height <= ?
+order by token_id, height
+	`
 	var res []schemas.Price
-	if tx := r.db.Raw(query, priceToken, r.chainId, startHeight, endHeight).Scan(&res); tx.Error != nil {
+	if tx := r.db.Raw(query, r.chainId, priceToken, pq.Array(targetTokens), r.chainId, startHeight, r.chainId, startHeight, r.chainId, endHeight).Scan(&res); tx.Error != nil {
 		return nil, errors.Wrap(tx.Error, "repo.RecentPrices")
 	}
 
@@ -243,15 +266,16 @@ func (r *readRepoImpl) GetParsedTxsWithPriceOfPair(pairId uint64, priceToken str
 		"join pair p on parsed_tx.chain_id = p.chain_id and parsed_tx.contract = p.contract "+
 			"join tokens t0 on parsed_tx.chain_id = t0.chain_id and parsed_tx.asset0 = t0.address "+
 			"join tokens t1 on parsed_tx.chain_id = t1.chain_id and parsed_tx.asset1 = t1.address "+
-			"left outer join price p0 on t0.id = p0.token_id and p0.height <= parsed_tx.height "+
-			"left outer join price p1 on t1.id = p1.token_id and p1.height <= parsed_tx.height").Where(
+			"join tokens price_token on parsed_tx.chain_id = price_token.chain_id and price_token.address = ? "+
+			"left outer join price p0 on t0.id = p0.token_id and p0.price_token_id = price_token.id and p0.chain_id = parsed_tx.chain_id and p0.height <= parsed_tx.height "+
+			"left outer join price p1 on t1.id = p1.token_id and p1.price_token_id = price_token.id and p1.chain_id = parsed_tx.chain_id and p1.height <= parsed_tx.height",
+		priceToken).Where(
 		"parsed_tx.chain_id = ? and p.id = ? and parsed_tx.timestamp >= ? and parsed_tx.timestamp < ? and type in ('swap', 'provide', 'withdraw')", r.chainId, pairId, startTs, endTs).Order(
 		"parsed_tx.height, p0.height desc, p1.height desc").Select(
-		"distinct on (parsed_tx.height) parsed_tx.asset0_amount, parsed_tx.asset1_amount,"+
-			"parsed_tx.commission0_amount, parsed_tx.commission1_amount,"+
-			"CASE WHEN t0.address = ? THEN '1' ELSE coalesce(p0.price, '0') END price0, CASE WHEN t1.address = ? THEN '1' ELSE coalesce(p1.price, '0') END price1,"+
-			"t0.decimals decimals0, t1.decimals decimals1",
-		priceToken, priceToken).Find(&res); tx.Error != nil {
+		"distinct on (parsed_tx.height) parsed_tx.asset0_amount, parsed_tx.asset1_amount," +
+			"parsed_tx.commission0_amount, parsed_tx.commission1_amount," +
+			"CASE WHEN t0.id = price_token.id THEN '1' ELSE coalesce(p0.price, '0') END price0, CASE WHEN t1.id = price_token.id THEN '1' ELSE coalesce(p1.price, '0') END price1," +
+			"t0.decimals decimals0, t1.decimals decimals1").Find(&res); tx.Error != nil {
 		return nil, errors.Wrap(tx.Error, "repo.GetParsedTxsWithPriceOfPair")
 	}
 
@@ -288,14 +312,15 @@ from (select distinct -- processed asset0 values
                 pt.type,
                 pt.asset0_amount as volume,
                 pt.commission0_amount as commission,
-                coalesce(pr.price, case when t.address = ? then 1 else 0 end) as price,
+                case when t.id = price_token.id then 1 else coalesce(pr.price, 0) end as price,
                 t.decimals
             from parsed_tx pt
                 join pair p on pt.chain_id = p.chain_id and pt.contract = p.contract
                 join tokens t on pt.chain_id = t.chain_id and pt.asset0 = t.address
+                join tokens price_token on pt.chain_id = price_token.chain_id and price_token.address = ?
                 left join lateral (
                     select price from price
-                    where token_id = t.id and height <= pt.height and chain_id = ?
+                    where token_id = t.id and price_token_id = price_token.id and height <= pt.height and chain_id = ?
                     order by height desc limit 1
                 ) pr on true
             where pt.chain_id = ?
@@ -334,14 +359,15 @@ from (select distinct -- processed asset1 values
                 type,
                 pt.asset1_amount as volume,
                 pt.commission1_amount as commission,
-                coalesce(pr.price, case when t.address = ? then 1 else 0 end) as price,
+                coalesce(pr.price, case when t.id = price_token.id then 1 else 0 end) as price,
                 t.decimals
             from parsed_tx pt
                 join pair p on pt.chain_id = p.chain_id and pt.contract = p.contract
                 join tokens t on pt.chain_id = t.chain_id and pt.asset1 = t.address
+                join tokens price_token on pt.chain_id = price_token.chain_id and price_token.address = ?
                 left join lateral (
                     select price from price
-                    where token_id = t.id and height <= pt.height and chain_id = ?
+                    where token_id = t.id and price_token_id = price_token.id and height <= pt.height and chain_id = ?
                     order by height desc limit 1
                 ) pr on true
             where pt.chain_id = ?
@@ -515,7 +541,12 @@ GROUP BY address, pair_id;
 
 func (r *readRepoImpl) LiquiditiesOfPairStats(startTs float64, endTs float64, priceToken string) (pairIdLpMap map[uint64]schemas.PairStats30m, err error) {
 	query := `
-WITH latest_lp AS (
+WITH price_token AS (
+    SELECT id
+    FROM tokens
+    WHERE chain_id = ? AND address = ?
+),
+latest_lp AS (
     SELECT pair_id, MAX(height) AS height
     FROM lp_history
     WHERE chain_id = ?
@@ -539,10 +570,13 @@ token_price_by_height AS (
         rht.token_decimals,
         rht.height
     FROM required_height_by_token rht
+    CROSS JOIN price_token
     LEFT JOIN LATERAL (
         SELECT p.price
         FROM price p
         WHERE p.token_id = rht.token_id
+          AND p.price_token_id = price_token.id
+          AND p.chain_id = ?
           AND p.height <= rht.height
         ORDER BY p.height DESC, p.id DESC
         LIMIT 1
@@ -561,7 +595,7 @@ FROM lp_history lh
 `
 
 	var pairLps []schemas.PairStats30m
-	if tx := r.db.Raw(query, r.chainId, startTs, endTs, priceToken).Scan(&pairLps); tx.Error != nil {
+	if tx := r.db.Raw(query, r.chainId, priceToken, r.chainId, startTs, endTs, priceToken, r.chainId).Scan(&pairLps); tx.Error != nil {
 		return nil, errors.Wrap(tx.Error, "repo.LiquiditiesOfPairStats")
 	}
 

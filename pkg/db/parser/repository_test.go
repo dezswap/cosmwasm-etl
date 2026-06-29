@@ -744,6 +744,155 @@ func (s *aggregatorReadRepoSuite) Test_AccountStats_CountsDistinctHashesButSumsR
 	assert.Equal("3", actual[0].NetAsset1Amount)
 }
 
+func (s *aggregatorReadRepoSuite) Test_RecentPrices_FiltersByPriceTokenId() {
+	assert := assert.New(s.T())
+	require := require.New(s.T())
+
+	priceToken := "uusd"
+	otherPriceToken := "ukrw"
+	asset := "terra0asset"
+
+	require.NoError(s.DB.Exec(`TRUNCATE TABLE price, tokens CASCADE`).Error)
+	require.NoError(s.DB.Exec(
+		`INSERT INTO tokens(id, chain_id, address, decimals) VALUES
+         (3000, $1, $2, 0),
+         (3001, $1, $3, 0),
+         (3002, $1, $4, 0)`,
+		chainName, priceToken, otherPriceToken, asset,
+	).Error)
+	require.NoError(s.DB.Exec(
+		`INSERT INTO price(height, chain_id, token_id, price, price_token_id, route_id) VALUES
+         (99, $1, 3002, '2', 3001, 0),
+         (90, $1, 3002, '7', 3000, 0),
+         (110, $1, 3002, '9', 3000, 0)`,
+		chainName,
+	).Error)
+
+	actual, err := s.Repo.RecentPrices(100, 120, []string{"3002"}, priceToken)
+
+	require.NoError(err)
+	require.Contains(actual, uint64(3002))
+	require.Len(actual[3002], 2)
+	assert.Equal(uint64(90), actual[3002][0].Height)
+	assert.Equal("7", actual[3002][0].Price)
+	assert.Equal(uint64(110), actual[3002][1].Height)
+	assert.Equal("9", actual[3002][1].Price)
+}
+
+func (s *aggregatorReadRepoSuite) Test_RecentPrices_ReturnsFirstInWindowPriceWithoutPreStartPrice() {
+	assert := assert.New(s.T())
+	require := require.New(s.T())
+
+	priceToken := "uusd"
+	asset := "terra0asset"
+
+	require.NoError(s.DB.Exec(`TRUNCATE TABLE price, tokens CASCADE`).Error)
+	require.NoError(s.DB.Exec(
+		`INSERT INTO tokens(id, chain_id, address, decimals) VALUES
+         (3100, $1, $2, 0),
+         (3101, $1, $3, 0)`,
+		chainName, priceToken, asset,
+	).Error)
+	require.NoError(s.DB.Exec(
+		`INSERT INTO price(height, chain_id, token_id, price, price_token_id, route_id) VALUES
+         (110, $1, 3101, '9', 3100, 0)`,
+		chainName,
+	).Error)
+
+	actual, err := s.Repo.RecentPrices(100, 120, []string{"3101"}, priceToken)
+
+	require.NoError(err)
+	require.Contains(actual, uint64(3101))
+	require.Len(actual[3101], 1)
+	assert.Equal(uint64(110), actual[3101][0].Height)
+	assert.Equal("9", actual[3101][0].Price)
+}
+
+func (s *aggregatorReadRepoSuite) Test_GetParsedTxsWithPriceOfPair_FiltersByPriceTokenId() {
+	assert := assert.New(s.T())
+	require := require.New(s.T())
+
+	priceToken := "uusd"
+	otherPriceToken := "ukrw"
+	asset := "terra0asset"
+	contract := "terra0pricefilterpair"
+	pairId := uint64(300)
+
+	require.NoError(s.DB.Exec(`TRUNCATE TABLE parsed_tx, price, tokens, pair CASCADE`).Error)
+	require.NoError(s.DB.Exec(
+		`INSERT INTO pair(id, chain_id, contract, asset0, asset1, lp) VALUES($1, $2, $3, $4, $5, $6)`,
+		pairId, chainName, contract, asset, priceToken, "terra0lp",
+	).Error)
+	require.NoError(s.DB.Exec(
+		`INSERT INTO tokens(id, chain_id, address, decimals) VALUES
+         (3100, $1, $2, 0),
+         (3101, $1, $3, 0),
+         (3102, $1, $4, 0)`,
+		chainName, priceToken, otherPriceToken, asset,
+	).Error)
+	require.NoError(s.DB.Exec(
+		`INSERT INTO price(height, chain_id, token_id, price, price_token_id, route_id) VALUES
+         (99, $1, 3102, '2', 3101, 0),
+         (90, $1, 3102, '7', 3100, 0)`,
+		chainName,
+	).Error)
+	require.NoError(s.DB.Exec(
+		`INSERT INTO parsed_tx(chain_id, height, timestamp, hash, type, sender, contract, asset0, asset0_amount, asset1, asset1_amount, lp, lp_amount, commission_amount, commission0_amount, commission1_amount)
+         VALUES ($1, 100, $2, 'price-filter-pair', 'swap', 'terra0wallet', $3, $4, '-10', $5, '1', 'terra0lp', '0', '0', '0', '0')`,
+		chainName, start, contract, asset, priceToken,
+	).Error)
+
+	actual, err := s.Repo.GetParsedTxsWithPriceOfPair(pairId, priceToken, start, end)
+
+	require.NoError(err)
+	require.Len(actual, 1)
+	assert.Equal("7", actual[0].Price0)
+	assert.Equal("1", actual[0].Price1)
+}
+
+func (s *aggregatorReadRepoSuite) Test_PairStats_FiltersByPriceTokenId() {
+	assert := assert.New(s.T())
+	require := require.New(s.T())
+
+	priceToken := "uusd"
+	otherPriceToken := "ukrw"
+	asset := "terra0asset"
+	contract := "terra0pairstatsfilter"
+	pairId := uint64(301)
+
+	require.NoError(s.DB.Exec(`TRUNCATE TABLE parsed_tx, price, tokens, pair CASCADE`).Error)
+	require.NoError(s.DB.Exec(
+		`INSERT INTO pair(id, chain_id, contract, asset0, asset1, lp) VALUES($1, $2, $3, $4, $5, $6)`,
+		pairId, chainName, contract, asset, priceToken, "terra0lp",
+	).Error)
+	require.NoError(s.DB.Exec(
+		`INSERT INTO tokens(id, chain_id, address, decimals) VALUES
+         (3200, $1, $2, 0),
+         (3201, $1, $3, 0),
+         (3202, $1, $4, 0)`,
+		chainName, priceToken, otherPriceToken, asset,
+	).Error)
+	require.NoError(s.DB.Exec(
+		`INSERT INTO price(height, chain_id, token_id, price, price_token_id, route_id) VALUES
+         (99, $1, 3202, '2', 3201, 0),
+         (90, $1, 3202, '7', 3200, 0)`,
+		chainName,
+	).Error)
+	require.NoError(s.DB.Exec(
+		`INSERT INTO parsed_tx(chain_id, height, timestamp, hash, type, sender, contract, asset0, asset0_amount, asset1, asset1_amount, lp, lp_amount, commission_amount, commission0_amount, commission1_amount)
+         VALUES ($1, 100, $2, 'pair-stats-price-filter', 'swap', 'terra0wallet', $3, $4, '-10', $5, '1', 'terra0lp', '0', '0', '0', '0')`,
+		chainName, start, contract, asset, priceToken,
+	).Error)
+
+	actual, err := s.Repo.PairStats(start, end, priceToken, map[uint64]schemas.PairStats30m{})
+
+	require.NoError(err)
+	require.Len(actual, 1)
+	volume0InPrice, err := strconv.ParseFloat(actual[0].Volume0InPrice, 64)
+	require.NoError(err)
+	assert.Equal(70.0, volume0InPrice)
+}
+
 func (s *aggregatorReadRepoSuite) Test_CommissionAmountInPair() {
 	assert := assert.New(s.T())
 
@@ -774,13 +923,17 @@ func (s *aggregatorReadRepoSuite) Test_LiquiditiesOfPairStats_UsesOneForPriceTok
 		pairId, chainName, "terra0pricepair", priceToken, "terra0asset", "terra0lp",
 	).Error)
 	require.NoError(s.DB.Exec(
-		`INSERT INTO tokens(id, chain_id, address, decimals) VALUES($1, $2, $3, $4), ($5, $6, $7, $8)`,
+		`INSERT INTO tokens(id, chain_id, address, decimals) VALUES($1, $2, $3, $4), ($5, $6, $7, $8), ($9, $10, $11, $12)`,
 		1000, chainName, priceToken, 6,
 		1001, chainName, "terra0asset", 6,
+		1002, chainName, "ukrw", 6,
 	).Error)
 	require.NoError(s.DB.Exec(
-		`INSERT INTO price(height, chain_id, token_id, price, price_token_id, route_id) VALUES($1, $2, $3, $4, $5, $6)`,
-		99, chainName, 1001, "2", 1000, 0,
+		`INSERT INTO price(height, chain_id, token_id, price, price_token_id, route_id) VALUES
+         ($1, $2, $3, $4, $5, $6),
+         ($7, $8, $9, $10, $11, $12)`,
+		99, chainName, 1001, "9", 1002, 0,
+		90, chainName, 1001, "2", 1000, 0,
 	).Error)
 	require.NoError(s.DB.Exec(
 		`INSERT INTO lp_history(height, pair_id, chain_id, liquidity0, liquidity1, timestamp) VALUES($1, $2, $3, $4, $5, $6)`,

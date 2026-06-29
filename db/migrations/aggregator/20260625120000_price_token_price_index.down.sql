@@ -1,0 +1,1 @@
+DROP INDEX CONCURRENTLY IF EXISTS price_chain_id_token_id_price_token_id_height_idx;
