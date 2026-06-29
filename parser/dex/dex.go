@@ -133,8 +133,17 @@ func (app *dexApp) Run() error {
 		for _, tx := range txs {
 			txs, err := app.ParseTxs(tx, cur)
 			if err != nil {
+				var partial *PartialParseQuarantineError
+				if errors.As(err, &partial) {
+					if err := app.UpsertParseQuarantine(partial.Quarantine); err != nil {
+						return fmt.Errorf("app.Run partial quarantine tx_hash=%s: %w", tx.Hash, err)
+					}
+					app.logger.Errorf("partially quarantined ambiguous transaction height=%d tx_hash=%s err=%s", cur, tx.Hash, err)
+					parsedTxs = append(parsedTxs, partial.ParsedTxs...)
+					continue
+				}
 				var ambiguity *eventlog.AmbiguousEventError
-				if errors.As(err, &ambiguity) && !rawTxContainsCreatePair(tx) {
+				if errors.As(err, &ambiguity) && !RawTxContainsCreatePair(tx) {
 					// Raw transactions remain available, so parser progress does not prevent deterministic replay.
 					if err := app.UpsertParseQuarantine(ParseQuarantine{
 						Height:   cur,
@@ -196,6 +205,9 @@ func (app *dexApp) retryPendingQuarantines(tokenExceptions map[string]bool) erro
 	}
 
 	for _, quarantine := range quarantines {
+		if IsPartialQuarantineStage(quarantine.Stage) {
+			continue
+		}
 		if err := app.UpdateParsers(tokenExceptions, quarantine.Height); err != nil {
 			return fmt.Errorf("update parsers for quarantine id=%d: %w", quarantine.ID, err)
 		}
@@ -213,18 +225,6 @@ func (app *dexApp) retryPendingQuarantines(tokenExceptions map[string]bool) erro
 		app.logger.Infof("resolved quarantined transaction height=%d tx_hash=%s", quarantine.Height, quarantine.Hash)
 	}
 	return nil
-}
-
-// rawTxContainsCreatePair guards parser state changes from being skipped into quarantine.
-func rawTxContainsCreatePair(tx parser.RawTx) bool {
-	for _, log := range tx.LogResults {
-		for _, attr := range log.Attributes {
-			if attr.Key == "action" && attr.Value == string(CreatePair) {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 // parseStage extracts the explicit ParseTxs wrapper stage for quarantine diagnostics.

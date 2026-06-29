@@ -204,6 +204,55 @@ func Test_Run_DoesNotQuarantineCreatePairTransaction(t *testing.T) {
 	repo.AssertNotCalled(t, "Insert", mock.Anything)
 }
 
+func Test_Run_UpsertsPartialQuarantineAndInsertsParsedTxs(t *testing.T) {
+	rawTx := parser.RawTx{Hash: "partial"}
+	parsedTx := ParsedTx{
+		Hash:         rawTx.Hash,
+		Type:         Transfer,
+		Sender:       "sender",
+		ContractAddr: "pair",
+		Assets:       [2]Asset{{Addr: "asset0", Amount: "1"}, {Addr: "asset1", Amount: "0"}},
+	}
+	quarantine := ParseQuarantine{
+		Height:   1,
+		Hash:     rawTx.Hash,
+		Stage:    PartialQuarantineStagePrefix + "wasm_transfer",
+		Contract: "token",
+		Action:   "transfer",
+		Error:    "ambiguous amount",
+		RawTx:    rawTx,
+	}
+	target := &quarantineTargetApp{parse: func(parser.RawTx, uint64) ([]ParsedTx, error) {
+		return nil, &PartialParseQuarantineError{
+			ParsedTxs:  []ParsedTx{parsedTx},
+			Quarantine: quarantine,
+			Err:        errors.New(quarantine.Error),
+		}
+	}}
+	repo := &RepoMock{}
+	srcStore := &RawStoreMock{}
+	app := &dexApp{
+		TargetApp:            target,
+		Repo:                 repo,
+		SourceDataStore:      srcStore,
+		logger:               logging.Discard,
+		poolSnapshotInterval: 100,
+		sameHeightTolerance:  3,
+		quarantineRetryMode:  configs.QuarantineRetryDisabled,
+	}
+
+	repo.On("GetTokenExceptions").Return(map[string]bool{}, nil)
+	repo.On("GetSyncedHeight").Return(uint64(0), nil)
+	srcStore.On("GetSourceSyncedHeight").Return(uint64(1), nil)
+	srcStore.On("GetSourceTxs", uint64(1)).Return(parser.RawTxs{rawTx}, nil)
+	repo.On("UpsertParseQuarantine", quarantine).Return(nil)
+	repo.On("Insert", uint64(0), uint64(1), []ParsedTx{parsedTx}, []PoolInfo{}, []Pair{}).Return(nil)
+
+	require.NoError(t, app.Run())
+	repo.AssertExpectations(t)
+	srcStore.AssertExpectations(t)
+}
+
 func Test_retryPendingQuarantines_ResolvesSuccessfulReplay(t *testing.T) {
 	rawTx := parser.RawTx{Hash: "replay"}
 	parsedTx := ParsedTx{
@@ -261,6 +310,31 @@ func Test_retryPendingQuarantines_LeavesAmbiguousReplayPending(t *testing.T) {
 	require.NoError(t, app.retryPendingQuarantines(map[string]bool{}))
 	repo.AssertNotCalled(t, "ResolveParseQuarantine", mock.Anything)
 }
+
+func Test_retryPendingQuarantines_SkipsPartialQuarantine(t *testing.T) {
+	rawTx := parser.RawTx{Hash: "partial"}
+	target := &quarantineTargetApp{parse: func(parser.RawTx, uint64) ([]ParsedTx, error) {
+		t.Fatal("partial quarantines must not be retried")
+		return nil, nil
+	}}
+	repo := &RepoMock{}
+	app := &dexApp{
+		TargetApp: target,
+		Repo:      repo,
+		logger:    logging.Discard,
+	}
+	repo.On("PendingParseQuarantines").Return([]ParseQuarantine{{
+		ID:     9,
+		Height: 12,
+		Hash:   rawTx.Hash,
+		Stage:  PartialQuarantineStagePrefix + "wasm_transfer",
+		RawTx:  rawTx,
+	}}, nil)
+
+	require.NoError(t, app.retryPendingQuarantines(map[string]bool{}))
+	repo.AssertNotCalled(t, "ResolveParseQuarantine", mock.Anything)
+}
+
 func Test_validate(t *testing.T) {
 	tcs := []struct {
 		actualPools []PoolInfo

@@ -14,6 +14,7 @@ import (
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -29,6 +30,18 @@ const (
 )
 
 var testPair = dex.Pair{ContractAddr: pairAddr, LpAddr: lpAddr, Assets: []string{asset1, asset2}}
+
+type parseFunc struct {
+	parse func(eventlog.LogResults, parser.Overrider[dex.ParsedTx], ...interface{}) ([]*dex.ParsedTx, error)
+}
+
+func (f parseFunc) Parse(raws eventlog.LogResults, defaultVal parser.Overrider[dex.ParsedTx], optionals ...interface{}) ([]*dex.ParsedTx, error) {
+	return f.parse(raws, defaultVal, optionals...)
+}
+
+func (f parseFunc) MatchedToParsedTx(eventlog.MatchedResult, ...interface{}) ([]*dex.ParsedTx, error) {
+	return nil, nil
+}
 
 func Test_ParseTxs(t *testing.T) {
 	type testcase struct {
@@ -222,6 +235,145 @@ func Test_ParseTxs_AppendsInitialProvideWhenPairActionHasProvide(t *testing.T) {
 			LpAmount:     "30",
 		},
 	}, txs)
+}
+
+func Test_ParseTxs_PartialQuarantineKeepsParsedTxsFromSameRawLog(t *testing.T) {
+	pairActionParser := parseFunc{parse: func(eventlog.LogResults, parser.Overrider[dex.ParsedTx], ...interface{}) ([]*dex.ParsedTx, error) {
+		return []*dex.ParsedTx{{
+			Hash:         txHash,
+			Type:         dex.Swap,
+			ContractAddr: pairAddr,
+			Assets:       [2]dex.Asset{{Addr: asset1, Amount: "10"}, {Addr: asset2, Amount: "-20"}},
+		}}, nil
+	}}
+	wasmTransferParser := parseFunc{parse: func(eventlog.LogResults, parser.Overrider[dex.ParsedTx], ...interface{}) ([]*dex.ParsedTx, error) {
+		return []*dex.ParsedTx{{
+				Hash:         txHash,
+				Type:         dex.Transfer,
+				Sender:       "partial-sender",
+				ContractAddr: "partial-token",
+				Assets:       [2]dex.Asset{{Addr: asset1, Amount: "3"}},
+			}}, &eventlog.AmbiguousEventError{
+				Contract: "ambiguous-token",
+				Action:   "transfer",
+				Key:      "amount",
+				Values:   []string{"1", "2"},
+			}
+	}}
+	transferParser := parseFunc{parse: func(eventlog.LogResults, parser.Overrider[dex.ParsedTx], ...interface{}) ([]*dex.ParsedTx, error) {
+		return []*dex.ParsedTx{{
+			Hash:         txHash,
+			Type:         dex.Transfer,
+			Sender:       "bank-sender",
+			ContractAddr: "bank-token",
+			Assets:       [2]dex.Asset{{Addr: "bank-token", Amount: "7"}},
+		}}, nil
+	}}
+	emptyParser := parseFunc{parse: func(eventlog.LogResults, parser.Overrider[dex.ParsedTx], ...interface{}) ([]*dex.ParsedTx, error) {
+		return nil, nil
+	}}
+	app := dezswapApp{
+		PairRepo: &dex.RepoMock{},
+		Parsers: &dex.PairParsers{
+			CreatePairParser: emptyParser,
+			PairActionParser: pairActionParser,
+			InitialProvide:   emptyParser,
+			WasmTransfer:     wasmTransferParser,
+			Transfer:         transferParser,
+			BurnParser:       emptyParser,
+		},
+		DexMixin:    dex.DexMixin{},
+		chainId:     chainId,
+		pairs:       map[string]dex.Pair{pairAddr: testPair},
+		lpPairAddrs: map[string]string{lpAddr: pairAddr},
+	}
+	tx := parser.RawTx{
+		Sender: txSender,
+		Hash:   txHash,
+		LogResults: eventlog.LogResults{{
+			Type: eventlog.WasmType,
+			Attributes: eventlog.Attributes{
+				{Key: "_contract_address", Value: pairAddr},
+				{Key: "action", Value: "swap"},
+				{Key: "action", Value: "transfer"},
+			},
+		}},
+	}
+
+	txs, err := app.ParseTxs(tx, 100)
+
+	var partial *dex.PartialParseQuarantineError
+	require.ErrorAs(t, err, &partial)
+	assert.Equal(t, partial.ParsedTxs, txs)
+	assert.Equal(t, dex.PartialQuarantineStagePrefix+"wasm_transfer", partial.Quarantine.Stage)
+	assert.Equal(t, "ambiguous-token", partial.Quarantine.Contract)
+	assert.Equal(t, tx, partial.Quarantine.RawTx)
+	assert.Equal(t, []dex.ParsedTx{{
+		Hash:         txHash,
+		Type:         dex.Swap,
+		Sender:       txSender,
+		ContractAddr: pairAddr,
+		Assets:       [2]dex.Asset{{Addr: asset1, Amount: "10"}, {Addr: asset2, Amount: "-20"}},
+	}, {
+		Hash:         txHash,
+		Type:         dex.Transfer,
+		Sender:       "partial-sender",
+		ContractAddr: "partial-token",
+		Assets:       [2]dex.Asset{{Addr: asset1, Amount: "3"}},
+	}, {
+		Hash:         txHash,
+		Type:         dex.Transfer,
+		Sender:       "bank-sender",
+		ContractAddr: "bank-token",
+		Assets:       [2]dex.Asset{{Addr: "bank-token", Amount: "7"}},
+	}}, txs)
+}
+
+func Test_ParseTxs_DoesNotPartialQuarantineCreatePairTransaction(t *testing.T) {
+	ambiguous := &eventlog.AmbiguousEventError{
+		Contract: "token",
+		Action:   "transfer",
+		Key:      "amount",
+		Values:   []string{"1", "2"},
+	}
+	emptyParser := parseFunc{parse: func(eventlog.LogResults, parser.Overrider[dex.ParsedTx], ...interface{}) ([]*dex.ParsedTx, error) {
+		return nil, nil
+	}}
+	app := dezswapApp{
+		PairRepo: &dex.RepoMock{},
+		Parsers: &dex.PairParsers{
+			CreatePairParser: emptyParser,
+			PairActionParser: parseFunc{parse: func(eventlog.LogResults, parser.Overrider[dex.ParsedTx], ...interface{}) ([]*dex.ParsedTx, error) {
+				return nil, nil
+			}},
+			InitialProvide: emptyParser,
+			WasmTransfer: parseFunc{parse: func(eventlog.LogResults, parser.Overrider[dex.ParsedTx], ...interface{}) ([]*dex.ParsedTx, error) {
+				return nil, ambiguous
+			}},
+			Transfer:   emptyParser,
+			BurnParser: emptyParser,
+		},
+		DexMixin:    dex.DexMixin{},
+		chainId:     chainId,
+		pairs:       map[string]dex.Pair{pairAddr: testPair},
+		lpPairAddrs: map[string]string{lpAddr: pairAddr},
+	}
+	tx := parser.RawTx{
+		Sender: txSender,
+		Hash:   txHash,
+		LogResults: eventlog.LogResults{{
+			Type: eventlog.WasmType,
+			Attributes: eventlog.Attributes{
+				{Key: "action", Value: string(dex.CreatePair)},
+			},
+		}},
+	}
+
+	_, err := app.ParseTxs(tx, 100)
+
+	var partial *dex.PartialParseQuarantineError
+	assert.NotErrorAs(t, err, &partial)
+	assert.ErrorIs(t, err, ambiguous)
 }
 
 func Test_ParseTxs_ReturnsStageAndTxHashOnError(t *testing.T) {
