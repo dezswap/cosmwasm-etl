@@ -332,7 +332,7 @@ func Test_retryPendingQuarantines_SkipsPartialQuarantine(t *testing.T) {
 	}}, nil)
 
 	require.NoError(t, app.retryPendingQuarantines(map[string]bool{}))
-	repo.AssertNotCalled(t, "ResolveParseQuarantine", mock.Anything)
+	repo.AssertNumberOfCalls(t, "ResolveParseQuarantine", 0)
 }
 
 func Test_validate(t *testing.T) {
