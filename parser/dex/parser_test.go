@@ -68,6 +68,36 @@ func Test_parser(t *testing.T) {
 	}
 }
 
+func Test_parser_ReturnsParsedTxsAndAmbiguityForPartialMatches(t *testing.T) {
+	logFinder := logfinderMock{}
+	mapper := mapperMock{}
+	firstMatch := eventlog.MatchedResult{{Key: "Key", Value: "First"}}
+	ambiguousMatch := eventlog.MatchedResult{{Key: "Key", Value: "Ambiguous"}}
+	thirdMatch := eventlog.MatchedResult{{Key: "Key", Value: "Third"}}
+	firstTx := &ParsedTx{Type: Provide, ContractAddr: "pair1"}
+	thirdTx := &ParsedTx{Type: Swap, ContractAddr: "pair2"}
+	ambiguousErr := &eventlog.AmbiguousEventError{
+		Contract: "token",
+		Action:   "transfer",
+		Key:      "amount",
+		Values:   []string{"1", "2"},
+	}
+
+	logFinder.On("FindFromLogs", mock.Anything).Return(eventlog.MatchedResults{firstMatch, ambiguousMatch, thirdMatch})
+	mapper.On("matchedToParsedTx", firstMatch, mock.Anything).Return([]*ParsedTx{firstTx}, nil)
+	mapper.On("matchedToParsedTx", ambiguousMatch, mock.Anything).Return([]*ParsedTx(nil), ambiguousErr)
+	mapper.On("matchedToParsedTx", thirdMatch, mock.Anything).Return([]*ParsedTx{thirdTx}, nil)
+
+	p := parser.NewParser[ParsedTx](&logFinder, &mapper)
+	txs, err := p.Parse(eventlog.LogResults{}, ParsedTx{Hash: "hash", Timestamp: time.Time{}})
+
+	assert.ErrorAs(t, err, &ambiguousErr)
+	assert.Equal(t, []*ParsedTx{
+		{Hash: "hash", Type: Provide, ContractAddr: "pair1"},
+		{Hash: "hash", Type: Swap, ContractAddr: "pair2"},
+	}, txs)
+}
+
 var _ eventlog.LogFinder = &logfinderMock{}
 var _ parser.Mapper[ParsedTx] = &mapperMock{}
 

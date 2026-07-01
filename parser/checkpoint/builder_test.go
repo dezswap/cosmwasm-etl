@@ -56,10 +56,6 @@ func (m *MockRepo) ClearValidationHeight() error {
 	return nil
 }
 
-func (m *MockRepo) UpsertParseQuarantine(_ dex.ParseQuarantine) error {
-	return nil
-}
-
 func (m *MockRepo) PendingParseQuarantines() ([]dex.ParseQuarantine, error) {
 	return nil, nil
 }

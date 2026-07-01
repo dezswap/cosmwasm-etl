@@ -69,22 +69,27 @@ func (m *RepoMock) GetSyncedHeight() (uint64, error) {
 
 // Insert implements Repo
 func (m *RepoMock) Insert(srcHeight uint64, targetHeight uint64, txs []ParsedTx, arg ...interface{}) error {
-	if len(arg) != 2 {
+	if len(arg) != InsertArgCount {
 		errMsg := fmt.Sprintf("invalid others(%v)", arg)
 		return errors.New(errMsg)
 	}
 
-	pools, ok := arg[0].([]PoolInfo)
+	pools, ok := arg[InsertArgPoolsIndex].([]PoolInfo)
 	if !ok {
-		errMsg := fmt.Sprintf("invalid pools(%v)", arg[0])
+		errMsg := fmt.Sprintf("invalid pools(%v)", arg[InsertArgPoolsIndex])
 		return errors.New(errMsg)
 	}
-	pairs, ok := arg[1].([]Pair)
+	pairs, ok := arg[InsertArgPairsIndex].([]Pair)
 	if !ok {
-		errMsg := fmt.Sprintf("invalid pairs(%v)", arg[1])
+		errMsg := fmt.Sprintf("invalid pairs(%v)", arg[InsertArgPairsIndex])
 		return errors.New(errMsg)
 	}
-	args := m.MethodCalled("Insert", srcHeight, targetHeight, txs, pools, pairs)
+	quarantines, ok := arg[InsertArgParseQuarantinesIndex].([]ParseQuarantine)
+	if !ok {
+		errMsg := fmt.Sprintf("invalid quarantines(%v)", arg[InsertArgParseQuarantinesIndex])
+		return errors.New(errMsg)
+	}
+	args := m.MethodCalled("Insert", srcHeight, targetHeight, txs, pools, pairs, quarantines)
 	return args.Error(0)
 }
 
@@ -118,11 +123,6 @@ func (m *RepoMock) SetValidationHeight(_ uint64) error {
 // ClearValidationHeight implements Repo.
 func (m *RepoMock) ClearValidationHeight() error {
 	return nil
-}
-
-func (m *RepoMock) UpsertParseQuarantine(quarantine ParseQuarantine) error {
-	args := m.MethodCalled("UpsertParseQuarantine", quarantine)
-	return args.Error(0)
 }
 
 func (m *RepoMock) PendingParseQuarantines() ([]ParseQuarantine, error) {

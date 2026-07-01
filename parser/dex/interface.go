@@ -4,6 +4,13 @@ import (
 	"github.com/dezswap/cosmwasm-etl/parser"
 )
 
+const (
+	InsertArgPoolsIndex = iota
+	InsertArgPairsIndex
+	InsertArgParseQuarantinesIndex
+	InsertArgCount
+)
+
 type DexParserApp interface {
 	Run() error
 	TargetApp
@@ -26,7 +33,6 @@ type Repo interface {
 	GetValidationHeight() (uint64, error)
 	SetValidationHeight(height uint64) error
 	ClearValidationHeight() error
-	UpsertParseQuarantine(quarantine ParseQuarantine) error
 	PendingParseQuarantines() ([]ParseQuarantine, error)
 	ResolveParseQuarantine(id uint64, height uint64, txs []ParsedTx) error
 }

@@ -41,7 +41,7 @@ func (b *Builder) Build(targetHeight uint64) error {
 	}
 
 	// Save checkpoint data (transactions, pools, pairs) to database
-	if err := b.repo.Insert(dbHeight, targetHeight, txs, pools, pairs); err != nil {
+	if err := b.repo.Insert(dbHeight, targetHeight, txs, pools, pairs, []dex.ParseQuarantine{}); err != nil {
 		return errors.Wrap(err, "failed to insert data")
 	}
 

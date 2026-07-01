@@ -1,8 +1,10 @@
 package parser
 
 import (
+	stderrors "errors"
+
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
-	"github.com/pkg/errors"
+	pkgerrors "github.com/pkg/errors"
 )
 
 type Overrider[T any] interface {
@@ -31,11 +33,19 @@ func NewParser[T any](finder eventlog.LogFinder, mapper Mapper[T]) Parser[T] {
 func (p *parserImpl[T]) Parse(raws eventlog.LogResults, defaultVal Overrider[T], optionals ...interface{}) ([]*T, error) {
 	matched := p.FindFromLogs(raws)
 	txs := []*T{}
+	var ambiguousErr error
 
 	for _, match := range matched {
 		dtos, err := p.MatchedToParsedTx(match, optionals...)
 		if err != nil {
-			return nil, errors.Wrap(err, "parserImpl.Parse")
+			var ambiguity *eventlog.AmbiguousEventError
+			if stderrors.As(err, &ambiguity) {
+				if ambiguousErr == nil {
+					ambiguousErr = pkgerrors.Wrap(err, "parserImpl.Parse")
+				}
+				continue
+			}
+			return nil, pkgerrors.Wrap(err, "parserImpl.Parse")
 		}
 		// skip if no dto
 		if len(dtos) == 0 {
@@ -45,13 +55,13 @@ func (p *parserImpl[T]) Parse(raws eventlog.LogResults, defaultVal Overrider[T],
 		for _, d := range dtos {
 			overridden, err := defaultVal.Override(*d)
 			if err != nil {
-				return nil, errors.Wrap(err, "parserImpl.Parse")
+				return nil, pkgerrors.Wrap(err, "parserImpl.Parse")
 			}
 			txs = append(txs, &overridden)
 		}
 	}
 
-	return txs, nil
+	return txs, ambiguousErr
 }
 
 // matchedToParsedTxDto implements parser

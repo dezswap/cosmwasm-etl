@@ -49,6 +49,7 @@ func New(repo p_dex.PairRepo, logger logging.Logger, c configs.ParserDexConfig) 
 
 func (p *terraswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]p_dex.ParsedTx, error) {
 	txDtos := []p_dex.ParsedTx{}
+	partialQuarantine := p_dex.NewPartialQuarantineRecorder(tx, height)
 	createPairTxs, err := p.Parsers.CreatePairParser.Parse(tx.LogResults, p_dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp}, nil)
 	if err != nil {
 		return nil, errors.Wrapf(err, "columbusv1.ParseTxs create_pair tx_hash=%s", tx.Hash)
@@ -78,7 +79,10 @@ func (p *terraswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]p_dex.ParsedT
 
 		wtxs, err := p.Parsers.WasmTransfer.Parse(eventlog.LogResults{raw}, p_dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
 		if err != nil {
-			return nil, errors.Wrapf(err, "columbusv1.ParseTxs wasm_transfer tx_hash=%s", tx.Hash)
+			wrapped := errors.Wrapf(err, "columbusv1.ParseTxs wasm_transfer tx_hash=%s", tx.Hash)
+			if !partialQuarantine.Record("wasm_transfer", wrapped) {
+				return nil, wrapped
+			}
 		}
 		wasmTxs = append(wasmTxs, wtxs...)
 
@@ -94,6 +98,10 @@ func (p *terraswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]p_dex.ParsedT
 	}
 
 	txDtos = append(txDtos, p.RemoveDuplicatedTxs(pairTxs, append(wasmTxs, transferTxs...))...)
+
+	if err := partialQuarantine.Err(txDtos); err != nil {
+		return txDtos, err
+	}
 
 	return txDtos, nil
 }
