@@ -170,7 +170,7 @@ func (s *insertSuite) SetupSuite() {
 	}
 }
 
-func (s *insertSuite) SetSuccessMock() {
+func (s *insertSuite) SetSuccessMock(quarantines []dex.ParseQuarantine) {
 
 	pairLen, poolInfosLen := int64(len(s.pairs)), int64(len(s.poolInfos))
 	parsedTxIds := sqlmock.NewRows([]string{"id"})
@@ -182,6 +182,10 @@ func (s *insertSuite) SetSuccessMock() {
 	s.Mock.ExpectExec(`INSERT INTO "pair" (.*)`).WillReturnResult(sqlmock.NewResult(pairLen, pairLen))
 	s.Mock.ExpectQuery(`INSERT INTO "parsed_tx" (.*)`).WillReturnRows(parsedTxIds)
 	s.Mock.ExpectExec(`INSERT INTO "pool_info" (.*)`).WillReturnResult(sqlmock.NewResult(poolInfosLen, poolInfosLen))
+	for range quarantines {
+		s.Mock.ExpectQuery(`INSERT INTO "parse_quarantine" (.+) ON CONFLICT (.+) DO UPDATE SET (.+)"updated_at"=EXTRACT\(EPOCH FROM NOW\(\)\)(.+)RETURNING "id"`).
+			WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+	}
 	s.Mock.ExpectExec(`UPDATE "synced_height" SET "height"=\$1 WHERE chain\_id = \$2 AND height = \$3`).WithArgs(s.height, s.Repo.chainId, s.height-1).WillReturnResult(sqlmock.NewResult(1, 1))
 	s.Mock.ExpectCommit()
 
@@ -194,15 +198,57 @@ func (s *insertSuite) SetFailMock() {
 
 }
 
+func (s *insertSuite) SetQuarantineFailMock() {
+	pairLen, poolInfosLen := int64(len(s.pairs)), int64(len(s.poolInfos))
+	parsedTxIds := sqlmock.NewRows([]string{"id"})
+	for i := 0; i < len(s.parsedTxs); i++ {
+		parsedTxIds = parsedTxIds.AddRow(0)
+	}
+
+	s.Mock.ExpectBegin()
+	s.Mock.ExpectExec(`INSERT INTO "pair" (.*)`).WillReturnResult(sqlmock.NewResult(pairLen, pairLen))
+	s.Mock.ExpectQuery(`INSERT INTO "parsed_tx" (.*)`).WillReturnRows(parsedTxIds)
+	s.Mock.ExpectExec(`INSERT INTO "pool_info" (.*)`).WillReturnResult(sqlmock.NewResult(poolInfosLen, poolInfosLen))
+	s.Mock.ExpectQuery(`INSERT INTO "parse_quarantine" (.+) ON CONFLICT (.+) DO UPDATE SET (.+)"updated_at"=EXTRACT\(EPOCH FROM NOW\(\)\)(.+)RETURNING "id"`).
+		WillReturnError(errors.New("quarantine insert failed"))
+	s.Mock.ExpectRollback()
+}
+
+func (s *insertSuite) SetQuarantineOnlyMock() {
+	s.Mock.ExpectBegin()
+	s.Mock.ExpectQuery(`INSERT INTO "parse_quarantine" (.+) ON CONFLICT (.+) DO UPDATE SET (.+)"updated_at"=EXTRACT\(EPOCH FROM NOW\(\)\)(.+)RETURNING "id"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+	s.Mock.ExpectExec(`UPDATE "synced_height" SET "height"=\$1 WHERE chain\_id = \$2 AND height = \$3`).WithArgs(s.height, s.Repo.chainId, s.height-1).WillReturnResult(sqlmock.NewResult(1, 1))
+	s.Mock.ExpectCommit()
+}
+
 func (s *insertSuite) Test_Insert() {
 	assert := assert.New(s.T())
-	s.SetSuccessMock()
-	err := s.Repo.Insert(s.height-1, s.height, s.parsedTxs, s.poolInfos, s.pairs)
+	s.SetSuccessMock(nil)
+	err := s.Repo.Insert(s.height-1, s.height, s.parsedTxs, s.poolInfos, s.pairs, []dex.ParseQuarantine{})
+	assert.NoError(err)
+
+	quarantines := []dex.ParseQuarantine{{
+		Height: s.height,
+		Hash:   "tx-hash",
+		Stage:  "wasm_transfer",
+		RawTx:  parser.RawTx{Hash: "tx-hash"},
+	}}
+	s.SetSuccessMock(quarantines)
+	err = s.Repo.Insert(s.height-1, s.height, s.parsedTxs, s.poolInfos, s.pairs, quarantines)
+	assert.NoError(err)
+
+	s.SetQuarantineFailMock()
+	err = s.Repo.Insert(s.height-1, s.height, s.parsedTxs, s.poolInfos, s.pairs, quarantines)
+	assert.Error(err)
+
+	s.SetQuarantineOnlyMock()
+	err = s.Repo.Insert(s.height-1, s.height, []dex.ParsedTx{}, []dex.PoolInfo{}, []dex.Pair{}, quarantines)
 	assert.NoError(err)
 
 	s.SetFailMock()
 	s.pairs[0].ContractAddr = ""
-	err = s.Repo.Insert(s.height-1, s.height, s.parsedTxs, s.poolInfos, s.pairs)
+	err = s.Repo.Insert(s.height-1, s.height, s.parsedTxs, s.poolInfos, s.pairs, []dex.ParseQuarantine{})
 	assert.Error(err)
 }
 
@@ -325,27 +371,6 @@ func (s *validationHeightSuite) Test_ClearValidationHeight() {
 
 type parseQuarantineSuite struct {
 	baseSuite
-}
-
-func (s *parseQuarantineSuite) Test_UpsertParseQuarantine() {
-	quarantine := dex.ParseQuarantine{
-		Height:   10,
-		Hash:     "tx-hash",
-		Stage:    "wasm_transfer",
-		Contract: "token",
-		Action:   "transfer",
-		Error:    "ambiguous amount",
-		RawTx: parser.RawTx{
-			Hash: "tx-hash",
-		},
-	}
-
-	s.Mock.ExpectBegin()
-	s.Mock.ExpectQuery(`INSERT INTO "parse_quarantine" (.+) ON CONFLICT (.+) DO UPDATE SET (.+)"updated_at"=EXTRACT\(EPOCH FROM NOW\(\)\)(.+)RETURNING "id"`).
-		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
-	s.Mock.ExpectCommit()
-
-	s.NoError(s.Repo.UpsertParseQuarantine(quarantine))
 }
 
 func (s *parseQuarantineSuite) Test_PendingParseQuarantines() {

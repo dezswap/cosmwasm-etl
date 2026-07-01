@@ -61,19 +61,24 @@ func (r *repoImpl) GetPairs() (map[string]dex.Pair, error) {
 
 // Insert implements p_dex.Repo
 func (r *repoImpl) Insert(srcHeight uint64, targetHeight uint64, txs []dex.ParsedTx, arg ...interface{}) error {
-	if len(arg) != 2 {
+	if len(arg) != dex.InsertArgCount {
 		errMsg := fmt.Sprintf("invalid others(%v)", arg)
 		return errors.New(errMsg)
 	}
 
-	pools, ok := arg[0].([]dex.PoolInfo)
+	pools, ok := arg[dex.InsertArgPoolsIndex].([]dex.PoolInfo)
 	if !ok {
-		errMsg := fmt.Sprintf("invalid pools(%v)", arg[0])
+		errMsg := fmt.Sprintf("invalid pools(%v)", arg[dex.InsertArgPoolsIndex])
 		return errors.New(errMsg)
 	}
-	pairs, ok := arg[1].([]dex.Pair)
+	pairs, ok := arg[dex.InsertArgPairsIndex].([]dex.Pair)
 	if !ok {
-		errMsg := fmt.Sprintf("invalid pair(%v)", arg[1])
+		errMsg := fmt.Sprintf("invalid pair(%v)", arg[dex.InsertArgPairsIndex])
+		return errors.New(errMsg)
+	}
+	quarantines, ok := arg[dex.InsertArgParseQuarantinesIndex].([]dex.ParseQuarantine)
+	if !ok {
+		errMsg := fmt.Sprintf("invalid quarantines(%v)", arg[dex.InsertArgParseQuarantinesIndex])
 		return errors.New(errMsg)
 	}
 
@@ -91,14 +96,23 @@ func (r *repoImpl) Insert(srcHeight uint64, targetHeight uint64, txs []dex.Parse
 	}
 
 	return r.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(schemas.Pair{}).CreateInBatches(pairTxs, len(pairTxs)).Error; err != nil {
-			return errors.Wrap(err, "repo.Insert.Pair")
+		if len(pairTxs) > 0 {
+			if err := tx.Model(schemas.Pair{}).CreateInBatches(pairTxs, len(pairTxs)).Error; err != nil {
+				return errors.Wrap(err, "repo.Insert.Pair")
+			}
 		}
-		if err := tx.Model(schemas.ParsedTx{}).Omit("Id").CreateInBatches(parsedTxs, len(parsedTxs)).Error; err != nil {
-			return errors.Wrap(err, "repo.Insert.ParsedTx")
+		if len(parsedTxs) > 0 {
+			if err := tx.Model(schemas.ParsedTx{}).Omit("Id").CreateInBatches(parsedTxs, len(parsedTxs)).Error; err != nil {
+				return errors.Wrap(err, "repo.Insert.ParsedTx")
+			}
 		}
-		if err := tx.Model(schemas.PoolInfo{}).CreateInBatches(poolInfoTxs, len(poolInfoTxs)).Error; err != nil {
-			return errors.Wrap(err, "repo.Insert.PoolInfo")
+		if len(poolInfoTxs) > 0 {
+			if err := tx.Model(schemas.PoolInfo{}).CreateInBatches(poolInfoTxs, len(poolInfoTxs)).Error; err != nil {
+				return errors.Wrap(err, "repo.Insert.PoolInfo")
+			}
+		}
+		if err := r.upsertParseQuarantines(tx, quarantines); err != nil {
+			return err
 		}
 		if err := tx.Model(&schemas.SyncedHeight{}).Where("chain_id = ? AND height = ?", r.chainId, srcHeight).Update("height", targetHeight).Error; err != nil {
 			return errors.Wrap(err, "repo.Insert.SyncedHeight")
@@ -217,39 +231,41 @@ func (r *repoImpl) ClearValidationHeight() error {
 	return nil
 }
 
-func (r *repoImpl) UpsertParseQuarantine(quarantine dex.ParseQuarantine) error {
-	rawTx, err := json.Marshal(quarantine.RawTx)
-	if err != nil {
-		return errors.Wrap(err, "repo.UpsertParseQuarantine")
-	}
+func (r *repoImpl) upsertParseQuarantines(tx *gorm.DB, quarantines []dex.ParseQuarantine) error {
+	for _, quarantine := range quarantines {
+		rawTx, err := json.Marshal(quarantine.RawTx)
+		if err != nil {
+			return errors.Wrap(err, "repo.Insert.ParseQuarantine")
+		}
 
-	row := schemas.ParseQuarantine{
-		ChainId:  r.chainId,
-		Height:   quarantine.Height,
-		Hash:     quarantine.Hash,
-		Stage:    quarantine.Stage,
-		Contract: quarantine.Contract,
-		Action:   quarantine.Action,
-		Error:    quarantine.Error,
-		RawTx:    schemas.JSON(rawTx),
-		Status:   dex.QuarantineStatusPending,
-	}
-	tx := r.db.Clauses(clause.OnConflict{
-		Columns: []clause.Column{{Name: "chain_id"}, {Name: "hash"}},
-		DoUpdates: clause.Assignments(map[string]interface{}{
-			"height":      row.Height,
-			"stage":       row.Stage,
-			"contract":    row.Contract,
-			"action":      row.Action,
-			"error":       row.Error,
-			"raw_tx":      row.RawTx,
-			"status":      row.Status,
-			"resolved_at": nil,
-			"updated_at":  gorm.Expr("EXTRACT(EPOCH FROM NOW())"),
-		}),
-	}).Create(&row)
-	if tx.Error != nil {
-		return errors.Wrap(tx.Error, "repo.UpsertParseQuarantine")
+		row := schemas.ParseQuarantine{
+			ChainId:  r.chainId,
+			Height:   quarantine.Height,
+			Hash:     quarantine.Hash,
+			Stage:    quarantine.Stage,
+			Contract: quarantine.Contract,
+			Action:   quarantine.Action,
+			Error:    quarantine.Error,
+			RawTx:    schemas.JSON(rawTx),
+			Status:   dex.QuarantineStatusPending,
+		}
+		result := tx.Clauses(clause.OnConflict{
+			Columns: []clause.Column{{Name: "chain_id"}, {Name: "hash"}},
+			DoUpdates: clause.Assignments(map[string]interface{}{
+				"height":      row.Height,
+				"stage":       row.Stage,
+				"contract":    row.Contract,
+				"action":      row.Action,
+				"error":       row.Error,
+				"raw_tx":      row.RawTx,
+				"status":      row.Status,
+				"resolved_at": nil,
+				"updated_at":  gorm.Expr("EXTRACT(EPOCH FROM NOW())"),
+			}),
+		}).Create(&row)
+		if result.Error != nil {
+			return errors.Wrap(result.Error, "repo.Insert.ParseQuarantine")
+		}
 	}
 	return nil
 }

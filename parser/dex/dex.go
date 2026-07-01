@@ -130,14 +130,13 @@ func (app *dexApp) Run() error {
 		}
 
 		parsedTxs := []ParsedTx{}
+		parseQuarantines := []ParseQuarantine{}
 		for _, tx := range txs {
 			txs, err := app.ParseTxs(tx, cur)
 			if err != nil {
 				var partial *PartialParseQuarantineError
 				if errors.As(err, &partial) {
-					if err := app.UpsertParseQuarantine(partial.Quarantine); err != nil {
-						return fmt.Errorf("app.Run partial quarantine tx_hash=%s: %w", tx.Hash, err)
-					}
+					parseQuarantines = append(parseQuarantines, partial.Quarantine)
 					app.logger.Errorf("partially quarantined ambiguous transaction height=%d tx_hash=%s err=%s", cur, tx.Hash, err)
 					parsedTxs = append(parsedTxs, partial.ParsedTxs...)
 					continue
@@ -145,7 +144,7 @@ func (app *dexApp) Run() error {
 				var ambiguity *eventlog.AmbiguousEventError
 				if errors.As(err, &ambiguity) && !RawTxContainsCreatePair(tx) {
 					// Raw transactions remain available, so parser progress does not prevent deterministic replay.
-					if err := app.UpsertParseQuarantine(ParseQuarantine{
+					parseQuarantines = append(parseQuarantines, ParseQuarantine{
 						Height:   cur,
 						Hash:     tx.Hash,
 						Stage:    parseStage(err),
@@ -153,9 +152,7 @@ func (app *dexApp) Run() error {
 						Action:   ambiguity.Action,
 						Error:    err.Error(),
 						RawTx:    tx,
-					}); err != nil {
-						return fmt.Errorf("app.Run quarantine tx_hash=%s: %w", tx.Hash, err)
-					}
+					})
 					app.logger.Errorf("quarantined ambiguous transaction height=%d tx_hash=%s err=%s", cur, tx.Hash, err)
 					continue
 				}
@@ -172,7 +169,7 @@ func (app *dexApp) Run() error {
 			}
 		}
 
-		if err := app.insert(cur-1, cur, parsedTxs, poolInfos); err != nil {
+		if err := app.insert(cur-1, cur, parsedTxs, poolInfos, parseQuarantines); err != nil {
 			return fmt.Errorf("app.Run: %w", err)
 		}
 
@@ -250,7 +247,7 @@ func parseStage(err error) string {
 }
 
 // insert implements parser
-func (app *dexApp) insert(srcHeight uint64, targetHeight uint64, txs []ParsedTx, pools []PoolInfo) error {
+func (app *dexApp) insert(srcHeight uint64, targetHeight uint64, txs []ParsedTx, pools []PoolInfo, quarantines []ParseQuarantine) error {
 	pairDtos := []Pair{}
 	for _, tx := range txs {
 		if tx.Type == CreatePair {
@@ -263,7 +260,7 @@ func (app *dexApp) insert(srcHeight uint64, targetHeight uint64, txs []ParsedTx,
 		}
 	}
 
-	err := app.Insert(srcHeight, targetHeight, txs, pools, pairDtos)
+	err := app.Insert(srcHeight, targetHeight, txs, pools, pairDtos, quarantines)
 	if err != nil {
 		return fmt.Errorf("insert: %w", err)
 	}

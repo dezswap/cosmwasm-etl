@@ -74,10 +74,11 @@ func Test_insert(t *testing.T) {
 		if tc.errMsg != "" {
 			err = errors.New(tc.errMsg)
 		}
-		repoMock.On("Insert", height-1, height, tc.txs, tc.poolInfos, pairDtos).Return(err)
+		quarantines := []ParseQuarantine{}
+		repoMock.On("Insert", height-1, height, tc.txs, tc.poolInfos, pairDtos, quarantines).Return(err)
 
 		app := dexApp{Repo: &repoMock}
-		err = app.insert(height-1, height, tc.txs, tc.poolInfos)
+		err = app.insert(height-1, height, tc.txs, tc.poolInfos, quarantines)
 		if tc.errMsg != "" {
 			assert.Error(t, err, tc.errMsg)
 			repoMock.AssertExpectations(t)
@@ -154,14 +155,18 @@ func Test_Run_QuarantinesAmbiguousTransactionAndAdvancesHeight(t *testing.T) {
 	repo.On("GetSyncedHeight").Return(uint64(0), nil)
 	srcStore.On("GetSourceSyncedHeight").Return(uint64(1), nil)
 	srcStore.On("GetSourceTxs", uint64(1)).Return(parser.RawTxs{ambiguousTx, normalTx}, nil)
-	repo.On("UpsertParseQuarantine", mock.MatchedBy(func(q ParseQuarantine) bool {
+	expectedQuarantines := mock.MatchedBy(func(qs []ParseQuarantine) bool {
+		if len(qs) != 1 {
+			return false
+		}
+		q := qs[0]
 		return q.Height == 1 &&
 			q.Hash == ambiguousTx.Hash &&
 			q.Stage == "unknown" &&
 			q.Contract == "token" &&
 			q.Action == "transfer"
-	})).Return(nil)
-	repo.On("Insert", uint64(0), uint64(1), []ParsedTx{expectedTx}, []PoolInfo{}, []Pair{}).Return(nil)
+	})
+	repo.On("Insert", uint64(0), uint64(1), []ParsedTx{expectedTx}, []PoolInfo{}, []Pair{}, expectedQuarantines).Return(nil)
 
 	require.NoError(t, app.Run())
 	repo.AssertExpectations(t)
@@ -200,7 +205,6 @@ func Test_Run_DoesNotQuarantineCreatePairTransaction(t *testing.T) {
 
 	err := app.Run()
 	require.Error(t, err)
-	repo.AssertNotCalled(t, "UpsertParseQuarantine", mock.Anything)
 	repo.AssertNotCalled(t, "Insert", mock.Anything)
 }
 
@@ -245,8 +249,7 @@ func Test_Run_UpsertsPartialQuarantineAndInsertsParsedTxs(t *testing.T) {
 	repo.On("GetSyncedHeight").Return(uint64(0), nil)
 	srcStore.On("GetSourceSyncedHeight").Return(uint64(1), nil)
 	srcStore.On("GetSourceTxs", uint64(1)).Return(parser.RawTxs{rawTx}, nil)
-	repo.On("UpsertParseQuarantine", quarantine).Return(nil)
-	repo.On("Insert", uint64(0), uint64(1), []ParsedTx{parsedTx}, []PoolInfo{}, []Pair{}).Return(nil)
+	repo.On("Insert", uint64(0), uint64(1), []ParsedTx{parsedTx}, []PoolInfo{}, []Pair{}, []ParseQuarantine{quarantine}).Return(nil)
 
 	require.NoError(t, app.Run())
 	repo.AssertExpectations(t)
