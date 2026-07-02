@@ -114,6 +114,38 @@ func TestSortAttributes(t *testing.T) {
 				{Key: "sender", Value: "terra1abcdr"},
 			},
 		},
+		{
+			name: "tc with optional sender mixed in key sets",
+			attrs: Attributes{
+				{Key: "recipient", Value: "terra1abcdr"},
+				{Key: "amount", Value: "100uluna"},
+				{Key: "amount", Value: "101uluna"},
+				{Key: "recipient", Value: "terra1abcdr2"},
+				{Key: "sender", Value: "terra1abcds2"},
+				{Key: "amount", Value: "102uluna"},
+				{Key: "recipient", Value: "terra1abcdr3"},
+				{Key: "sender", Value: "terra1abcds3"},
+				{Key: "recipient", Value: "terra1abcdr4"},
+				{Key: "amount", Value: "103uluna"},
+			},
+			filter: []string{
+				"amount",
+				"recipient",
+				"sender",
+			},
+			expected: &Attributes{
+				{Key: "amount", Value: "100uluna"},
+				{Key: "recipient", Value: "terra1abcdr"},
+				{Key: "amount", Value: "101uluna"},
+				{Key: "recipient", Value: "terra1abcdr2"},
+				{Key: "sender", Value: "terra1abcds2"},
+				{Key: "amount", Value: "102uluna"},
+				{Key: "recipient", Value: "terra1abcdr3"},
+				{Key: "sender", Value: "terra1abcds3"},
+				{Key: "amount", Value: "103uluna"},
+				{Key: "recipient", Value: "terra1abcdr4"},
+			},
+		},
 	}
 
 	for _, tc := range tests {

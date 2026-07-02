@@ -165,6 +165,9 @@ func (m *transferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals
 	}
 
 	sender, receiver := matchMap[pdex.TransferSenderKey].Value, matchMap[pdex.TransferRecipientKey].Value
+	if sender == "" {
+		sender = transferFallbackSender(optionals...)
+	}
 	fp, fromPair := m.pairSet[sender]
 	tp, toPair := m.pairSet[receiver]
 
@@ -193,6 +196,17 @@ func (m *transferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals
 	}
 
 	return txs, nil
+}
+
+// transferFallbackSender returns the first non-empty string optional as the transfer sender fallback.
+func transferFallbackSender(optionals ...interface{}) string {
+	for _, optional := range optionals {
+		sender, ok := optional.(string)
+		if ok && sender != "" {
+			return sender
+		}
+	}
+	return ""
 }
 
 func (m transferMapper) transferToParsedTx(pair Pair, from, assetsStr string, fromPair bool, msgIndex int) (*ParsedTx, error) {

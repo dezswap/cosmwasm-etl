@@ -102,6 +102,73 @@ func Test_LogFinders(t *testing.T) {
 
 }
 
+func Test_SortedTransferRuleFinder_OptionalSender(t *testing.T) {
+	tcs := []struct {
+		name          string
+		rawLogStr     string
+		expectedKeys  []string
+		expectedValue map[string]string
+	}{
+		{
+			name:         "with sender",
+			rawLogStr:    TransferRawLogStr,
+			expectedKeys: []string{"amount", "recipient", "sender"},
+			expectedValue: map[string]string{
+				"amount":    "1000000uluna",
+				"recipient": "terra1zdpq84j8ex29wz9tmygqtftplrw87x8wmuyfh0rsy60uq7nadtsq5pjr7y",
+				"sender":    "terra1g5cad8hl9uwldus279ddc0j4fq7xjude0ynhjv",
+			},
+		},
+		{
+			name:         "without sender",
+			rawLogStr:    TransferRawLogWithoutSenderStr,
+			expectedKeys: []string{"amount", "recipient"},
+			expectedValue: map[string]string{
+				"amount":    "1000000uluna",
+				"recipient": "terra1zdpq84j8ex29wz9tmygqtftplrw87x8wmuyfh0rsy60uq7nadtsq5pjr7y",
+			},
+		},
+	}
+
+	for _, tc := range tcs {
+		t.Run(tc.name, func(t *testing.T) {
+			logFinder, err := CreateSortedTransferRuleFinder(nil)
+			assert.NoError(t, err)
+
+			eventLogs := eventlog.LogResults{}
+			assert.NoError(t, json.Unmarshal([]byte(tc.rawLogStr), &eventLogs))
+
+			matchedResults := logFinder.FindFromLogs(eventLogs)
+			assert.Len(t, matchedResults, 1)
+			assert.Len(t, matchedResults[0], len(tc.expectedKeys))
+			for idx, key := range tc.expectedKeys {
+				assert.Equal(t, key, matchedResults[0][idx].Key)
+				assert.Equal(t, tc.expectedValue[key], matchedResults[0][idx].Value)
+			}
+		})
+	}
+}
+
+func Test_SortedTransferRuleFinder_FiltersPairRecipient(t *testing.T) {
+	const pairAddr = "terra1zdpq84j8ex29wz9tmygqtftplrw87x8wmuyfh0rsy60uq7nadtsq5pjr7y"
+
+	logFinder, err := CreateSortedTransferRuleFinder(map[string]bool{pairAddr: true})
+	assert.NoError(t, err)
+
+	eventLogs := eventlog.LogResults{}
+	assert.NoError(t, json.Unmarshal([]byte(TransferRawLogStr), &eventLogs))
+
+	matchedResults := logFinder.FindFromLogs(eventLogs)
+	assert.Len(t, matchedResults, 1)
+	assert.Equal(t, pairAddr, matchedResults[0][SortedTransferRecipientIdx].Value)
+
+	logFinder, err = CreateSortedTransferRuleFinder(map[string]bool{"other_pair": true})
+	assert.NoError(t, err)
+
+	matchedResults = logFinder.FindFromLogs(eventLogs)
+	assert.Empty(t, matchedResults)
+}
+
 const (
 	differentTypeLogsStr = `[{ "type":"wrongType", "attributes":[{ "key":"_contract_address", "value":"terra1466nf3zuxpya8q9emxukd7vftaf6h4psr0a07srl5zw74zh84yjqxl5qul"},
 			{ "key":"action", "value":"create_pair"},
@@ -193,4 +260,11 @@ const TransferRawLogStr = `[
 	{"type":"coin_spent","attributes":[{"key":"spender","value":"terra1g5cad8hl9uwldus279ddc0j4fq7xjude0ynhjv"},{"key":"amount","value":"1000000uluna"}]},
 	{"type":"message","attributes":[{"key":"action","value":"/cosmos.bank.v1beta1.MsgSend"},{"key":"sender","value":"terra1g5cad8hl9uwldus279ddc0j4fq7xjude0ynhjv"},{"key":"module","value":"bank"}]},
 	{"type":"transfer","attributes":[{"key":"amount","value":"1000000uluna"},{"key":"recipient","value":"terra1zdpq84j8ex29wz9tmygqtftplrw87x8wmuyfh0rsy60uq7nadtsq5pjr7y"},{"key":"sender","value":"terra1g5cad8hl9uwldus279ddc0j4fq7xjude0ynhjv"}]}
+]`
+
+const TransferRawLogWithoutSenderStr = `[
+	{"type":"coin_received","attributes":[{"key":"receiver","value":"terra1zdpq84j8ex29wz9tmygqtftplrw87x8wmuyfh0rsy60uq7nadtsq5pjr7y"},{"key":"amount","value":"1000000uluna"}]},
+	{"type":"coin_spent","attributes":[{"key":"spender","value":"terra1g5cad8hl9uwldus279ddc0j4fq7xjude0ynhjv"},{"key":"amount","value":"1000000uluna"}]},
+	{"type":"message","attributes":[{"key":"action","value":"/cosmos.bank.v1beta1.MsgSend"},{"key":"sender","value":"terra1g5cad8hl9uwldus279ddc0j4fq7xjude0ynhjv"},{"key":"module","value":"bank"}]},
+	{"type":"transfer","attributes":[{"key":"amount","value":"1000000uluna"},{"key":"recipient","value":"terra1zdpq84j8ex29wz9tmygqtftplrw87x8wmuyfh0rsy60uq7nadtsq5pjr7y"}]}
 ]`

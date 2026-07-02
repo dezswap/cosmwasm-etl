@@ -9,10 +9,6 @@ const (
 )
 
 const (
-	SortedTransferMatchedLen = SortedTransferSenderIdx + 1
-)
-
-const (
 	PairAddrIdx = iota
 	PairActionIdx
 )
