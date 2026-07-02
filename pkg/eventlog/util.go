@@ -25,17 +25,34 @@ func SortAttributes(attrs Attributes, filter []string) (*Attributes, error) {
 		}
 	}
 
-	idx := 0
-	end := len(filter)
-	for end <= len(filtered) {
-		sort.Slice(filtered[idx:end], func(i, j int) bool {
-			return order[filtered[idx:end][i].Key] < order[filtered[idx:end][j].Key]
+	sorted := make(Attributes, 0, len(filtered))
+	group := make(Attributes, 0, len(filter))
+	seen := make(map[string]bool, len(filter))
+	flush := func() {
+		// A repeated key starts a new group, which lets callers sort optional trailing keys.
+		sort.Slice(group, func(i, j int) bool {
+			return order[group[i].Key] < order[group[j].Key]
 		})
-		idx = end
-		end = idx + len(filter)
+		sorted = append(sorted, group...)
+		group = make(Attributes, 0, len(filter))
+		seen = make(map[string]bool, len(filter))
 	}
 
-	return &filtered, nil
+	for _, attr := range filtered {
+		if seen[attr.Key] {
+			flush()
+		}
+		group = append(group, attr)
+		seen[attr.Key] = true
+		if len(group) == len(filter) {
+			flush()
+		}
+	}
+	if len(group) > 0 {
+		flush()
+	}
+
+	return &sorted, nil
 }
 
 type AmbiguousEventError struct {

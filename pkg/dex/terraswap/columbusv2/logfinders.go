@@ -78,10 +78,9 @@ var wasmTransferCommonRule = eventlog.Rule{Type: eventlog.WasmType, Until: "_con
 	}},
 }}
 
-var sortedTransferRule = eventlog.Rule{Type: eventlog.TransferType, Items: eventlog.RuleItems{
+var sortedTransferRule = eventlog.Rule{Type: eventlog.TransferType, Until: "amount", Items: eventlog.RuleItems{
 	eventlog.RuleItem{Key: "amount", Filter: nil},
 	eventlog.RuleItem{Key: "recipient", Filter: nil},
-	eventlog.RuleItem{Key: "sender", Filter: nil},
 }}
 
 var taxPaymentRule = eventlog.Rule{Type: eventlog.TaxPaymentType, Items: eventlog.RuleItems{

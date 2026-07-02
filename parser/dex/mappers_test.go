@@ -113,6 +113,55 @@ func Test_TransferMapper(t *testing.T) {
 	}
 }
 
+func Test_TransferMapper_OptionalFallbackSenderAndPairFiltering(t *testing.T) {
+	const userAddr = "user"
+	pair := Pair{ContractAddr: "Pair", LpAddr: "LiquidityToken", Assets: []string{"Asset1", "Asset2"}}
+	pairSet := map[string]Pair{pair.ContractAddr: pair}
+
+	tcs := []struct {
+		name           string
+		matchedResults el.MatchedResult
+		optionals      []interface{}
+		expectedTx     []*ParsedTx
+	}{
+		{
+			name: "sender missing uses fallback when recipient is pair",
+			matchedResults: el.MatchedResult{
+				{Key: "amount", Value: "1000Asset1"},
+				{Key: "recipient", Value: pair.ContractAddr},
+			},
+			optionals:  []interface{}{userAddr},
+			expectedTx: []*ParsedTx{{"", time.Time{}, Transfer, userAddr, pair.ContractAddr, [2]Asset{{pair.Assets[0], "1000"}, {pair.Assets[1], ""}}, "", "", "", 0, make(map[string]interface{})}},
+		},
+		{
+			name: "sender missing fallback still skips non-pair transfer",
+			matchedResults: el.MatchedResult{
+				{Key: "amount", Value: "1000Asset1"},
+				{Key: "recipient", Value: "other"},
+			},
+			optionals:  []interface{}{userAddr},
+			expectedTx: nil,
+		},
+		{
+			name: "sender pair is collected even when recipient is not pair",
+			matchedResults: el.MatchedResult{
+				{Key: "amount", Value: "1000Asset2"},
+				{Key: "recipient", Value: userAddr},
+				{Key: "sender", Value: pair.ContractAddr},
+			},
+			expectedTx: []*ParsedTx{{"", time.Time{}, Transfer, pair.ContractAddr, pair.ContractAddr, [2]Asset{{pair.Assets[0], ""}, {pair.Assets[1], "-1000"}}, "", "", "", 0, make(map[string]interface{})}},
+		},
+	}
+
+	for _, tc := range tcs {
+		t.Run(tc.name, func(t *testing.T) {
+			tx, err := NewTransferMapper(pairSet).MatchedToParsedTx(tc.matchedResults, tc.optionals...)
+			assert.NoError(t, err)
+			assert.Equal(t, tc.expectedTx, tx)
+		})
+	}
+}
+
 func Test_InitialProvideMapper(t *testing.T) {
 
 	const userAddr = "userAddr"
