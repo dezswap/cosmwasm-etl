@@ -144,6 +144,7 @@ func Test_AggregatorConfig_EnvVars(t *testing.T) {
 	t.Setenv("APP_AGGREGATOR_CHAINID", "columbus-5")
 	t.Setenv("APP_AGGREGATOR_PRICETOKEN", "uusd")
 	t.Setenv("APP_AGGREGATOR_CLEANDUPS", "true")
+	t.Setenv("APP_AGGREGATOR_TASKWAITTIMEOUT", "2h")
 	t.Setenv("APP_AGGREGATOR_SRCDB_HOST", "src-host")
 	t.Setenv("APP_AGGREGATOR_SRCDB_PORT", "5432")
 	t.Setenv("APP_AGGREGATOR_SRCDB_DATABASE", "srcdb")
@@ -169,6 +170,7 @@ func Test_AggregatorConfig_EnvVars(t *testing.T) {
 	require.Equal(t, "columbus-5", agg.ChainId)
 	require.Equal(t, "uusd", agg.PriceToken)
 	require.True(t, agg.CleanDups)
+	require.Equal(t, 2*time.Hour, agg.TaskWaitTimeout)
 	// SrcDb
 	require.Equal(t, "src-host", agg.SrcDb.Host)
 	require.Equal(t, 5432, agg.SrcDb.Port)
@@ -188,6 +190,12 @@ func Test_AggregatorConfig_EnvVars(t *testing.T) {
 	require.Equal(t, "terra1router", agg.Router.RouterAddr)
 	require.Equal(t, uint(3), agg.Router.MaxHopCount)
 	require.True(t, agg.Router.WriteDb)
+}
+
+func Test_AggregatorConfig_DefaultTaskWaitTimeout(t *testing.T) {
+	cfg := defaultAggregatorConfig()
+
+	require.Equal(t, DefaultTaskWaitTimeout, cfg.TaskWaitTimeout)
 }
 
 func Test_CollectorConfig_EnvVars(t *testing.T) {

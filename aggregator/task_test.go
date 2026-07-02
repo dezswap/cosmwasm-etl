@@ -34,7 +34,7 @@ type completedTask struct {
 	height atomic.Uint64
 }
 
-func (t *completedTask) Execute(_ time.Time, _ time.Time) error {
+func (t *completedTask) Execute(_ context.Context, _ time.Time, _ time.Time) error {
 	return nil
 }
 
@@ -44,6 +44,42 @@ func (t *completedTask) LastProcessedHeight() uint64 {
 
 func (t *completedTask) setLastProcessedHeight(height uint64) {
 	t.height.Store(height)
+}
+
+func TestWaitUntilReachingHeightAlreadyReached(t *testing.T) {
+	assert := assert.New(t)
+
+	parent := &completedTask{}
+	parent.setLastProcessedHeight(10)
+
+	err := waitUntilReachingHeight(context.Background(), []task{parent}, 10, time.Minute)
+
+	assert.NoError(err)
+}
+
+func TestWaitUntilReachingHeightContextCanceled(t *testing.T) {
+	assert := assert.New(t)
+
+	parent := &completedTask{}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := waitUntilReachingHeight(ctx, []task{parent}, 10, time.Minute)
+
+	assert.ErrorIs(err, context.Canceled)
+	assert.ErrorContains(err, "target height 10")
+	assert.ErrorContains(err, "current height=0")
+}
+
+func TestWaitUntilReachingHeightTimeout(t *testing.T) {
+	assert := assert.New(t)
+
+	parent := &completedTask{}
+
+	err := waitUntilReachingHeight(context.Background(), []task{parent}, 10, time.Millisecond)
+
+	assert.ErrorIs(err, context.DeadlineExceeded)
+	assert.ErrorContains(err, "timeout=1ms")
 }
 
 func TestLpHistoryTaskExecute(t *testing.T) {
@@ -102,7 +138,7 @@ func TestLpHistoryTaskExecute(t *testing.T) {
 		srcDb: &rp,
 	}
 
-	err := task.Execute(time.Time{}, time.Time{})
+	err := task.Execute(context.Background(), time.Time{}, time.Time{})
 	assert.NoError(err)
 	assert.Equal(expected[0], rp.updatedLpHistory[0])
 }
@@ -211,7 +247,7 @@ func TestPairStatsRecentUpdateTaskExecute(t *testing.T) {
 		srcDb:      &rp,
 	}
 
-	err := task.Execute(time.Time{}, time.Time{})
+	err := task.Execute(context.Background(), time.Time{}, time.Time{})
 	assert.NoError(err)
 	assert.Equal(expected[0], rp.updatedPairStatsRecent[len(rp.updatedPairStatsRecent)-1])
 }
@@ -297,7 +333,7 @@ func TestPairStatsUpdateTaskExecute(t *testing.T) {
 		srcDb:       &rp,
 		prevStatMap: make(map[uint64]schemas.PairStats30m),
 	}
-	err := task.Execute(time.Time{}, end)
+	err := task.Execute(context.Background(), time.Time{}, end)
 
 	assert.NoError(err)
 	assert.Equal(expected, rp.updatedPairStats[0])
@@ -360,7 +396,7 @@ func TestExecuteAccountStatsUpdateTask(t *testing.T) {
 		priceToken: priceToken,
 		srcDb:      &rp,
 	}
-	err := task.Execute(time.Time{}, end)
+	err := task.Execute(context.Background(), time.Time{}, end)
 
 	assert.NoError(err)
 	assert.Equal(expected, rp.updatedAccountStats)
@@ -390,7 +426,7 @@ func TestExecuteAccountStatsUpdateTaskDeduplicatesAccountCreation(t *testing.T) 
 		priceToken: priceToken,
 		srcDb:      &rp,
 	}
-	err := task.Execute(time.Time{}, time.Unix(1666765800, 0).UTC())
+	err := task.Execute(context.Background(), time.Time{}, time.Unix(1666765800, 0).UTC())
 
 	assert.NoError(err)
 	assert.Equal([]string{accountAddress}, rp.updatedAccounts)
@@ -420,7 +456,7 @@ func TestExecuteAccountStatsUpdateTaskReturnsErrorWhenAccountIdMissing(t *testin
 		priceToken: priceToken,
 		srcDb:      &rp,
 	}
-	err := task.Execute(time.Time{}, time.Unix(1666765800, 0).UTC())
+	err := task.Execute(context.Background(), time.Time{}, time.Unix(1666765800, 0).UTC())
 
 	assert.ErrorContains(err, "account id not found")
 	assert.Empty(rp.updatedAccountStats)
@@ -446,7 +482,7 @@ func TestExecuteAccountStatsUpdateTaskPropagatesCreateAccountsError(t *testing.T
 		priceToken: priceToken,
 		srcDb:      &rp,
 	}
-	err := task.Execute(time.Time{}, time.Unix(1666765800, 0).UTC())
+	err := task.Execute(context.Background(), time.Time{}, time.Unix(1666765800, 0).UTC())
 
 	assert.ErrorIs(err, createErr)
 	assert.Empty(rp.updatedAccountStats)
@@ -472,7 +508,7 @@ func TestExecuteAccountStatsUpdateTaskPassesPriceToken(t *testing.T) {
 		priceToken: priceToken,
 		srcDb:      &rp,
 	}
-	err := task.Execute(time.Time{}, end)
+	err := task.Execute(context.Background(), time.Time{}, end)
 
 	assert.NoError(err)
 	rp.AssertCalled(t, "AccountStats", util.ToEpoch(time.Time{}), util.ToEpoch(end), priceToken)
@@ -493,7 +529,7 @@ func TestExecuteAccountStatsUpdateTaskNoStats(t *testing.T) {
 		},
 		srcDb: &rp,
 	}
-	err := task.Execute(time.Time{}, time.Unix(1666765800, 0).UTC())
+	err := task.Execute(context.Background(), time.Time{}, time.Unix(1666765800, 0).UTC())
 
 	assert.NoError(err)
 	assert.Empty(rp.updatedAccounts)
@@ -518,16 +554,17 @@ func TestExecuteAccountStatsUpdateTaskWaitsForParentPriceTask(t *testing.T) {
 	parent.setLastProcessedHeight(endHeight - 1)
 	task := accountStatsUpdateTask{
 		taskImpl: taskImpl{
-			chainId:     "cube_47-5",
-			destDb:      &rp,
-			parentTasks: []task{parent},
-			logger:      logging.Discard,
+			chainId:         "cube_47-5",
+			destDb:          &rp,
+			parentTasks:     []task{parent},
+			taskWaitTimeout: time.Minute,
+			logger:          logging.Discard,
 		},
 		srcDb: &rp,
 	}
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- task.Execute(time.Time{}, end)
+		errCh <- task.Execute(context.Background(), time.Time{}, end)
 	}()
 
 	select {
@@ -549,4 +586,34 @@ func TestExecuteAccountStatsUpdateTaskWaitsForParentPriceTask(t *testing.T) {
 	assert.NoError(err)
 	assert.Equal(endHeight, task.LastProcessedHeight())
 	rp.AssertCalled(t, "AccountStats", util.ToEpoch(time.Time{}), util.ToEpoch(end), "")
+}
+
+func TestExecuteAccountStatsUpdateTaskParentWaitTimeout(t *testing.T) {
+	assert := assert.New(t)
+
+	end := time.Unix(1666765800, 0).UTC()
+	endHeight := uint64(10)
+
+	rp := repoMock{}
+	rp.On("HeightOnTimestamp").Return(endHeight, nil)
+
+	parent := &completedTask{}
+	parent.setLastProcessedHeight(endHeight - 1)
+	task := accountStatsUpdateTask{
+		taskImpl: taskImpl{
+			chainId:         "cube_47-5",
+			destDb:          &rp,
+			parentTasks:     []task{parent},
+			taskWaitTimeout: time.Millisecond,
+			logger:          logging.Discard,
+		},
+		srcDb: &rp,
+	}
+
+	err := task.Execute(context.Background(), time.Time{}, end)
+
+	assert.ErrorIs(err, context.DeadlineExceeded)
+	assert.Empty(rp.updatedAccountStats)
+	assert.Equal(uint64(0), task.LastProcessedHeight())
+	rp.AssertNotCalled(t, "AccountStats", mock.Anything, mock.Anything, mock.Anything)
 }

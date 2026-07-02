@@ -2,6 +2,7 @@ package aggregator
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -11,12 +12,13 @@ import (
 
 type counterTask struct {
 	counter int
+	err     error
 }
 
-func (t *counterTask) Execute(_ time.Time, _ time.Time) error {
+func (t *counterTask) Execute(_ context.Context, _ time.Time, _ time.Time) error {
 	t.counter++
 
-	return nil
+	return t.err
 }
 func (t *counterTask) LastProcessedHeight() uint64 {
 	return 0
@@ -46,6 +48,42 @@ func TestIntervalSchedule(t *testing.T) {
 	cancel()
 
 	assert.Equal(task.counter, 6)
+}
+
+func TestIntervalSchedulePropagatesTaskError(t *testing.T) {
+	assert := assert.New(t)
+
+	expectedErr := errors.New("task failed")
+	task := counterTask{err: expectedErr}
+	scheduler := intervalScheduler{
+		task:     &task,
+		interval: time.Hour,
+		logger:   logging.Discard,
+	}
+
+	errChan = make(chan error, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- scheduler.Schedule(ctx)
+	}()
+
+	select {
+	case err := <-errChan:
+		assert.ErrorIs(err, expectedErr)
+	case <-time.After(time.Second):
+		assert.Fail("scheduler did not propagate task error")
+	}
+
+	cancel()
+	select {
+	case err := <-done:
+		assert.NoError(err)
+	case <-time.After(time.Second):
+		assert.Fail("scheduler did not stop after context cancellation")
+	}
 }
 
 func TestPredeterminedTimeSchedule(t *testing.T) {
