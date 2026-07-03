@@ -18,7 +18,8 @@ const (
 )
 
 var defaultConfig = Config{
-	Collector: defaultCollectorConfig(),
+	Aggregator: defaultAggregatorConfig(),
+	Collector:  defaultCollectorConfig(),
 	Parser: ParserConfig{
 		DexConfig: ParserDexConfig{
 			QuarantineRetryMode: QuarantineRetryDisabled,
@@ -57,11 +58,7 @@ func New() Config {
 	}
 
 	var cfg = defaultConfig
-	if err = v.Unmarshal(&cfg, viper.DecodeHook(
-		mapstructure.ComposeDecodeHookFunc(
-			mapstructure.TextUnmarshallerHookFunc(),
-		),
-	)); err != nil {
+	if err = v.Unmarshal(&cfg, viper.DecodeHook(configDecodeHook())); err != nil {
 		panic(fmt.Errorf("unmarshal config: %w", err))
 	}
 
@@ -81,11 +78,7 @@ func NewWithFileName(fileName string) Config {
 	}
 
 	var cfg = defaultConfig
-	if err = v.Unmarshal(&cfg, viper.DecodeHook(
-		mapstructure.ComposeDecodeHookFunc(
-			mapstructure.TextUnmarshallerHookFunc(),
-		),
-	)); err != nil {
+	if err = v.Unmarshal(&cfg, viper.DecodeHook(configDecodeHook())); err != nil {
 		panic(fmt.Errorf("unmarshal config: %w", err))
 	}
 
@@ -114,6 +107,16 @@ func initViper(configName string) (*viper.Viper, error) {
 	}
 
 	return v, nil
+}
+
+// configDecodeHook returns the shared mapstructure hooks for config values.
+// It supports plain time.Duration fields as strings like "30m" while
+// preserving existing custom Duration wrappers that implement TextUnmarshaler.
+func configDecodeHook() mapstructure.DecodeHookFunc {
+	return mapstructure.ComposeDecodeHookFunc(
+		mapstructure.StringToTimeDurationHookFunc(),
+		mapstructure.TextUnmarshallerHookFunc(),
+	)
 }
 
 func (c Config) Redacted() Config {

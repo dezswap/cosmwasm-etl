@@ -1,6 +1,7 @@
 package aggregator
 
 import (
+	"context"
 	"math"
 	"strconv"
 	"time"
@@ -22,7 +23,7 @@ const LpHistoryUpdateLimit = 100
 const WaitPeriod = 10 * time.Second
 
 type task interface {
-	Execute(start time.Time, end time.Time) error
+	Execute(ctx context.Context, start time.Time, end time.Time) error
 	LastProcessedHeight() uint64
 }
 
@@ -32,10 +33,11 @@ type predeterminedTimeTask interface {
 }
 
 type taskImpl struct {
-	chainId     string
-	destDb      repo.Repo
-	parentTasks []task
-	logger      logging.Logger
+	chainId         string
+	destDb          repo.Repo
+	parentTasks     []task
+	taskWaitTimeout time.Duration
+	logger          logging.Logger
 
 	// State
 	lastProcessedHeight uint64
@@ -99,7 +101,7 @@ func newLpHistoryTask(config configs.AggregatorConfig, srcRepo parser.ReadReposi
 	}
 }
 
-func (t *lpHistoryTask) Execute(_ time.Time, _ time.Time) error {
+func (t *lpHistoryTask) Execute(_ context.Context, _ time.Time, _ time.Time) error {
 	lastHistories, err := t.destDb.LastLpHistory(uint64(math.MaxInt64))
 	if err != nil {
 		return err
@@ -229,7 +231,7 @@ func newRouterTask(config configs.AggregatorConfig, logger logging.Logger) task 
 	}
 }
 
-func (t *routerTask) Execute(_ time.Time, _ time.Time) error {
+func (t *routerTask) Execute(_ context.Context, _ time.Time, _ time.Time) error {
 	pairs, err := t.db.Pairs()
 	if err != nil {
 		return err
@@ -251,16 +253,17 @@ func newPriceTask(config configs.AggregatorConfig, destRepo repo.Repo, logger lo
 
 	return &priceTask{
 		taskImpl: taskImpl{
-			chainId:     config.ChainId,
-			destDb:      destRepo,
-			parentTasks: parentTasks,
-			logger:      logger,
+			chainId:         config.ChainId,
+			destDb:          destRepo,
+			parentTasks:     parentTasks,
+			taskWaitTimeout: taskWaitTimeout(config),
+			logger:          logger,
 		},
 		priceTracker: pt,
 	}, nil
 }
 
-func (t *priceTask) Execute(_ time.Time, _ time.Time) error {
+func (t *priceTask) Execute(ctx context.Context, _ time.Time, _ time.Time) error {
 	height := uint64(0)
 
 	for {
@@ -279,7 +282,9 @@ func (t *priceTask) Execute(_ time.Time, _ time.Time) error {
 		}
 
 		height = uint64(nextHeight)
-		waitUntilReachingHeight(&t.parentTasks, height)
+		if err := waitUntilReachingHeight(ctx, t.parentTasks, height, t.taskWaitTimeout); err != nil {
+			return err
+		}
 
 		err = t.priceTracker.Run(height)
 		if err != nil {
@@ -292,10 +297,11 @@ func (t *priceTask) Execute(_ time.Time, _ time.Time) error {
 func newPairStatsRecentUpdateTask(config configs.AggregatorConfig, srcRepo parser.ReadRepository, destRepo repo.Repo, logger logging.Logger, parentTasks []task) task {
 	return &pairStatsRecentUpdateTask{
 		taskImpl: taskImpl{
-			chainId:     config.ChainId,
-			destDb:      destRepo,
-			parentTasks: parentTasks,
-			logger:      logger,
+			chainId:         config.ChainId,
+			destDb:          destRepo,
+			parentTasks:     parentTasks,
+			taskWaitTimeout: taskWaitTimeout(config),
+			logger:          logger,
 		},
 		priceToken: config.PriceToken,
 		srcDb:      srcRepo,
@@ -303,7 +309,7 @@ func newPairStatsRecentUpdateTask(config configs.AggregatorConfig, srcRepo parse
 	}
 }
 
-func (t *pairStatsRecentUpdateTask) Execute(_ time.Time, end time.Time) error {
+func (t *pairStatsRecentUpdateTask) Execute(ctx context.Context, _ time.Time, end time.Time) error {
 	if t.lastProcessedHeight == 0 {
 		var err error
 		t.lastProcessedHeight, err = t.destDb.LastHeightOfPairStatsRecent()
@@ -324,7 +330,9 @@ func (t *pairStatsRecentUpdateTask) Execute(_ time.Time, end time.Time) error {
 
 	var stats []schemas.PairStatsRecent
 	if endHeight > t.lastProcessedHeight {
-		waitUntilReachingHeight(&t.parentTasks, endHeight)
+		if err := waitUntilReachingHeight(ctx, t.parentTasks, endHeight, t.taskWaitTimeout); err != nil {
+			return err
+		}
 
 		if startHeight <= t.lastProcessedHeight {
 			startHeight = t.lastProcessedHeight + 1
@@ -572,10 +580,11 @@ func (t pairStatsRecentUpdateTask) searchPrice(tokenIdStr string, targetHeight u
 func newPairStatsUpdateTask(config configs.AggregatorConfig, srcRepo parser.ReadRepository, destRepo repo.Repo, logger logging.Logger, parentTasks []task) predeterminedTimeTask {
 	return &pairStatsUpdateTask{
 		taskImpl: taskImpl{
-			chainId:     config.ChainId,
-			destDb:      destRepo,
-			parentTasks: parentTasks,
-			logger:      logger,
+			chainId:         config.ChainId,
+			destDb:          destRepo,
+			parentTasks:     parentTasks,
+			taskWaitTimeout: taskWaitTimeout(config),
+			logger:          logger,
 		},
 		priceToken:  config.PriceToken,
 		srcDb:       srcRepo,
@@ -606,12 +615,14 @@ func (t pairStatsUpdateTask) StartTimestamp(startTs time.Time) (time.Time, error
 	return destTs, nil
 }
 
-func (t *pairStatsUpdateTask) Execute(start time.Time, end time.Time) error {
+func (t *pairStatsUpdateTask) Execute(ctx context.Context, start time.Time, end time.Time) error {
 	lastHeight, err := t.srcDb.HeightOnTimestamp(util.ToEpoch(end))
 	if err != nil {
 		return err
 	}
-	waitUntilReachingHeight(&t.parentTasks, lastHeight)
+	if err := waitUntilReachingHeight(ctx, t.parentTasks, lastHeight, t.taskWaitTimeout); err != nil {
+		return err
+	}
 
 	startTs := util.ToEpoch(start)
 	endTs := util.ToEpoch(end)
@@ -656,10 +667,11 @@ func (t *pairStatsUpdateTask) Execute(start time.Time, end time.Time) error {
 func newAccountStatsUpdateTask(config configs.AggregatorConfig, srcRepo parser.ReadRepository, destRepo repo.Repo, logger logging.Logger, parentTasks []task) predeterminedTimeTask {
 	return &accountStatsUpdateTask{
 		taskImpl: taskImpl{
-			chainId:     config.ChainId,
-			destDb:      destRepo,
-			parentTasks: parentTasks,
-			logger:      logger,
+			chainId:         config.ChainId,
+			destDb:          destRepo,
+			parentTasks:     parentTasks,
+			taskWaitTimeout: taskWaitTimeout(config),
+			logger:          logger,
 		},
 		priceToken: config.PriceToken,
 		srcDb:      srcRepo,
@@ -689,14 +701,16 @@ func (t *accountStatsUpdateTask) StartTimestamp(startTs time.Time) (time.Time, e
 	return destTs, nil
 }
 
-func (t *accountStatsUpdateTask) Execute(start time.Time, end time.Time) error {
+func (t *accountStatsUpdateTask) Execute(ctx context.Context, start time.Time, end time.Time) error {
 	startEpoch, endEpoch := util.ToEpoch(start), util.ToEpoch(end)
 
 	endHeight, err := t.srcDb.HeightOnTimestamp(endEpoch)
 	if err != nil {
 		return err
 	}
-	waitUntilReachingHeight(&t.parentTasks, endHeight)
+	if err := waitUntilReachingHeight(ctx, t.parentTasks, endHeight, t.taskWaitTimeout); err != nil {
+		return err
+	}
 
 	stats, err := t.srcDb.AccountStats(startEpoch, endEpoch, t.priceToken)
 	if err != nil {
@@ -758,14 +772,40 @@ func uniqueAccountAddresses(stats []schemas.AccountStats30m) []string {
 	return addresses
 }
 
-func waitUntilReachingHeight(parentTasks *[]task, targetHeight uint64) {
-	for _, t := range *parentTasks {
+// taskWaitTimeout resolves the configured wait timeout, falling back to the
+// default when the config omits it or sets a non-positive value.
+func taskWaitTimeout(config configs.AggregatorConfig) time.Duration {
+	if config.TaskWaitTimeout <= 0 {
+		return configs.DefaultTaskWaitTimeout
+	}
+
+	return config.TaskWaitTimeout
+}
+
+// waitUntilReachingHeight blocks until every parent task reaches targetHeight
+// or the context/timeout ends the wait.
+func waitUntilReachingHeight(ctx context.Context, parentTasks []task, targetHeight uint64, timeout time.Duration) error {
+	if timeout <= 0 {
+		timeout = configs.DefaultTaskWaitTimeout
+	}
+
+	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	for _, parent := range parentTasks {
 		for {
-			if t.LastProcessedHeight() < targetHeight {
-				time.Sleep(WaitPeriod)
-			} else {
+			currentHeight := parent.LastProcessedHeight()
+			if currentHeight >= targetHeight {
 				break
+			}
+
+			select {
+			case <-waitCtx.Done():
+				return errors.Wrapf(waitCtx.Err(), "waitUntilReachingHeight: parent task did not reach target height %d; current height=%d timeout=%s", targetHeight, currentHeight, timeout)
+			case <-time.After(WaitPeriod):
 			}
 		}
 	}
+
+	return nil
 }

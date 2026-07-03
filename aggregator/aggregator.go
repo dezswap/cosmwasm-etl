@@ -83,6 +83,13 @@ func initTaskSchedulers(config configs.AggregatorConfig, srcRepo parser.ReadRepo
 	}, nil
 }
 
+func reportError(err error) {
+	select {
+	case errChan <- err:
+	default:
+	}
+}
+
 func (a aggregatorImpl) Run() error {
 	a.logger.Info("Aggregator has been started.")
 
@@ -101,7 +108,7 @@ func (a aggregatorImpl) Run() error {
 		cancel()
 	}()
 
-	errChan = make(chan error)
+	errChan = make(chan error, 1)
 
 	go func() {
 		err := <-errChan
@@ -121,7 +128,7 @@ func (a aggregatorImpl) runTasks(ctx context.Context) {
 
 	if a.cleanDups {
 		if err := a.destDbConn.DeleteDuplicates(a.startTs); err != nil {
-			errChan <- err
+			reportError(err)
 			return
 		}
 		a.logger.Infof("Stats data since %s has been deleted for new update.", a.startTs.String())
@@ -132,7 +139,7 @@ func (a aggregatorImpl) runTasks(ctx context.Context) {
 		go func(tk scheduler) {
 			defer wg.Done()
 			if err := tk.Schedule(ctx); err != nil {
-				errChan <- err
+				reportError(err)
 			}
 		}(t)
 	}

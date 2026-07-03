@@ -2,6 +2,7 @@ package aggregator
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -11,12 +12,13 @@ import (
 
 type counterTask struct {
 	counter int
+	err     error
 }
 
-func (t *counterTask) Execute(_ time.Time, _ time.Time) error {
+func (t *counterTask) Execute(_ context.Context, _ time.Time, _ time.Time) error {
 	t.counter++
 
-	return nil
+	return t.err
 }
 func (t *counterTask) LastProcessedHeight() uint64 {
 	return 0
@@ -48,6 +50,54 @@ func TestIntervalSchedule(t *testing.T) {
 	assert.Equal(task.counter, 6)
 }
 
+func TestIntervalScheduleReturnsTaskError(t *testing.T) {
+	assert := assert.New(t)
+
+	expectedErr := errors.New("task failed")
+	task := counterTask{err: expectedErr}
+	scheduler := intervalScheduler{
+		task:     &task,
+		interval: time.Hour,
+		logger:   logging.Discard,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- scheduler.Schedule(ctx)
+	}()
+
+	select {
+	case err := <-done:
+		assert.ErrorIs(err, expectedErr)
+	case <-time.After(time.Second):
+		assert.Fail("scheduler did not return task error")
+	}
+}
+
+func TestReportErrorPreservesFirstErrorAndDoesNotBlockWhenFull(t *testing.T) {
+	expectedErr := errors.New("task failed")
+	errChan = make(chan error, 1)
+
+	reportError(expectedErr)
+
+	done := make(chan struct{})
+	go func() {
+		reportError(errors.New("second task failed"))
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		assert.Fail(t, "reportError blocked without a receiver")
+	}
+
+	assert.ErrorIs(t, <-errChan, expectedErr)
+}
+
 func TestPredeterminedTimeSchedule(t *testing.T) {
 	assert := assert.New(t)
 
@@ -70,6 +120,24 @@ func TestPredeterminedTimeSchedule(t *testing.T) {
 	cancel()
 
 	assert.Equal(task.counter, 6)
+}
+
+func TestPredeterminedTimeScheduleReturnsCatchUpTaskError(t *testing.T) {
+	assert := assert.New(t)
+
+	expectedErr := errors.New("task failed")
+	task := counterTask{err: expectedErr}
+	scheduler := predeterminedTimeScheduler{
+		predeterminedTimeTask: &task,
+		interval:              time.Hour,
+		startTs:               time.Now().Add(-2 * time.Hour),
+		logger:                logging.Discard,
+	}
+
+	err := scheduler.Schedule(context.Background())
+
+	assert.ErrorIs(err, expectedErr)
+	assert.Equal(1, task.counter)
 }
 
 func TestTimeframe_0_30(t *testing.T) {
