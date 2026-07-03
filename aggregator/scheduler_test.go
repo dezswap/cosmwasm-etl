@@ -86,6 +86,22 @@ func TestIntervalSchedulePropagatesTaskError(t *testing.T) {
 	}
 }
 
+func TestReportErrorDoesNotBlockWithoutReceiver(t *testing.T) {
+	errChan = make(chan error)
+
+	done := make(chan struct{})
+	go func() {
+		reportError(errors.New("task failed"))
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		assert.Fail(t, "reportError blocked without a receiver")
+	}
+}
+
 func TestPredeterminedTimeSchedule(t *testing.T) {
 	assert := assert.New(t)
 
