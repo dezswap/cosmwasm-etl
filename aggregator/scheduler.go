@@ -35,7 +35,7 @@ loop:
 			break loop
 		case <-time.After(time.Until(endTs)):
 			if err := s.Execute(ctx, time.Time{}, endTs); err != nil {
-				reportError(err)
+				return err
 			}
 			s.logger.Infof("%s(%s) has been finished", reflect.TypeOf(s.task), endTs.UTC().Format(time.RFC1123Z))
 
@@ -60,7 +60,7 @@ func (s *predeterminedTimeScheduler) Schedule(ctx context.Context) error {
 	start, end := timeframe(optimizedStartTs, s.interval)
 	for end.Before(time.Now()) {
 		if err := (s.predeterminedTimeTask).Execute(ctx, start, end); err != nil {
-			reportError(err)
+			return err
 		}
 		start = end
 		end = end.Add(s.interval)
@@ -73,7 +73,7 @@ loop:
 			break loop
 		case <-time.After(time.Until(end)):
 			if err := (s.predeterminedTimeTask).Execute(ctx, start, end); err != nil {
-				reportError(err)
+				return err
 			}
 			s.logger.Infof("%s(%s-%s) has been finished", reflect.TypeOf(s.predeterminedTimeTask), start.UTC().Format(time.RFC1123Z), end.UTC().Format(time.RFC1123Z))
 

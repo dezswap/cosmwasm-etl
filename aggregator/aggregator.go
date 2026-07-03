@@ -108,7 +108,7 @@ func (a aggregatorImpl) Run() error {
 		cancel()
 	}()
 
-	errChan = make(chan error)
+	errChan = make(chan error, 1)
 
 	go func() {
 		err := <-errChan

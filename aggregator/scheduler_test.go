@@ -50,7 +50,7 @@ func TestIntervalSchedule(t *testing.T) {
 	assert.Equal(task.counter, 6)
 }
 
-func TestIntervalSchedulePropagatesTaskError(t *testing.T) {
+func TestIntervalScheduleReturnsTaskError(t *testing.T) {
 	assert := assert.New(t)
 
 	expectedErr := errors.New("task failed")
@@ -61,7 +61,6 @@ func TestIntervalSchedulePropagatesTaskError(t *testing.T) {
 		logger:   logging.Discard,
 	}
 
-	errChan = make(chan error, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -71,27 +70,22 @@ func TestIntervalSchedulePropagatesTaskError(t *testing.T) {
 	}()
 
 	select {
-	case err := <-errChan:
+	case err := <-done:
 		assert.ErrorIs(err, expectedErr)
 	case <-time.After(time.Second):
-		assert.Fail("scheduler did not propagate task error")
-	}
-
-	cancel()
-	select {
-	case err := <-done:
-		assert.NoError(err)
-	case <-time.After(time.Second):
-		assert.Fail("scheduler did not stop after context cancellation")
+		assert.Fail("scheduler did not return task error")
 	}
 }
 
-func TestReportErrorDoesNotBlockWithoutReceiver(t *testing.T) {
-	errChan = make(chan error)
+func TestReportErrorPreservesFirstErrorAndDoesNotBlockWhenFull(t *testing.T) {
+	expectedErr := errors.New("task failed")
+	errChan = make(chan error, 1)
+
+	reportError(expectedErr)
 
 	done := make(chan struct{})
 	go func() {
-		reportError(errors.New("task failed"))
+		reportError(errors.New("second task failed"))
 		close(done)
 	}()
 
@@ -100,6 +94,8 @@ func TestReportErrorDoesNotBlockWithoutReceiver(t *testing.T) {
 	case <-time.After(time.Second):
 		assert.Fail(t, "reportError blocked without a receiver")
 	}
+
+	assert.ErrorIs(t, <-errChan, expectedErr)
 }
 
 func TestPredeterminedTimeSchedule(t *testing.T) {
@@ -124,6 +120,24 @@ func TestPredeterminedTimeSchedule(t *testing.T) {
 	cancel()
 
 	assert.Equal(task.counter, 6)
+}
+
+func TestPredeterminedTimeScheduleReturnsCatchUpTaskError(t *testing.T) {
+	assert := assert.New(t)
+
+	expectedErr := errors.New("task failed")
+	task := counterTask{err: expectedErr}
+	scheduler := predeterminedTimeScheduler{
+		predeterminedTimeTask: &task,
+		interval:              time.Hour,
+		startTs:               time.Now().Add(-2 * time.Hour),
+		logger:                logging.Discard,
+	}
+
+	err := scheduler.Schedule(context.Background())
+
+	assert.ErrorIs(err, expectedErr)
+	assert.Equal(1, task.counter)
 }
 
 func TestTimeframe_0_30(t *testing.T) {
