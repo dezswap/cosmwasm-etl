@@ -9,22 +9,12 @@ import (
 	"os"
 	"strings"
 
-	"github.com/dezswap/cosmwasm-etl/collector/datastore"
-	collectorrepo "github.com/dezswap/cosmwasm-etl/collector/repo"
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/parser"
 	p_dex "github.com/dezswap/cosmwasm-etl/parser/dex"
-	pds "github.com/dezswap/cosmwasm-etl/parser/dex/dezswap"
+	"github.com/dezswap/cosmwasm-etl/parser/dex/dexwiring"
 	"github.com/dezswap/cosmwasm-etl/parser/dex/repo"
-	"github.com/dezswap/cosmwasm-etl/parser/dex/srcstore"
-	ts_srcstore "github.com/dezswap/cosmwasm-etl/parser/dex/srcstore/terraswap"
-	psf "github.com/dezswap/cosmwasm-etl/parser/dex/starfleit"
-	pts "github.com/dezswap/cosmwasm-etl/parser/dex/terraswap"
-	"github.com/dezswap/cosmwasm-etl/pkg/dex"
-	"github.com/dezswap/cosmwasm-etl/pkg/grpc"
-	"github.com/dezswap/cosmwasm-etl/pkg/httpclient"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
-	"github.com/dezswap/cosmwasm-etl/pkg/s3client"
 )
 
 type diagnosisReport struct {
@@ -69,10 +59,10 @@ func main() {
 	}
 
 	report, err := diagnoseRange(target, source, tokenExceptions, dc.ChainId, *from, *to, *contract)
-	if err != nil {
+	if err := json.NewEncoder(os.Stdout).Encode(report); err != nil {
 		fail(err.Error())
 	}
-	if err := json.NewEncoder(os.Stdout).Encode(report); err != nil {
+	if err != nil {
 		fail(err.Error())
 	}
 }
@@ -85,30 +75,18 @@ func buildDiagnosticTargets(c configs.Config, dc configs.ParserDexConfig) (p_dex
 		return nil, nil, nil, fmt.Errorf("load token exceptions: %w", err)
 	}
 
-	var app p_dex.TargetApp
-	switch dc.TargetApp {
-	case dex.Terraswap:
-		app, err = pts.New(parserRepo, logging.Discard, dc)
-	case dex.Dezswap:
-		app, err = pds.New(parserRepo, logging.Discard, dc, dc.ChainId)
-	case dex.Starfleit:
-		app, err = psf.New(parserRepo, logging.Discard, dc, dc.ChainId)
-	default:
-		return nil, nil, nil, fmt.Errorf("unknown target app: %s", dc.TargetApp)
-	}
+	app, err := dexwiring.NewTargetApp(parserRepo, logging.Discard, dc)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 
-	var source p_dex.SourceDataStore
-	if dc.TargetApp == dex.Terraswap {
-		fallback, err := ts_srcstore.NewFromConfig(dc.NodeConfig, dc.FactoryAddress)
-		if err != nil {
-			return nil, nil, nil, err
-		}
-		source = srcstore.NewCollectorFallback(dc.ChainId, collectorrepo.New(c.Rdb), fallback, logging.Discard)
-	} else {
-		source = srcstore.New(getDexCollectorReadStore(c, dc))
+	readStore, err := dexwiring.NewTargetReadStore(c, dc)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	source, err := dexwiring.NewSourceDataStore(dc, c.Rdb, readStore, logging.Discard)
+	if err != nil {
+		return nil, nil, nil, err
 	}
 
 	return app, source, tokenExceptions, nil
@@ -177,38 +155,6 @@ func rawTxContainsContract(tx parser.RawTx, contract string) bool {
 		}
 	}
 	return false
-}
-
-// getDexCollectorReadStore mirrors the production parser source selection for collector-backed DEXes.
-func getDexCollectorReadStore(c configs.Config, dc configs.ParserDexConfig) datastore.ReadStore {
-	nodeConf := dc.NodeConfig
-	if nodeConf.GrpcConfig.Host != "" {
-		serviceDesc := grpc.GetServiceDesc("collector", nodeConf.GrpcConfig)
-
-		store, err := datastore.New(c, serviceDesc, nil)
-		if err != nil {
-			panic(err)
-		}
-		if nodeConf.FailoverLcdHost != "" {
-			failoverStore, err := datastore.New(
-				c,
-				serviceDesc,
-				datastore.NewLcdClient(nodeConf.FailoverLcdHost, httpclient.New(dc.NodeConfig.HttpClientConfig)),
-			)
-			if err != nil {
-				panic(err)
-			}
-			store = failoverStore
-		}
-
-		return datastore.NewReadStoreWithGrpc(dc.ChainId, store)
-	}
-
-	s3Client, err := s3client.NewClient(c.S3)
-	if err != nil {
-		panic(err)
-	}
-	return datastore.NewReadStore(dc.ChainId, s3Client)
 }
 
 func fail(msg string) {

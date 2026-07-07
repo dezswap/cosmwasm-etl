@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -54,6 +55,26 @@ func Test_diagnoseRange_ReplaysOnlyMatchingTransactions(t *testing.T) {
 	assert.Equal(t, tokenExceptions, target.tokenExceptions)
 }
 
+func Test_diagnoseRange_ReturnsPartialReportOnHeightError(t *testing.T) {
+	target := &diagnoseTargetApp{}
+	source := &diagnoseSourceDataStore{
+		txs: map[uint64]parser.RawTxs{
+			10: {rawTxWithContract("height-10", "pair1")},
+		},
+		sourceErrors: map[uint64]error{
+			11: errors.New("collector unavailable"),
+		},
+	}
+
+	report, err := diagnoseRange(target, source, map[string]bool{}, "chain-1", 10, 11, "pair1")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "get source txs at height 11")
+	require.Len(t, report.Results, 1)
+	assert.Equal(t, "height-10", report.Results[0].Hash)
+	assert.Equal(t, []uint64{10, 11}, target.updatedHeights)
+}
+
 type diagnoseTargetApp struct {
 	updatedHeights  []uint64
 	tokenExceptions map[string]bool
@@ -74,7 +95,8 @@ func (a *diagnoseTargetApp) UpdateParsers(tokenExceptions map[string]bool, heigh
 }
 
 type diagnoseSourceDataStore struct {
-	txs map[uint64]parser.RawTxs
+	txs          map[uint64]parser.RawTxs
+	sourceErrors map[uint64]error
 }
 
 func (*diagnoseSourceDataStore) GetPoolInfos(uint64) ([]p_dex.PoolInfo, error) {
@@ -86,6 +108,9 @@ func (*diagnoseSourceDataStore) GetSourceSyncedHeight() (uint64, error) {
 }
 
 func (s *diagnoseSourceDataStore) GetSourceTxs(height uint64) (parser.RawTxs, error) {
+	if err := s.sourceErrors[height]; err != nil {
+		return nil, err
+	}
 	return s.txs[height], nil
 }
 
