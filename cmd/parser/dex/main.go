@@ -21,6 +21,7 @@ import (
 	pts "github.com/dezswap/cosmwasm-etl/parser/dex/terraswap"
 	"github.com/dezswap/cosmwasm-etl/pkg/dex"
 	"github.com/dezswap/cosmwasm-etl/pkg/httpclient"
+	"github.com/sirupsen/logrus"
 
 	"github.com/dezswap/cosmwasm-etl/pkg/grpc"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
@@ -112,10 +113,21 @@ func dex_main(c configs.ParserDexConfig, logc configs.LogConfig, sentryc configs
 	for errCount := uint(0); errCount <= c.ErrTolerance; {
 		if err := runner.Run(); err != nil {
 			if errors.Is(err, p_dex.ErrNoNewHeight) {
-				logger.Infof("no new block yet: %s", err)
+				logger.WithFields(logrus.Fields{
+					"event":     "parser.waiting_for_new_height",
+					"operation": "parser.run",
+					"chain_id":  c.ChainId,
+					"err":       logging.NewErrorField(err),
+				}).Info("parser waiting for new height")
 			} else {
 				errCount++
-				logger.Errorf("errCount: %d, err: %s", errCount, err)
+				logger.WithFields(logrus.Fields{
+					"event":       "parser.run_failed",
+					"operation":   "parser.run",
+					"chain_id":    c.ChainId,
+					"retry_count": errCount,
+					"err":         logging.NewErrorField(err),
+				}).Error("parser run failed")
 			}
 		} else {
 			errCount = 0
