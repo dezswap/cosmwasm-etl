@@ -5,17 +5,26 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
+	"github.com/sirupsen/logrus"
 )
 
 // ErrNoNewHeight is returned when the remote node height has not advanced for
 // sameHeightTolerance consecutive checks. Callers should treat this as a
 // transient "wait for next block" condition, not a hard error.
 var ErrNoNewHeight = errors.New("no new height")
+
+const (
+	validationMismatchUnexpectedPool      = "unexpected_pool"
+	validationMismatchExpectedPoolMissing = "expected_pool_not_found"
+	validationMismatchAssetAmount         = "asset_amount_mismatch"
+	validationMismatchTotalShare          = "total_share_mismatch"
+)
 
 type PairParsers struct {
 	CreatePairParser parser.Parser[ParsedTx]
@@ -76,6 +85,7 @@ func NewDexApp(app TargetApp, srcStore SourceDataStore, repo Repo, logger loggin
 }
 
 func (app *dexApp) Run() error {
+	runStartedAt := time.Now()
 	tokenExceptions, err := app.GetTokenExceptions()
 	if err != nil {
 		return fmt.Errorf("app.Run: %w", err)
@@ -114,12 +124,31 @@ func (app *dexApp) Run() error {
 		app.triggerValidation(localSynced)
 	}
 
-	app.logger.Infof("current synced height: %d, remote node height: %d", localSynced, srcHeight)
+	app.logger.WithFields(logrus.Fields{
+		"event":         "parser.sync_status",
+		"operation":     "parser.run",
+		"chain_id":      app.chainId,
+		"local_height":  localSynced,
+		"source_height": srcHeight,
+		"lag":           srcHeight - localSynced,
+	}).Info("parser sync status")
+
+	processedHeightCount := 0
+	parsedTxCount := 0
+	quarantineCount := 0
+	poolSnapshotCount := 0
+
 	for cur := localSynced + 1; cur <= srcHeight; cur++ {
 		txs, err := app.GetSourceTxs(cur)
 		if err != nil {
 			if strings.Contains(err.Error(), fmt.Sprintf("greater than the current height %d", srcHeight-1)) {
-				app.logger.Infof("remote node is indexing tx_results, skip")
+				app.logger.WithFields(logrus.Fields{
+					"event":         "parser.source_indexing",
+					"operation":     "get_source_txs",
+					"chain_id":      app.chainId,
+					"height":        cur,
+					"source_height": srcHeight,
+				}).Info("remote node is indexing tx_results")
 				return nil
 			}
 			return fmt.Errorf("app.Run: %w", err)
@@ -137,7 +166,18 @@ func (app *dexApp) Run() error {
 				var partial *PartialParseQuarantineError
 				if errors.As(err, &partial) {
 					parseQuarantines = append(parseQuarantines, partial.Quarantine)
-					app.logger.Errorf("partially quarantined ambiguous transaction height=%d tx_hash=%s err=%s", cur, tx.Hash, err)
+					app.logger.WithFields(logrus.Fields{
+						"event":             "parse_quarantine.partial_created",
+						"operation":         "parse_txs",
+						"chain_id":          app.chainId,
+						"height":            cur,
+						"tx_hash":           tx.Hash,
+						"stage":             partial.Quarantine.Stage,
+						"contract":          partial.Quarantine.Contract,
+						"action":            partial.Quarantine.Action,
+						"quarantine_status": QuarantineStatusPending,
+						"err":               logging.NewErrorField(err),
+					}).Warn("partial parse quarantine created")
 					parsedTxs = append(parsedTxs, partial.ParsedTxs...)
 					continue
 				}
@@ -153,7 +193,18 @@ func (app *dexApp) Run() error {
 						Error:    err.Error(),
 						RawTx:    tx,
 					})
-					app.logger.Errorf("quarantined ambiguous transaction height=%d tx_hash=%s err=%s", cur, tx.Hash, err)
+					app.logger.WithFields(logrus.Fields{
+						"event":             "parse_quarantine.created",
+						"operation":         "parse_txs",
+						"chain_id":          app.chainId,
+						"height":            cur,
+						"tx_hash":           tx.Hash,
+						"stage":             parseStage(err),
+						"contract":          ambiguity.Contract,
+						"action":            ambiguity.Action,
+						"quarantine_status": QuarantineStatusPending,
+						"err":               logging.NewErrorField(err),
+					}).Warn("parse quarantine created")
 					continue
 				}
 				return fmt.Errorf("app.Run: %w", err)
@@ -162,22 +213,55 @@ func (app *dexApp) Run() error {
 		}
 
 		poolInfos := []PoolInfo{}
+		poolSnapshotSaved := false
 		if (cur % uint64(app.poolSnapshotInterval)) == 0 {
 			poolInfos, err = app.GetPoolInfos(cur)
 			if err != nil {
 				return fmt.Errorf("app.Run: %w", err)
 			}
+			poolSnapshotSaved = true
 		}
 
 		if err := app.insert(cur-1, cur, parsedTxs, poolInfos, parseQuarantines); err != nil {
 			return fmt.Errorf("app.Run: %w", err)
 		}
+		processedHeightCount++
+		parsedTxCount += len(parsedTxs)
+		quarantineCount += len(parseQuarantines)
+		if poolSnapshotSaved {
+			poolSnapshotCount++
+		}
+		app.logger.WithFields(logrus.Fields{
+			"event":               "parser.height_processed",
+			"operation":           "parser.run",
+			"chain_id":            app.chainId,
+			"height":              cur,
+			"parsed_tx_count":     len(parsedTxs),
+			"quarantine_count":    len(parseQuarantines),
+			"pool_snapshot_saved": poolSnapshotSaved,
+		}).Debug("parser height processed")
 
 		if app.isValidationHeight(cur) {
 			app.triggerValidation(cur)
 		}
 	}
 	app.lastSrcHeight = srcHeight
+	if processedHeightCount > 0 {
+		app.logger.WithFields(logrus.Fields{
+			"event":                  "parser.run_summary",
+			"operation":              "parser.run",
+			"chain_id":               app.chainId,
+			"from_height":            localSynced + 1,
+			"to_height":              srcHeight,
+			"synced_height":          srcHeight,
+			"source_height":          srcHeight,
+			"processed_height_count": processedHeightCount,
+			"parsed_tx_count":        parsedTxCount,
+			"quarantine_count":       quarantineCount,
+			"pool_snapshot_count":    poolSnapshotCount,
+			"duration_ms":            time.Since(runStartedAt).Milliseconds(),
+		}).Info("parser run summary")
+	}
 
 	return nil
 }
@@ -219,7 +303,18 @@ func (app *dexApp) retryPendingQuarantines(tokenExceptions map[string]bool) erro
 		if err := app.ResolveParseQuarantine(quarantine.ID, quarantine.Height, txs); err != nil {
 			return err
 		}
-		app.logger.Infof("resolved quarantined transaction height=%d tx_hash=%s", quarantine.Height, quarantine.Hash)
+		app.logger.WithFields(logrus.Fields{
+			"event":             "parse_quarantine.resolved",
+			"operation":         "retry_parse_quarantine",
+			"chain_id":          app.chainId,
+			"height":            quarantine.Height,
+			"tx_hash":           quarantine.Hash,
+			"stage":             quarantine.Stage,
+			"contract":          quarantine.Contract,
+			"action":            quarantine.Action,
+			"quarantine_status": QuarantineStatusResolved,
+			"parsed_tx_count":   len(txs),
+		}).Info("parse quarantine resolved")
 	}
 	return nil
 }
@@ -403,16 +498,51 @@ func (app *dexApp) validateAtHeight(height uint64) bool {
 		return false
 	}
 	if err := app.validate(0, height, poolInfos); err != nil {
-		app.logger.Errorf("validator: pool mismatch at height %d: %s", height, err)
+		var validationErr *poolValidationError
+		if errors.As(err, &validationErr) {
+			for _, mismatch := range validationErr.Mismatches {
+				app.logPoolValidationMismatch(height, mismatch)
+			}
+		} else {
+			app.logger.WithFields(logrus.Fields{
+				"event":     "parser.pool_validation_failed",
+				"operation": "pool_validation",
+				"chain_id":  app.chainId,
+				"height":    height,
+				"err":       logging.NewErrorField(err),
+			}).Error("pool validation failed")
+		}
 		return false
 	}
 	return true
 }
 
+// logPoolValidationMismatch emits the agent-facing root log for one pool validation mismatch.
+func (app *dexApp) logPoolValidationMismatch(height uint64, mismatch poolValidationMismatch) {
+	app.logger.WithFields(logrus.Fields{
+		"event":         "parser.pool_validation_failed",
+		"operation":     "pool_validation",
+		"chain_id":      app.chainId,
+		"height":        height,
+		"contract":      mismatch.Contract,
+		"mismatch_type": mismatch.Type,
+		"asset":         mismatch.Asset,
+		"actual":        mismatch.Actual,
+		"expected":      mismatch.Expected,
+		"lookup_tables": []string{"parsed_tx", "pool_info", "parse_quarantine"},
+	}).Error("pool validation failed")
+}
+
 // validate with `expected` from the node, compare database updates, as `actual`
 func (app *dexApp) validate(from, to uint64, expected []PoolInfo) error {
 	if len(expected) == 0 {
-		app.logger.Infof("No pool info found at height %d", to)
+		app.logger.WithFields(logrus.Fields{
+			"event":     "parser.pool_validation_skipped",
+			"operation": "pool_validation",
+			"chain_id":  app.chainId,
+			"height":    to,
+			"reason":    "empty_expected_pool_info",
+		}).Info("no pool info found")
 		return nil
 	}
 
@@ -438,54 +568,107 @@ func (app *dexApp) validate(from, to uint64, expected []PoolInfo) error {
 		exceptionMap[addr] = true
 	}
 
+	validationErr := &poolValidationError{}
 	for _, pool := range actual {
 		if _, ok := exceptionMap[pool.ContractAddr]; ok {
 			continue
 		}
 		exp, ok := expectedPool[pool.ContractAddr]
 		if !ok {
-			return fmt.Errorf("unexpected pool(%s) found", pool.ContractAddr)
+			validationErr.Add(poolValidationMismatch{
+				Type:     validationMismatchUnexpectedPool,
+				Contract: pool.ContractAddr,
+				Actual:   pool.TotalShare,
+			})
+			continue
 		}
-		if err := app.comparePair(pool, exp); err != nil {
+		if err := app.collectPairValidationMismatches(pool, exp, validationErr); err != nil {
 			return err
 		}
 
 		delete(expectedPool, pool.ContractAddr)
 	}
-	if len(expectedPool) > 0 {
-		addrs := []string{}
-		for _, pool := range expectedPool {
-			addrs = append(addrs, pool.ContractAddr)
-		}
-		return fmt.Errorf("expected pools(%s) not found", addrs)
+	for _, pool := range expectedPool {
+		validationErr.Add(poolValidationMismatch{
+			Type:     validationMismatchExpectedPoolMissing,
+			Contract: pool.ContractAddr,
+			Expected: pool.TotalShare,
+		})
+	}
+	if validationErr.HasMismatches() {
+		return validationErr
 	}
 	return nil
 }
 
-func (app *dexApp) comparePair(actual PoolInfo, expected PoolInfo) error {
-	var diffs []string
+// poolValidationMismatch describes one concrete difference between source pool state and parsed DB state.
+type poolValidationMismatch struct {
+	Type     string
+	Contract string
+	Asset    string
+	Actual   string
+	Expected string
+}
+
+// poolValidationError aggregates every mismatch found during one validation run.
+type poolValidationError struct {
+	Mismatches []poolValidationMismatch
+}
+
+// Error summarizes the aggregated validation failure without hiding per-pool mismatch details.
+func (e *poolValidationError) Error() string {
+	if len(e.Mismatches) == 0 {
+		return "pool validation failed"
+	}
+	return fmt.Sprintf("pool validation failed with %d mismatch(es)", len(e.Mismatches))
+}
+
+// Add records one mismatch while allowing validation to continue collecting the rest.
+func (e *poolValidationError) Add(mismatch poolValidationMismatch) {
+	e.Mismatches = append(e.Mismatches, mismatch)
+}
+
+// HasMismatches reports whether validation found any differences worth failing on.
+func (e *poolValidationError) HasMismatches() bool {
+	return len(e.Mismatches) > 0
+}
+
+// collectPairValidationMismatches compares one pair and appends every asset/share mismatch.
+func (app *dexApp) collectPairValidationMismatches(actual PoolInfo, expected PoolInfo, validationErr *poolValidationError) error {
+	var mismatches []poolValidationMismatch
 
 	for idx, expAsset := range expected.Assets {
-		if expAsset.Amount != actual.Assets[idx].Amount {
-			diffs = append(diffs, fmt.Sprintf(
-				"pool(%s) asset(%s) amount mismatch: actual(%s), expected(%s)", actual.ContractAddr, expAsset.Addr, actual.Assets[idx].Amount, expAsset.Amount,
-			))
+		actualAmount := ""
+		if idx < len(actual.Assets) {
+			actualAmount = actual.Assets[idx].Amount
+		}
+		if expAsset.Amount != actualAmount {
+			mismatches = append(mismatches, poolValidationMismatch{
+				Type:     validationMismatchAssetAmount,
+				Contract: actual.ContractAddr,
+				Asset:    expAsset.Addr,
+				Actual:   actualAmount,
+				Expected: expAsset.Amount,
+			})
 		}
 	}
 
 	if expected.TotalShare != actual.TotalShare {
-		diffs = append(diffs, fmt.Sprintf(
-			"pool(%s) total share mismatch: actual(%s), expected(%s)", actual.ContractAddr, actual.TotalShare, expected.TotalShare,
-		))
+		mismatches = append(mismatches, poolValidationMismatch{
+			Type:     validationMismatchTotalShare,
+			Contract: actual.ContractAddr,
+			Actual:   actual.TotalShare,
+			Expected: expected.TotalShare,
+		})
 	}
 
-	if len(diffs) == 0 {
+	if len(mismatches) == 0 {
 		return nil
 	}
 
 	isValidationException := false
 	for _, a := range actual.Assets {
-		if app.IsValidationExceptionCandidate(a.Addr) {
+		if app.isValidationExceptionCandidate(a.Addr) {
 			isValidationException = true
 		}
 	}
@@ -499,7 +682,18 @@ func (app *dexApp) comparePair(actual PoolInfo, expected PoolInfo) error {
 		return nil
 	}
 
-	return errors.New(strings.Join(diffs, "; "))
+	for _, mismatch := range mismatches {
+		validationErr.Add(mismatch)
+	}
+	return nil
+}
+
+// isValidationExceptionCandidate safely delegates exception detection to the target app.
+func (app *dexApp) isValidationExceptionCandidate(contractAddress string) bool {
+	if app.TargetApp == nil {
+		return false
+	}
+	return app.IsValidationExceptionCandidate(contractAddress)
 }
 
 // CollectLpBurnTxs collects LP burn events and associates them with their pair contract.

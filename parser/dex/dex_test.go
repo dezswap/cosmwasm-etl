@@ -1,6 +1,8 @@
 package dex
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"testing"
@@ -11,6 +13,7 @@ import (
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -256,6 +259,63 @@ func Test_Run_UpsertsPartialQuarantineAndInsertsParsedTxs(t *testing.T) {
 	srcStore.AssertExpectations(t)
 }
 
+func Test_Run_LogsSummaryAtInfoAndHeightProcessedAtDebug(t *testing.T) {
+	logBuf := &bytes.Buffer{}
+	logger := logrus.New()
+	logger.SetOutput(logBuf)
+	logger.SetFormatter(&logrus.JSONFormatter{})
+	logger.SetLevel(logrus.InfoLevel)
+
+	target := &quarantineTargetApp{parse: func(tx parser.RawTx, _ uint64) ([]ParsedTx, error) {
+		return []ParsedTx{{
+			Hash:         tx.Hash,
+			Type:         Transfer,
+			Sender:       "sender",
+			ContractAddr: "pair",
+			Assets:       [2]Asset{{Addr: "asset0", Amount: "1"}, {Addr: "asset1", Amount: "0"}},
+		}}, nil
+	}}
+	repo := &RepoMock{}
+	srcStore := &RawStoreMock{}
+	app := &dexApp{
+		TargetApp:            target,
+		Repo:                 repo,
+		SourceDataStore:      srcStore,
+		logger:               logger.WithField("chainId", "chain-1"),
+		chainId:              "chain-1",
+		poolSnapshotInterval: 100,
+		sameHeightTolerance:  3,
+		quarantineRetryMode:  configs.QuarantineRetryDisabled,
+	}
+
+	repo.On("GetTokenExceptions").Return(map[string]bool{}, nil)
+	repo.On("GetSyncedHeight").Return(uint64(0), nil)
+	srcStore.On("GetSourceSyncedHeight").Return(uint64(2), nil)
+	srcStore.On("GetSourceTxs", uint64(1)).Return(parser.RawTxs{{Hash: "tx1"}}, nil)
+	srcStore.On("GetSourceTxs", uint64(2)).Return(parser.RawTxs{{Hash: "tx2"}}, nil)
+	repo.On("Insert", uint64(0), uint64(1), mock.Anything, []PoolInfo{}, []Pair{}, []ParseQuarantine{}).Return(nil)
+	repo.On("Insert", uint64(1), uint64(2), mock.Anything, []PoolInfo{}, []Pair{}, []ParseQuarantine{}).Return(nil)
+
+	require.NoError(t, app.Run())
+
+	var summary map[string]interface{}
+	for _, line := range bytes.Split(bytes.TrimSpace(logBuf.Bytes()), []byte("\n")) {
+		var entry map[string]interface{}
+		require.NoError(t, json.Unmarshal(line, &entry))
+		require.NotEqual(t, "parser.height_processed", entry["event"])
+		if entry["event"] == "parser.run_summary" {
+			summary = entry
+		}
+	}
+
+	require.NotNil(t, summary)
+	assert.Equal(t, float64(1), summary["from_height"])
+	assert.Equal(t, float64(2), summary["to_height"])
+	assert.Equal(t, float64(2), summary["processed_height_count"])
+	assert.Equal(t, float64(2), summary["parsed_tx_count"])
+	assert.Equal(t, float64(0), summary["quarantine_count"])
+}
+
 func Test_retryPendingQuarantines_ResolvesSuccessfulReplay(t *testing.T) {
 	rawTx := parser.RawTx{Hash: "replay"}
 	parsedTx := ParsedTx{
@@ -402,6 +462,91 @@ func Test_validate(t *testing.T) {
 			assert.NoError(t, err, errMsg)
 		}
 	}
+}
+
+func Test_validate_CollectsAllPoolValidationMismatches(t *testing.T) {
+	expectedPools := []PoolInfo{
+		{ContractAddr: "pair1", TotalShare: "1000", Assets: []Asset{{"asset0", "500"}, {"asset1", "500"}}},
+		{ContractAddr: "pair2", TotalShare: "2000", Assets: []Asset{{"asset2", "1000"}, {"asset3", "1000"}}},
+	}
+	actualPools := []PoolInfo{
+		{ContractAddr: "pair1", TotalShare: "900", Assets: []Asset{{"asset0", "400"}, {"asset1", "450"}}},
+		{ContractAddr: "unexpected", TotalShare: "3000", Assets: []Asset{{"asset4", "1500"}, {"asset5", "1500"}}},
+	}
+	repoMock := RepoMock{}
+	repoMock.On("ParsedPoolsInfo", uint64(0), uint64(100)).Return(actualPools, nil)
+	repoMock.On("ValidationExceptionList").Return([]string{}, nil)
+	app := dexApp{Repo: &repoMock}
+
+	err := app.validate(0, 100, expectedPools)
+	require.Error(t, err)
+
+	var validationErr *poolValidationError
+	require.ErrorAs(t, err, &validationErr)
+	assert.ElementsMatch(t, []poolValidationMismatch{
+		{Type: validationMismatchAssetAmount, Contract: "pair1", Asset: "asset0", Actual: "400", Expected: "500"},
+		{Type: validationMismatchAssetAmount, Contract: "pair1", Asset: "asset1", Actual: "450", Expected: "500"},
+		{Type: validationMismatchTotalShare, Contract: "pair1", Actual: "900", Expected: "1000"},
+		{Type: validationMismatchUnexpectedPool, Contract: "unexpected", Actual: "3000"},
+		{Type: validationMismatchExpectedPoolMissing, Contract: "pair2", Expected: "2000"},
+	}, validationErr.Mismatches)
+}
+
+func Test_validateAtHeight_LogsEveryPoolValidationMismatch(t *testing.T) {
+	expectedPools := []PoolInfo{
+		{ContractAddr: "pair1", TotalShare: "1000", Assets: []Asset{{"asset0", "500"}, {"asset1", "500"}}},
+		{ContractAddr: "pair2", TotalShare: "2000", Assets: []Asset{{"asset2", "1000"}, {"asset3", "1000"}}},
+	}
+	actualPools := []PoolInfo{
+		{ContractAddr: "pair1", TotalShare: "900", Assets: []Asset{{"asset0", "400"}, {"asset1", "500"}}},
+		{ContractAddr: "unexpected", TotalShare: "3000", Assets: []Asset{{"asset4", "1500"}, {"asset5", "1500"}}},
+	}
+	logBuf := &bytes.Buffer{}
+	logger := logrus.New()
+	logger.SetOutput(logBuf)
+	logger.SetFormatter(&logrus.JSONFormatter{})
+	logger.SetLevel(logrus.InfoLevel)
+
+	srcStore := &RawStoreMock{}
+	repo := &RepoMock{}
+	app := &dexApp{
+		Repo:            repo,
+		SourceDataStore: srcStore,
+		logger:          logger.WithField("chainId", "chain-1"),
+		chainId:         "chain-1",
+	}
+
+	srcStore.On("GetPoolInfos", uint64(100)).Return(expectedPools, nil)
+	repo.On("ParsedPoolsInfo", uint64(0), uint64(100)).Return(actualPools, nil)
+	repo.On("ValidationExceptionList").Return([]string{}, nil)
+
+	assert.False(t, app.validateAtHeight(100))
+
+	var logs []map[string]interface{}
+	for _, line := range bytes.Split(bytes.TrimSpace(logBuf.Bytes()), []byte("\n")) {
+		var entry map[string]interface{}
+		require.NoError(t, json.Unmarshal(line, &entry))
+		if entry["event"] == "parser.pool_validation_failed" {
+			logs = append(logs, entry)
+		}
+	}
+
+	require.Len(t, logs, 4)
+	assertLogFields := func(contract, mismatchType string) bool {
+		for _, entry := range logs {
+			if entry["contract"] == contract && entry["mismatch_type"] == mismatchType {
+				assert.Equal(t, "chain-1", entry["chain_id"])
+				assert.Equal(t, float64(100), entry["height"])
+				assert.Equal(t, "pool_validation", entry["operation"])
+				return true
+			}
+		}
+		return false
+	}
+	assert.True(t, assertLogFields("pair1", validationMismatchAssetAmount))
+	assert.True(t, assertLogFields("pair1", validationMismatchTotalShare))
+	assert.True(t, assertLogFields("unexpected", validationMismatchUnexpectedPool))
+	assert.True(t, assertLogFields("pair2", validationMismatchExpectedPoolMissing))
 }
 
 var (
