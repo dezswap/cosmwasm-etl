@@ -19,7 +19,7 @@ down:
 deps:
 	go mod download
 
-.PHONY: build-all aggregator collector parser-dex
+.PHONY: build-all aggregator collector parser-dex parser-diagnose
 build-all: aggregator collector parser-dex
 
 aggregator:
@@ -32,6 +32,9 @@ collector:
 # Build the main executable
 parser-dex:
 	go  build -mod=readonly -o ./build/parser-dex ./cmd/parser/dex
+
+parser-diagnose:
+	go  build -mod=readonly -o ./build/parser-diagnose ./cmd/parser/diagnose
 
 .PHONY: install-all install-aggregator install-collector install-parser-dex
 install-all: install-aggregator install-collector install-parser-dex
@@ -120,10 +123,13 @@ image:
 # Migrate database.
 .PHONY: parser-migrate-test parser-migrate-up parser-migrate-down parser-generate-migration \
 		aggregator-migrate-up aggregator-migrate-down aggregator-generate-migration \
-		collector-migrate-up collector-migrate-down collector-generate-migration
+		collector-migrate-test collector-migrate-up collector-migrate-down collector-generate-migration
 
 parser-migrate-test:
 	go test -count=1 -tags=mig,faker ./db/migrations/parser
+
+collector-migrate-test:
+	go test -count=1 -tags=mig ./db/migrations/collector
 
 parser-migrate-up:
 	go run db/migrations/parser/main.go

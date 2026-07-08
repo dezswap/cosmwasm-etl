@@ -10,22 +10,14 @@ import (
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/dezswap/cosmwasm-etl/collector/datastore"
-	collectorrepo "github.com/dezswap/cosmwasm-etl/collector/repo"
 	"github.com/dezswap/cosmwasm-etl/configs"
 	p_dex "github.com/dezswap/cosmwasm-etl/parser/dex"
-	pds "github.com/dezswap/cosmwasm-etl/parser/dex/dezswap"
+	"github.com/dezswap/cosmwasm-etl/parser/dex/dexwiring"
 	"github.com/dezswap/cosmwasm-etl/parser/dex/repo"
-	"github.com/dezswap/cosmwasm-etl/parser/dex/srcstore"
-	ts_srcstore "github.com/dezswap/cosmwasm-etl/parser/dex/srcstore/terraswap"
-	psf "github.com/dezswap/cosmwasm-etl/parser/dex/starfleit"
-	pts "github.com/dezswap/cosmwasm-etl/parser/dex/terraswap"
-	"github.com/dezswap/cosmwasm-etl/pkg/dex"
-	"github.com/dezswap/cosmwasm-etl/pkg/httpclient"
 	"github.com/sirupsen/logrus"
 
 	"github.com/dezswap/cosmwasm-etl/pkg/grpc"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
-	"github.com/dezswap/cosmwasm-etl/pkg/s3client"
 )
 
 const (
@@ -33,38 +25,6 @@ const (
 )
 
 var version = "dev" // overridden via -ldflags "-X main.version=v1.2.3"
-
-func getDexCollectorReadStore(c configs.Config, dc configs.ParserDexConfig) datastore.ReadStore {
-	nodeConf := dc.NodeConfig
-	if nodeConf.GrpcConfig.Host != "" {
-		nodeConf := dc.NodeConfig
-		serviceDesc := grpc.GetServiceDesc("collector", nodeConf.GrpcConfig)
-
-		store, err := datastore.New(c, serviceDesc, nil)
-		if err != nil {
-			panic(err)
-		}
-		if nodeConf.FailoverLcdHost != "" {
-			failoverStore, err := datastore.New(
-				c,
-				serviceDesc,
-				datastore.NewLcdClient(nodeConf.FailoverLcdHost, httpclient.New(dc.NodeConfig.HttpClientConfig)),
-			)
-			if err != nil {
-				panic(err)
-			}
-			store = failoverStore
-		}
-
-		return datastore.NewReadStoreWithGrpc(dc.ChainId, store)
-	}
-
-	s3Client, err := s3client.NewClient(c.S3)
-	if err != nil {
-		panic(err)
-	}
-	return datastore.NewReadStore(dc.ChainId, s3Client)
-}
 
 func dex_main(c configs.ParserDexConfig, logc configs.LogConfig, sentryc configs.SentryConfig, rdbc configs.RdbConfig, readStore datastore.ReadStore) {
 	logger := logging.New("main", logc)
@@ -79,32 +39,14 @@ func dex_main(c configs.ParserDexConfig, logc configs.LogConfig, sentryc configs
 	defer catch(logger)
 
 	repo := repo.New(c.ChainId, rdbc)
-	var app p_dex.TargetApp
-	var err error
-	switch c.TargetApp {
-	case dex.Terraswap:
-		app, err = pts.New(repo, logger, c)
-	case dex.Dezswap:
-		app, err = pds.New(repo, logger, c, c.ChainId)
-	case dex.Starfleit:
-		app, err = psf.New(repo, logger, c, c.ChainId)
-	default:
-		panic("unknown target app: " + c.TargetApp)
-	}
-
+	app, err := dexwiring.NewTargetApp(repo, logger, c)
 	if err != nil {
 		panic(err)
 	}
 
-	var rawDataStore p_dex.SourceDataStore
-	if c.TargetApp == dex.Terraswap {
-		fallback, err := ts_srcstore.NewFromConfig(c.NodeConfig, c.FactoryAddress)
-		if err != nil {
-			panic(err)
-		}
-		rawDataStore = srcstore.NewCollectorFallback(c.ChainId, collectorrepo.New(rdbc), fallback, logger)
-	} else {
-		rawDataStore = srcstore.New(readStore)
+	rawDataStore, err := dexwiring.NewSourceDataStore(c, rdbc, readStore, logger)
+	if err != nil {
+		panic(err)
 	}
 
 	runner := p_dex.NewDexApp(app, rawDataStore, repo, logger, c)
@@ -150,11 +92,9 @@ func main() {
 	}
 
 	dc := c.Parser.DexConfig
-	var readstore datastore.ReadStore
-	switch dc.TargetApp {
-	case dex.Terraswap:
-	case dex.Dezswap, dex.Starfleit:
-		readstore = getDexCollectorReadStore(c, dc)
+	readstore, err := dexwiring.NewTargetReadStore(c, dc)
+	if err != nil {
+		panic(err)
 	}
 	dex_main(dc, c.Log, c.Sentry, c.Rdb, readstore)
 }
