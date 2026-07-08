@@ -19,13 +19,20 @@ import (
 const batch_size = 100
 
 func Test_ParserMigration(t *testing.T) {
-	c := configs.New()
+	c := configs.NewWithFileName("config.test")
+	assertLocalTestDB(t, c.Rdb)
+
 	faker.MigFakerInit()
 	p_dex.FakerCustomGenerator()
 	dbCon, err := db.OpenGormPostgres(c.Rdb)
 	if err != nil {
 		panic(err)
 	}
+	tx := dbCon.Begin()
+	if tx.Error != nil {
+		panic(tx.Error)
+	}
+	defer tx.Rollback()
 
 	parsedTxs := []schemas.ParsedTx{}
 	poolInfos := []schemas.PoolInfo{}
@@ -65,10 +72,10 @@ func Test_ParserMigration(t *testing.T) {
 	actualPairs := []schemas.Pair{}
 	actualSyncedHeights := []schemas.SyncedHeight{}
 
-	batchInsertAndRead(dbCon, schemas.Pair{}, pairs, &actualPairs, len(pairs))
-	batchInsertAndRead(dbCon, schemas.ParsedTx{}, parsedTxs, &actualParsedTxs, len(parsedTxs))
-	batchInsertAndRead(dbCon, schemas.PoolInfo{}, poolInfos, &actualPoolInfos, len(poolInfos))
-	batchInsertAndRead(dbCon, schemas.SyncedHeight{}, syncedHeights, &actualSyncedHeights, len(syncedHeights))
+	batchInsertAndRead(tx, schemas.Pair{}, pairs, &actualPairs, len(pairs))
+	batchInsertAndRead(tx, schemas.ParsedTx{}, parsedTxs, &actualParsedTxs, len(parsedTxs))
+	batchInsertAndRead(tx, schemas.PoolInfo{}, poolInfos, &actualPoolInfos, len(poolInfos))
+	batchInsertAndRead(tx, schemas.SyncedHeight{}, syncedHeights, &actualSyncedHeights, len(syncedHeights))
 
 	assert := assert.New(t)
 	assert.Len(actualPairs, len(pairs))
@@ -80,6 +87,16 @@ func Test_ParserMigration(t *testing.T) {
 
 type Batchable interface {
 	schemas.Pair | schemas.ParsedTx | schemas.PoolInfo | schemas.SyncedHeight
+}
+
+func assertLocalTestDB(t *testing.T, c configs.RdbConfig) {
+	t.Helper()
+
+	switch c.Host {
+	case "localhost", "127.0.0.1", "::1":
+	default:
+		t.Fatalf("migration tests must use a local test DB, got host=%s database=%s", c.Host, c.Database)
+	}
 }
 
 func batchInsertAndRead[T Batchable](con *gorm.DB, v T, models []T, targets *[]T, limit int) {
