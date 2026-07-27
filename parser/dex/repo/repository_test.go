@@ -419,6 +419,7 @@ func (s *parseQuarantineSuite) Test_ResolveParseQuarantine() {
 func Test_repo(t *testing.T) {
 	dex.FakerCustomGenerator()
 	faker.CustomGenerator()
+	faker.SetRandomMapAndSliceMinSize(1)
 	suite.Run(t, new(SyncedHeightSuite))
 	suite.Run(t, new(pairsSuite))
 	suite.Run(t, new(insertSuite))
