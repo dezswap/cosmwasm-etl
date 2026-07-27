@@ -38,3 +38,7 @@ func CustomGenerator() {
 func FakeData(target interface{}) error {
 	return faker.FakeData(target)
 }
+
+func SetRandomMapAndSliceMinSize(size int) error {
+	return faker.SetRandomMapAndSliceMinSize(size)
+}

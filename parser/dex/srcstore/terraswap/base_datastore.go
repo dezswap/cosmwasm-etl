@@ -12,6 +12,8 @@ import (
 	"github.com/pkg/errors"
 )
 
+const columbusCosmosSdk50StartHeight = 28214400
+
 type chainDataAdapter interface {
 	AllPairs(height uint64) ([]p_dex.Pair, error)
 	TxSenderOf(hash string) (string, error)
@@ -98,7 +100,13 @@ func (r *baseRawDataStoreImpl) GetSourceTxs(height uint64) (parser.RawTxs, error
 			continue
 		}
 
-		tx, err := r.convertLogToRawTx(txHash, txResults[i].Log, blockTime)
+		var tx parser.RawTx
+		var err error
+		if height >= columbusCosmosSdk50StartHeight {
+			tx, err = r.convertEventsToRawTx(txHash, txResults[i].Events, blockTime)
+		} else {
+			tx, err = r.convertLogToRawTx(txHash, txResults[i].Log, blockTime)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -114,8 +122,14 @@ func (r *baseRawDataStoreImpl) convertLogToRawTx(txHash, log string, blockTs tim
 	if err := json.Unmarshal([]byte(log), &logs); err != nil {
 		return parser.RawTx{}, errors.Wrapf(err, "failed to unmarshal log JSON for tx %s", txHash)
 	}
+	return r.buildRawTx(txHash, groupLogAttrByType(logs), blockTs)
+}
 
-	logResultMap := groupLogAttrByType(logs)
+func (r *baseRawDataStoreImpl) convertEventsToRawTx(txHash string, events []rpc.RpcEventRes, blockTs time.Time) (parser.RawTx, error) {
+	return r.buildRawTx(txHash, groupEventsAttrByType(events), blockTs)
+}
+
+func (r *baseRawDataStoreImpl) buildRawTx(txHash string, logResultMap map[eventlog.LogType]eventlog.Attributes, blockTs time.Time) (parser.RawTx, error) {
 	tx := parser.RawTx{
 		Hash:       txHash,
 		Timestamp:  blockTs,
@@ -137,8 +151,8 @@ func (r *baseRawDataStoreImpl) convertLogToRawTx(txHash, log string, blockTs tim
 		}
 	}
 
-	var err error
 	if tx.Sender == "" {
+		var err error
 		if tx.Sender, err = r.TxSenderOf(txHash); err != nil {
 			return parser.RawTx{}, errors.Wrapf(err, "failed to retrieve sender for tx %s from TxSenderOf", txHash)
 		}
@@ -168,6 +182,26 @@ func groupLogAttrByType(logs logResults) map[eventlog.LogType]eventlog.Attribute
 			}
 			logResultMap[logType] = attributes
 		}
+	}
+	return logResultMap
+}
+
+func groupEventsAttrByType(events []rpc.RpcEventRes) map[eventlog.LogType]eventlog.Attributes {
+	logResultMap := make(map[eventlog.LogType]eventlog.Attributes)
+
+	for _, event := range events {
+		attributes := eventlog.Attributes{}
+		for _, attr := range event.Attributes {
+			attributes = append(attributes, eventlog.Attribute{
+				Key:   attr.Key,
+				Value: attr.Value,
+			})
+		}
+		logType := eventlog.LogType(event.Type)
+		if attrs, ok := logResultMap[logType]; ok {
+			attributes = append(attrs, attributes...)
+		}
+		logResultMap[logType] = attributes
 	}
 	return logResultMap
 }

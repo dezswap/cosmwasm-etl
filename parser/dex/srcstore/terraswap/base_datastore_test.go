@@ -8,11 +8,30 @@ import (
 	"time"
 
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
+	"github.com/dezswap/cosmwasm-etl/pkg/terra/rpc"
 	"github.com/stretchr/testify/assert"
 )
 
 var (
-	mockSender              = "terra1abcd"
+	mockSender = "terra1abcd"
+
+	mockRpcEventResWithSender = []rpc.RpcEventRes{
+		{
+			Type: string(eventlog.Message),
+			Attributes: []rpc.RpcAttributeRes{
+				{Key: "action", Value: "act"},
+				{Key: "sender", Value: mockSender},
+			},
+		},
+	}
+
+	mockRpcEventRes = []rpc.RpcEventRes{
+		{
+			Type:       string(eventlog.Message),
+			Attributes: []rpc.RpcAttributeRes{{Key: "action", Value: "act"}},
+		},
+	}
+
 	mockLogResultWithSender = logResults{
 		{
 			MsgIndex: 0,
@@ -215,4 +234,54 @@ func Test_groupLogAttrByType_D63A97(t *testing.T) {
 	assert.Len(t, result["message"], 3)
 	assert.Len(t, result["execute"], 5)
 	assert.Len(t, result["wasm"], 27)
+}
+
+func Test_convertEventsToRawTx(t *testing.T) {
+	blockTs := time.Now()
+	r := &baseRawDataStoreImpl{chainDataAdapter: &mockCda{sender: "shouldNotCall"}}
+	tx, err := r.convertEventsToRawTx("txhash", mockRpcEventResWithSender, blockTs)
+	assert.NoError(t, err)
+	assert.Equal(t, mockSender, tx.Sender)
+	assert.Equal(t, "txhash", tx.Hash)
+	assert.WithinDuration(t, blockTs, tx.Timestamp, time.Second)
+	assert.NotEmpty(t, tx.LogResults)
+}
+
+func Test_convertEventsToRawTx_SenderFromCda(t *testing.T) {
+	r := &baseRawDataStoreImpl{chainDataAdapter: &mockCda{sender: "fromCDA"}}
+	tx, err := r.convertEventsToRawTx("txhash", mockRpcEventRes, time.Now())
+	assert.NoError(t, err)
+	assert.Equal(t, "fromCDA", tx.Sender)
+}
+
+func Test_convertEventsToRawTx_CdaReturnsErr(t *testing.T) {
+	r := &baseRawDataStoreImpl{chainDataAdapter: &mockCda{err: errors.New("fail")}}
+	_, err := r.convertEventsToRawTx("txhash", mockRpcEventRes, time.Now())
+	assert.Error(t, err)
+}
+
+func Test_groupEventsAttrByType(t *testing.T) {
+	events := []rpc.RpcEventRes{
+		{
+			Type:       "wasm",
+			Attributes: []rpc.RpcAttributeRes{{Key: "k1", Value: "v1"}},
+		},
+		{
+			Type:       "transfer",
+			Attributes: []rpc.RpcAttributeRes{{Key: "k2", Value: "v2"}},
+		},
+		{
+			Type:       "wasm",
+			Attributes: []rpc.RpcAttributeRes{{Key: "k3", Value: "v3"}},
+		},
+	}
+	result := groupEventsAttrByType(events)
+	assert.Len(t, result, 2)
+	assert.Equal(t, eventlog.Attributes{{Key: "k2", Value: "v2"}}, result["transfer"])
+	assert.ElementsMatch(t, []eventlog.Attribute{{Key: "k1", Value: "v1"}, {Key: "k3", Value: "v3"}}, result["wasm"])
+}
+
+func Test_groupEventsAttrByType_Empty(t *testing.T) {
+	empty := groupEventsAttrByType([]rpc.RpcEventRes{})
+	assert.Empty(t, empty)
 }
