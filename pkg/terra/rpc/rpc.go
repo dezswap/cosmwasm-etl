@@ -3,7 +3,6 @@ package rpc
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/dezswap/cosmwasm-etl/pkg/util"
 	"io"
 	"net/http"
 	"strconv"
@@ -77,26 +76,14 @@ func (r *rpcImpl) BlockResults(height ...uint64) (*RpcRes[RpcBlockResultRes], er
 
 // RemoteBlockHeight implements Rpc.
 func (r *rpcImpl) RemoteBlockHeight() (uint64, error) {
-	response, err := r.client.Get(fmt.Sprintf("%s/%s", r.baseUrl, rpcBlockResultsPath))
+	res, err := r.Block()
 	if err != nil {
 		return 0, errors.Wrap(err, "rpcImpl.RemoteBlockHeight")
 	}
-	defer response.Body.Close()
 
-	data, _ := io.ReadAll(response.Body)
-
-	var res RpcRes[RpcBlockResultRes]
-	if err := json.Unmarshal(data, &res); err != nil {
-		return 0, errors.Wrapf(
-			err, "rpcImpl.RemoteBlockHeight: failed to unmarshal data, first %d bytes: %s",
-			util.DefaultErrorDataLength, util.TruncateBytes(data, util.DefaultErrorDataLength))
-	}
-
-	height, err := strconv.ParseInt(res.Result.Height, 10, 64)
+	height, err := strconv.ParseInt(res.Result.Block.Header.Height, 10, 64)
 	if err != nil {
-		return 0, errors.Wrapf(
-			err, "rpcImpl.RemoteBlockHeight: failed to parse int, first %d bytes: %s",
-			util.DefaultErrorDataLength, util.TruncateBytes(data, util.DefaultErrorDataLength))
+		return 0, errors.Wrap(err, "rpcImpl.RemoteBlockHeight")
 	}
 	return uint64(height), nil
 }
