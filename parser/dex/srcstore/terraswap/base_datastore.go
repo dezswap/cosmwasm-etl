@@ -2,6 +2,7 @@ package terraswap
 
 import (
 	"encoding/json"
+	"strconv"
 	"time"
 
 	"github.com/dezswap/cosmwasm-etl/parser"
@@ -39,12 +40,17 @@ func NewBaseStore(rpc rpc.Rpc, client terraswap.QueryClient, cda chainDataAdapte
 
 // GetSourceSyncedHeight implements p_dex.RawDataStore
 func (r *baseRawDataStoreImpl) GetSourceSyncedHeight() (uint64, error) {
-	height, err := r.rpc.RemoteBlockHeight()
+	block, err := r.rpc.Block()
 	if err != nil {
 		return 0, errors.Wrap(err, "baseRawDataStoreImpl.GetSourceSyncedHeight")
 	}
 
-	return height, nil
+	height, err := strconv.ParseInt(block.Result.Block.Header.Height, 10, 64)
+	if err != nil {
+		return 0, errors.Wrap(err, "baseRawDataStoreImpl.GetSourceSyncedHeight")
+	}
+
+	return uint64(height), nil
 }
 
 // GetPoolInfos implements p_dex.RawDataStore
