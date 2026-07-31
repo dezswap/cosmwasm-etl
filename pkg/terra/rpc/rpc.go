@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/pkg/errors"
 )
@@ -13,6 +14,8 @@ const (
 	rpcBlockPath        = "block"
 	rpcBlockResultsPath = "block_results"
 	rpcStatusPath       = "status"
+
+	defaultRpcTimeout = 30 * time.Second
 )
 
 type Rpc interface {
@@ -27,6 +30,9 @@ type rpcImpl struct {
 }
 
 func New(baseUrl string, client *http.Client) Rpc {
+	if client.Timeout == 0 {
+		client.Timeout = defaultRpcTimeout
+	}
 	return &rpcImpl{baseUrl, client}
 }
 
