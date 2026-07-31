@@ -1,6 +1,7 @@
 package dezswap
 
 import (
+	"github.com/dezswap/cosmwasm-etl/pkg/dex"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 )
 
@@ -127,12 +128,12 @@ var withdrawRule = eventlog.Rule{Type: eventlog.WasmType, Items: eventlog.RuleIt
 var wasmTransferRule = eventlog.Rule{Type: eventlog.WasmType, Until: "_contract_address", Items: eventlog.RuleItems{
 	eventlog.RuleItem{Key: "_contract_address", Filter: nil},
 	eventlog.RuleItem{Key: "action", Filter: func(v string) bool {
-		return v == string(WasmTransferAction) || v == string(WasmTransferFromAction)
+		return v == dex.WasmTransferAction || v == dex.WasmTransferFromAction
 	}},
 }}
 
 var transferRule = eventlog.Rule{Type: eventlog.TransferType, Items: eventlog.RuleItems{
-	eventlog.RuleItem{Key: "recipient", Filter: nil},
-	eventlog.RuleItem{Key: "sender", Filter: nil},
-	eventlog.RuleItem{Key: "amount", Filter: nil},
+	eventlog.RuleItem{Key: dex.TransferRecipientKey, Filter: nil},
+	eventlog.RuleItem{Key: dex.TransferSenderKey, Filter: nil},
+	eventlog.RuleItem{Key: dex.TransferAmountKey, Filter: nil},
 }}

@@ -25,12 +25,6 @@ const (
 )
 
 const (
-	SortedTransferAmountKey    = "amount"
-	SortedTransferRecipientKey = "recipient"
-	SortedTransferSenderKey    = "sender"
-)
-
-const (
 	PairProvideAssetsKey      = "assets"
 	PairProvideSenderKey      = "sender"
 	PairProvideReceiverKey    = "receiver"
