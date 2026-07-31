@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
+	"time"
 
 	"github.com/pkg/errors"
 )
@@ -13,10 +13,13 @@ import (
 const (
 	rpcBlockPath        = "block"
 	rpcBlockResultsPath = "block_results"
+	rpcStatusPath       = "status"
+
+	defaultRpcTimeout = 30 * time.Second
 )
 
 type Rpc interface {
-	RemoteBlockHeight() (uint64, error)
+	Status() (*RpcRes[RpcStatusRes], error)
 	Block(height ...uint64) (*RpcRes[RpcBlockRes], error)
 	BlockResults(height ...uint64) (*RpcRes[RpcBlockResultRes], error)
 }
@@ -27,6 +30,9 @@ type rpcImpl struct {
 }
 
 func New(baseUrl string, client *http.Client) Rpc {
+	if client.Timeout == 0 {
+		client.Timeout = defaultRpcTimeout
+	}
 	return &rpcImpl{baseUrl, client}
 }
 
@@ -42,7 +48,10 @@ func (r *rpcImpl) Block(height ...uint64) (*RpcRes[RpcBlockRes], error) {
 	}
 	defer response.Body.Close()
 
-	data, _ := io.ReadAll(response.Body)
+	data, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, errors.Wrap(err, "rpcImpl.Block")
+	}
 
 	var res RpcRes[RpcBlockRes]
 	if err := json.Unmarshal(data, &res); err != nil {
@@ -64,7 +73,10 @@ func (r *rpcImpl) BlockResults(height ...uint64) (*RpcRes[RpcBlockResultRes], er
 	}
 	defer response.Body.Close()
 
-	data, _ := io.ReadAll(response.Body)
+	data, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, errors.Wrap(err, "rpcImpl.BlockResults")
+	}
 
 	var res RpcRes[RpcBlockResultRes]
 	if err := json.Unmarshal(data, &res); err != nil {
@@ -74,16 +86,24 @@ func (r *rpcImpl) BlockResults(height ...uint64) (*RpcRes[RpcBlockResultRes], er
 	return &res, nil
 }
 
-// RemoteBlockHeight implements Rpc.
-func (r *rpcImpl) RemoteBlockHeight() (uint64, error) {
-	res, err := r.Block()
+// Status implements Rpc.
+func (r *rpcImpl) Status() (*RpcRes[RpcStatusRes], error) {
+	url := fmt.Sprintf("%s/%s", r.baseUrl, rpcStatusPath)
+	response, err := r.client.Get(url)
 	if err != nil {
-		return 0, errors.Wrap(err, "rpcImpl.RemoteBlockHeight")
+		return nil, errors.Wrap(err, "rpcImpl.Status")
+	}
+	defer response.Body.Close()
+
+	data, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, errors.Wrap(err, "rpcImpl.Status")
 	}
 
-	height, err := strconv.ParseInt(res.Result.Block.Header.Height, 10, 64)
-	if err != nil {
-		return 0, errors.Wrap(err, "rpcImpl.RemoteBlockHeight")
+	var res RpcRes[RpcStatusRes]
+	if err := json.Unmarshal(data, &res); err != nil {
+		return nil, errors.Wrap(err, "rpcImpl.Status")
 	}
-	return uint64(height), nil
+
+	return &res, nil
 }

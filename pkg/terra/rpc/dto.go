@@ -52,3 +52,9 @@ type RpcAttributeRes struct {
 	Key   string `json:"key"`
 	Value string `json:"value"`
 }
+
+type RpcStatusRes struct {
+	SyncInfo struct {
+		LatestBlockHeight string `json:"latest_block_height"`
+	} `json:"sync_info"`
+}

@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"errors"
 	"time"
 
 	txtypes "github.com/cosmos/cosmos-sdk/types/tx"
@@ -40,6 +41,86 @@ func Test_lcdClientImpl_GetBlock(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
+}
+
+
+type errReader struct{}
+
+func (e *errReader) Read(p []byte) (int, error) { return 0, errors.New("read error") }
+func (e *errReader) Close() error               { return nil }
+
+type mockHttp struct {
+	resp *http.Response
+	err  error
+}
+
+func (m *mockHttp) Get(url string) (*http.Response, error) {
+	return m.resp, m.err
+}
+
+const testTxData = `{"tx_response":{"txhash":"ABCDEF","height":"100","gas_wanted":"200000","gas_used":"150000"}}`
+
+func Test_lcdClientImpl_GetTx(t *testing.T) {
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(testTxData))
+	}))
+	defer mockServer.Close()
+
+	c := NewLcdClient(mockServer.URL, &http.Client{})
+	res, err := c.GetTx("ABCDEF")
+	assert.NoError(t, err)
+	assert.NotNil(t, res)
+	assert.EqualValues(t, 100, res.TxResponse.Height)
+	assert.EqualValues(t, 200000, res.TxResponse.GasWanted)
+	assert.EqualValues(t, 150000, res.TxResponse.GasUsed)
+}
+
+func Test_lcdClientImpl_GetTx_HttpError(t *testing.T) {
+	c := &lcdClientImpl{"http://localhost", &mockHttp{err: errors.New("connection refused")}}
+	_, err := c.GetTx("ABCDEF")
+	assert.Error(t, err)
+}
+
+func Test_lcdClientImpl_GetTx_ReadBodyError(t *testing.T) {
+	resp := &http.Response{Body: &errReader{}}
+	c := &lcdClientImpl{"http://localhost", &mockHttp{resp: resp}}
+	_, err := c.GetTx("ABCDEF")
+	assert.Error(t, err)
+}
+
+func Test_lcdClientImpl_GetTx_InvalidJSON(t *testing.T) {
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("not json"))
+	}))
+	defer mockServer.Close()
+
+	c := NewLcdClient(mockServer.URL, &http.Client{})
+	_, err := c.GetTx("ABCDEF")
+	assert.Error(t, err)
+}
+
+func Test_lcdClientImpl_GetBlock_HttpError(t *testing.T) {
+	c := &lcdClientImpl{"http://localhost", &mockHttp{err: errors.New("connection refused")}}
+	_, err := c.GetBlockWithTxs(100)
+	assert.Error(t, err)
+}
+
+func Test_lcdClientImpl_GetBlock_ReadBodyError(t *testing.T) {
+	resp := &http.Response{Body: &errReader{}}
+	c := &lcdClientImpl{"http://localhost", &mockHttp{resp: resp}}
+	_, err := c.GetBlockWithTxs(100)
+	assert.Error(t, err)
+}
+
+func Test_lcdClientImpl_GetBlock_InvalidJSON(t *testing.T) {
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("not json"))
+	}))
+	defer mockServer.Close()
+
+	c := NewLcdClient(mockServer.URL, &http.Client{})
+	_, err := c.GetBlockWithTxs(100)
+	assert.Error(t, err)
 }
 
 // GetTx implements lcdClient

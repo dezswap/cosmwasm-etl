@@ -41,7 +41,7 @@ func NewLcdClient(baseUrl string, c httpClient) LcdClient {
 // GetTx only returns TxResponse
 func (c *lcdClientImpl) GetTx(txHash string) (*txtypes.GetTxResponse, error) {
 
-	response, err := http.Get(fmt.Sprintf("%s/%s/%s", c.baseUrl, lcdTxQueryPath, txHash))
+	response, err := c.Get(fmt.Sprintf("%s/%s/%s", c.baseUrl, lcdTxQueryPath, txHash))
 	if err != nil {
 		return nil, errors.Wrap(err, "lcdClientImpl.GetTx")
 	}
@@ -58,7 +58,10 @@ func (c *lcdClientImpl) GetTx(txHash string) (*txtypes.GetTxResponse, error) {
 		} `protobuf:"bytes,2,opt,name=tx_response,json=txResponse,proto3" json:"tx_response,omitempty"`
 	}
 
-	data, _ := io.ReadAll(response.Body)
+	data, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, errors.Wrap(err, "lcdClientImpl.GetTx")
+	}
 
 	var res txRes
 	if err := json.Unmarshal(data, &res); err != nil {
@@ -93,7 +96,7 @@ func (c *lcdClientImpl) GetTx(txHash string) (*txtypes.GetTxResponse, error) {
 // GetBlockWithTxs implements lcdClient.
 func (c *lcdClientImpl) GetBlockWithTxs(height int64) (*txtypes.GetBlockWithTxsResponse, error) {
 
-	response, err := http.Get(fmt.Sprintf("%s/%s/%d", c.baseUrl, lcdBlockQueryPath, height))
+	response, err := c.Get(fmt.Sprintf("%s/%s/%d", c.baseUrl, lcdBlockQueryPath, height))
 	if err != nil {
 		return nil, errors.Wrap(err, "lcdClientImpl.GetBlockWithTxs")
 	}
@@ -119,7 +122,10 @@ func (c *lcdClientImpl) GetBlockWithTxs(height int64) (*txtypes.GetBlockWithTxsR
 		} `json:"block,omitempty"`
 	}
 
-	data, _ := io.ReadAll(response.Body)
+	data, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, errors.Wrap(err, "lcdClientImpl.GetBlockWithTxs")
+	}
 	var res blockRes
 	if err := json.Unmarshal(data, &res); err != nil {
 		return nil, errors.Wrap(err, "lcdClientImpl.GetBlockWithTxs")
