@@ -493,6 +493,53 @@ func Test_IsValidationExceptionCandidate(t *testing.T) {
 	assert.False(t, app.IsValidationExceptionCandidate(""))
 }
 
+func Test_ParseTxs_SortsTransferAttributesWhenRandomOrder(t *testing.T) {
+	const nativeAsset = "axpla"
+	nativePair := dex.Pair{
+		ContractAddr: pairAddr,
+		LpAddr:       lpAddr,
+		Assets:       []string{nativeAsset, asset2},
+	}
+
+	createPairParser := dex.ParserMock{}
+	repo := dex.RepoMock{}
+	rawStore := dex.RawStoreMock{}
+	createPairParser.On("parse", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return([]*dex.ParsedTx{}, nil)
+
+	inner := dezswapApp{
+		PairRepo:    &repo,
+		Parsers:     &dex.PairParsers{CreatePairParser: &createPairParser},
+		DexMixin:    dex.DexMixin{},
+		chainId:     chainId,
+		pairs:       map[string]dex.Pair{pairAddr: nativePair},
+		lpPairAddrs: map[string]string{lpAddr: pairAddr},
+	}
+	dexApp := dex.NewDexApp(&inner, &rawStore, &repo, logging.New("test", configs.LogConfig{}), configs.ParserDexConfig{})
+	app := dexApp.(dex.DexParserApp)
+
+	require.NoError(t, app.UpdateParsers(make(map[string]bool), 100))
+
+	var logs eventlog.LogResults
+	require.NoError(t, json.Unmarshal([]byte(randomOrderTransferLogStr), &logs))
+
+	tx := parser.RawTx{Sender: txSender, Hash: txHash, LogResults: logs}
+	txs, err := app.ParseTxs(tx, 100)
+
+	assert.NoError(t, err)
+	assert.Equal(t, []dex.ParsedTx{{
+		Hash:         txHash,
+		Type:         dex.Transfer,
+		Sender:       txSender,
+		ContractAddr: pairAddr,
+		Assets: [2]dex.Asset{
+			{Addr: nativeAsset, Amount: "1000"},
+			{Addr: asset2, Amount: ""},
+		},
+		Meta: map[string]interface{}{"recipient": pairAddr},
+	}}, txs)
+}
+
 var (
 	swapTx = dex.ParsedTx{
 		Hash: txHash, Timestamp: time.Time{},
@@ -522,6 +569,16 @@ var (
 		LpAddr: lpAddr, LpAmount: "1098669138945462355",
 	}
 )
+
+// randomOrderTransferLogStr has transfer event attributes in a random order (sender, amount, recipient)
+// to verify that SortAttributes normalises them before parsing.
+const randomOrderTransferLogStr = `[
+	{"type":"transfer","attributes":[
+		{"key":"sender","value":"` + txSender + `"},
+		{"key":"amount","value":"1000axpla"},
+		{"key":"recipient","value":"` + pairAddr + `"}
+	]}
+]`
 
 // log strings are taken from pkg/dex/dezswap/logfinders_test.go
 const swapLogStr = `[

@@ -121,7 +121,7 @@ func (p *terraswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx,
 			// event log messages are not sorted well
 			// bug tx: C51473267BEF98BAE991C19AD8A5EFF6370BC64B63ACB68190170095C1AE0ABE
 			filter := []string{
-				columbusv2.SortedTransferAmountKey, columbusv2.SortedTransferRecipientKey, columbusv2.SortedTransferSenderKey,
+				pdex.TransferAmountKey, pdex.TransferRecipientKey, pdex.TransferSenderKey,
 			}
 			attrs, err := eventlog.SortAttributes(raw.Attributes, filter)
 			if err != nil {
