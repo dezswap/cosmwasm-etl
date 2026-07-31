@@ -40,12 +40,12 @@ func NewBaseStore(rpc rpc.Rpc, client terraswap.QueryClient, cda chainDataAdapte
 
 // GetSourceSyncedHeight implements p_dex.RawDataStore
 func (r *baseRawDataStoreImpl) GetSourceSyncedHeight() (uint64, error) {
-	block, err := r.rpc.Block()
+	res, err := r.rpc.Status()
 	if err != nil {
 		return 0, errors.Wrap(err, "baseRawDataStoreImpl.GetSourceSyncedHeight")
 	}
 
-	height, err := strconv.ParseInt(block.Result.Block.Header.Height, 10, 64)
+	height, err := strconv.ParseInt(res.Result.SyncInfo.LatestBlockHeight, 10, 64)
 	if err != nil {
 		return 0, errors.Wrap(err, "baseRawDataStoreImpl.GetSourceSyncedHeight")
 	}
