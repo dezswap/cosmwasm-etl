@@ -102,6 +102,9 @@ func Test_LogFinders(t *testing.T) {
 
 }
 
+// Test_TransferRuleFinder_OptionalSender covers MsgMultiSend outputs: the bank
+// module emits one "transfer" event per output (recipient+amount only, no
+// sender, since a multisend can have multiple inputs).
 func Test_TransferRuleFinder_OptionalSender(t *testing.T) {
 	tcs := []struct {
 		name          string
@@ -262,6 +265,9 @@ const TransferRawLogStr = `[
 	{"type":"transfer","attributes":[{"key":"amount","value":"1000000uluna"},{"key":"recipient","value":"terra1zdpq84j8ex29wz9tmygqtftplrw87x8wmuyfh0rsy60uq7nadtsq5pjr7y"},{"key":"sender","value":"terra1g5cad8hl9uwldus279ddc0j4fq7xjude0ynhjv"}]}
 ]`
 
+// TransferRawLogWithoutSenderStr models a MsgMultiSend output: the bank module
+// emits "transfer" with recipient+amount only, no sender attribute, since a
+// multisend can have multiple inputs.
 const TransferRawLogWithoutSenderStr = `[
 	{"type":"coin_received","attributes":[{"key":"receiver","value":"terra1zdpq84j8ex29wz9tmygqtftplrw87x8wmuyfh0rsy60uq7nadtsq5pjr7y"},{"key":"amount","value":"1000000uluna"}]},
 	{"type":"coin_spent","attributes":[{"key":"spender","value":"terra1g5cad8hl9uwldus279ddc0j4fq7xjude0ynhjv"},{"key":"amount","value":"1000000uluna"}]},

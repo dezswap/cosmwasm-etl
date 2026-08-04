@@ -38,7 +38,9 @@ const (
 	WasmCommonTransferMatchedLen = WasmCommonTransferActionIdx + 1
 	WasmV1TransferMatchedLen     = WasmTransferToIdx + 1
 	WasmV2TransferMatchedLen     = WasmTransferFromToIdx + 1
-	TransferMatchedLen           = 3
+	// TransferMatchedLen is amount+recipient; sender is optional (omitted by MsgMultiSend
+	// outputs) and falls back to the tx sender.
+	TransferMatchedLen = 2
 )
 
 const (

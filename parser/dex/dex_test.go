@@ -35,48 +35,6 @@ func (*quarantineTargetApp) UpdateParsers(map[string]bool, uint64) error {
 	return nil
 }
 
-func TestDexAppParseTxsNormalizesTransferAttributes(t *testing.T) {
-	var received parser.RawTx
-	target := &quarantineTargetApp{parse: func(tx parser.RawTx, _ uint64) ([]ParsedTx, error) {
-		received = tx
-		return []ParsedTx{}, nil
-	}}
-	app := &dexApp{TargetApp: target}
-
-	nonTransferAttrs := eventlog.Attributes{
-		{Key: "action", Value: "send"},
-		{Key: "sender", Value: "message-sender"},
-	}
-	tx := parser.RawTx{
-		Hash: "hash",
-		LogResults: eventlog.LogResults{
-			{Type: eventlog.Message, Attributes: nonTransferAttrs},
-			{
-				Type: eventlog.TransferType,
-				Attributes: eventlog.Attributes{
-					{Key: "sender", Value: "sender-1", MsgIndex: 1},
-					{Key: "ignored", Value: "metadata", MsgIndex: 1},
-					{Key: "recipient", Value: "recipient-1", MsgIndex: 1},
-					{Key: "amount", Value: "10ucoin", MsgIndex: 1},
-					{Key: "recipient", Value: "recipient-2", MsgIndex: 2},
-					{Key: "amount", Value: "20ucoin", MsgIndex: 2},
-				},
-			},
-		},
-	}
-
-	_, err := app.ParseTxs(tx, 100)
-	require.NoError(t, err)
-	require.Equal(t, nonTransferAttrs, received.LogResults[0].Attributes)
-	require.Equal(t, eventlog.Attributes{
-		{Key: "amount", Value: "10ucoin", MsgIndex: 1},
-		{Key: "recipient", Value: "recipient-1", MsgIndex: 1},
-		{Key: "sender", Value: "sender-1", MsgIndex: 1},
-		{Key: "amount", Value: "20ucoin", MsgIndex: 2},
-		{Key: "recipient", Value: "recipient-2", MsgIndex: 2},
-	}, received.LogResults[1].Attributes)
-}
-
 // insert implements parser
 func Test_insert(t *testing.T) {
 	const (

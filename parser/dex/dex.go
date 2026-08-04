@@ -9,7 +9,6 @@ import (
 
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/parser"
-	pdex "github.com/dezswap/cosmwasm-etl/pkg/dex"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 	"github.com/sirupsen/logrus"
@@ -83,27 +82,6 @@ func NewDexApp(app TargetApp, srcStore SourceDataStore, repo Repo, logger loggin
 		validationSignal:     make(chan struct{}, 1),
 		quarantineRetryMode:  retryMode,
 	}
-}
-
-// ParseTxs normalizes native transfer attributes once for every DEX target app.
-func (app *dexApp) ParseTxs(tx parser.RawTx, height uint64) ([]ParsedTx, error) {
-	for i := range tx.LogResults {
-		if tx.LogResults[i].Type != eventlog.TransferType {
-			continue
-		}
-
-		attrs, err := eventlog.SortAttributes(tx.LogResults[i].Attributes, []string{
-			pdex.TransferAmountKey,
-			pdex.TransferRecipientKey,
-			pdex.TransferSenderKey,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("dex.ParseTxs sort_transfer_attrs tx_hash=%s: %w", tx.Hash, err)
-		}
-		tx.LogResults[i].Attributes = *attrs
-	}
-
-	return app.TargetApp.ParseTxs(tx, height)
 }
 
 func (app *dexApp) Run() error {

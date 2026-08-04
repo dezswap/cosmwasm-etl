@@ -101,7 +101,16 @@ func (p *terraswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx,
 		}
 		wasmTxs = append(wasmTxs, wtxs...)
 
-		transfers, err := p.Parsers.Transfer.Parse(eventlog.LogResults{raw}, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
+		if raw.Type == eventlog.TransferType {
+			// event log messages are not sorted well
+			// bug tx: C51473267BEF98BAE991C19AD8A5EFF6370BC64B63ACB68190170095C1AE0ABE
+			sorted, err := pdex.NormalizeTransferAttrs(raw.Attributes)
+			if err != nil {
+				return nil, errors.Wrapf(err, "phoenix.ParseTxs sort_transfer_attrs tx_hash=%s", tx.Hash)
+			}
+			raw.Attributes = sorted
+		}
+		transfers, err := p.Parsers.Transfer.Parse(eventlog.LogResults{raw}, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp}, tx.Sender)
 		if err != nil {
 			return nil, errors.Wrapf(err, "phoenix.ParseTxs transfer tx_hash=%s", tx.Hash)
 		}

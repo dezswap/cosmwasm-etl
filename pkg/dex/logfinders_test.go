@@ -85,6 +85,26 @@ func TestTransferRuleFinder(t *testing.T) {
 	require.Empty(t, finder.FindFromLogs(logs))
 }
 
+func TestNormalizeTransferAttrs(t *testing.T) {
+	sorted, err := NormalizeTransferAttrs(eventlog.Attributes{
+		{Key: "sender", Value: "sender-1", MsgIndex: 1},
+		{Key: "ignored", Value: "metadata", MsgIndex: 1},
+		{Key: "recipient", Value: "recipient-1", MsgIndex: 1},
+		{Key: "amount", Value: "10ucoin", MsgIndex: 1},
+		{Key: "recipient", Value: "recipient-2", MsgIndex: 2},
+		{Key: "amount", Value: "20ucoin", MsgIndex: 2},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, eventlog.Attributes{
+		{Key: "amount", Value: "10ucoin", MsgIndex: 1},
+		{Key: "recipient", Value: "recipient-1", MsgIndex: 1},
+		{Key: "sender", Value: "sender-1", MsgIndex: 1},
+		{Key: "amount", Value: "20ucoin", MsgIndex: 2},
+		{Key: "recipient", Value: "recipient-2", MsgIndex: 2},
+	}, sorted)
+}
+
 func Test_BurnLogFinder(t *testing.T) {
 	tcs := []struct {
 		rawLogStr         string

@@ -151,6 +151,34 @@ func Test_TransferMapper(t *testing.T) {
 	}
 }
 
+// Test_TransferMapper_OptionalSender covers native transfer events that omit
+// the "sender" attribute. This happens for MsgMultiSend: the bank module emits
+// one "transfer" event per output (recipient+amount only, no sender, since a
+// multisend can have multiple inputs). The mapper must not error on the
+// missing attribute; it falls back to the tx-level sender when the caller
+// supplies a non-empty one via optionals, and otherwise leaves ParsedTx.Sender
+// empty.
+func Test_TransferMapper_OptionalSender(t *testing.T) {
+	pair := dex.Pair{ContractAddr: "Pair", LpAddr: "LiquidityToken", Assets: []string{"Asset1", "Asset2"}}
+	pairSet := map[string]dex.Pair{pair.ContractAddr: pair}
+	m := &transferMapper{pairSet: pairSet}
+
+	res := el.MatchedResult{
+		{Key: "amount", Value: "1000Asset1"},
+		{Key: "recipient", Value: pair.ContractAddr},
+	}
+
+	txs, err := m.MatchedToParsedTx(res, "tx-signer")
+	assert.NoError(t, err)
+	assert.Len(t, txs, 1)
+	assert.Equal(t, "tx-signer", txs[0].Sender)
+
+	txs, err = m.MatchedToParsedTx(res)
+	assert.NoError(t, err)
+	assert.Len(t, txs, 1)
+	assert.Equal(t, "", txs[0].Sender)
+}
+
 func Test_CreatePairMapper(t *testing.T) {
 	const factoryAddr = "xpla1466nf3zuxpya8q9emxukd7vftaf6h4psr0a07srl5zw74zh84yjqxl5qul"
 

@@ -86,7 +86,14 @@ func (p *terraswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]p_dex.ParsedT
 		}
 		wasmTxs = append(wasmTxs, wtxs...)
 
-		transfers, err := p.Parsers.Transfer.Parse(eventlog.LogResults{raw}, p_dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
+		if raw.Type == eventlog.TransferType {
+			sorted, err := dex.NormalizeTransferAttrs(raw.Attributes)
+			if err != nil {
+				return nil, errors.Wrapf(err, "columbusv1.ParseTxs sort_transfer_attrs tx_hash=%s", tx.Hash)
+			}
+			raw.Attributes = sorted
+		}
+		transfers, err := p.Parsers.Transfer.Parse(eventlog.LogResults{raw}, p_dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp}, tx.Sender)
 		if err != nil {
 			return nil, errors.Wrapf(err, "columbusv1.ParseTxs transfer tx_hash=%s", tx.Hash)
 		}

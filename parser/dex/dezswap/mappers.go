@@ -144,6 +144,9 @@ func (m *transferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals
 		return nil, errors.Wrap(err, "transferMapper.MatchedToParsedTx")
 	}
 	from := matchMap[pdex.TransferSenderKey].Value
+	if from == "" {
+		from = dex.TransferFallbackSender(optionals...)
+	}
 	to := matchMap[pdex.TransferRecipientKey].Value
 
 	pair, fromPair, err := m.mixin.pairBy(m.pairSet, from, to)

@@ -100,7 +100,14 @@ func (p *starfleitApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx,
 		}
 		wasmTxs = append(wasmTxs, wtxs...)
 
-		transfers, err := p.Parsers.Transfer.Parse(eventlog.LogResults{raw}, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
+		if raw.Type == eventlog.TransferType {
+			sorted, err := pdex.NormalizeTransferAttrs(raw.Attributes)
+			if err != nil {
+				return nil, errors.Wrapf(err, "starfleit.ParseTxs sort_transfer_attrs tx_hash=%s", tx.Hash)
+			}
+			raw.Attributes = sorted
+		}
+		transfers, err := p.Parsers.Transfer.Parse(eventlog.LogResults{raw}, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp}, tx.Sender)
 		if err != nil {
 			return nil, errors.Wrapf(err, "starfleit.ParseTxs transfer tx_hash=%s", tx.Hash)
 		}

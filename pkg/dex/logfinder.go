@@ -18,8 +18,11 @@ func CreatePairInitialProvideRuleFinder(pairs map[string]bool) (eventlog.LogFind
 
 // CreateTransferRuleFinder finds normalized native transfer events.
 // Transfer attributes are normalized to amount, recipient, sender before parsing.
-// Sender is optional on some Cosmos SDK versions, so only amount and recipient
-// are required and the remaining attributes are appended until the next amount.
+// Sender is optional because the bank module's MsgMultiSend emits one "transfer"
+// event per output (recipient+amount only) without a per-output sender, since a
+// multisend can have multiple inputs. Only amount and recipient are required, and
+// the remaining attributes (e.g. sender, when present) are appended until the
+// next amount.
 func CreateTransferRuleFinder(pairs map[string]bool) (eventlog.LogFinder, error) {
 	var recipientFilter func(v string) bool
 	if pairs != nil {
@@ -38,6 +41,25 @@ func CreateTransferRuleFinder(pairs map[string]bool) (eventlog.LogFinder, error)
 		},
 	}
 	return eventlog.NewLogFinder(rule)
+}
+
+// NormalizeTransferAttrs sorts one native "transfer" log's attributes into
+// amount, recipient, sender order so CreateTransferRuleFinder can match them
+// regardless of the order the chain emitted them in (see its doc comment).
+// Every DEX parser's ParseTxs must call this, for each transfer-type log,
+// before running its Transfer parser — there is no other enforcement point,
+// since callers (including cmd/parser/diagnose) may invoke a TargetApp's
+// ParseTxs directly.
+func NormalizeTransferAttrs(attrs eventlog.Attributes) (eventlog.Attributes, error) {
+	sorted, err := eventlog.SortAttributes(attrs, []string{
+		TransferAmountKey,
+		TransferRecipientKey,
+		TransferSenderKey,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return *sorted, nil
 }
 
 var initialProvideRule = eventlog.Rule{Type: eventlog.WasmType, Items: eventlog.RuleItems{
