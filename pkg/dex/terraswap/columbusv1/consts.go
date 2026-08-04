@@ -17,7 +17,6 @@ const (
 	PairProvideMatchedLen  = PairProvideShareIdx + 1
 	PairWithdrawMatchedLen = PairWithdrawRefundAssetsIdx + 1
 	WasmTransferMatchedLen = WasmTransferAmountIdx + 1
-	TransferMatchedLen     = TransferAmountIdx + 1
 )
 
 const (
@@ -55,10 +54,4 @@ const (
 	WasmTransferFromIdx
 	WasmTransferToIdx
 	WasmTransferAmountIdx
-)
-
-const (
-	TransferRecipientIdx = iota
-	TransferSenderIdx
-	TransferAmountIdx
 )

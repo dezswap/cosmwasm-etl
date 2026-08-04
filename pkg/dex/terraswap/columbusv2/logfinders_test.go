@@ -88,7 +88,7 @@ func Test_LogFinders(t *testing.T) {
 		// WasmTransfer
 		{WasmTransferRawLogStr, nil, CreateWasmCommonTransferRuleFinder, 1, "must match once"},
 		// Transfer
-		{TransferRawLogStr, nil, CreateSortedTransferRuleFinder, 1, "must match once"},
+		{TransferRawLogStr, nil, dex.CreateTransferRuleFinder, 1, "must match once"},
 	}
 
 	for idx, tc := range tcs {
@@ -102,7 +102,7 @@ func Test_LogFinders(t *testing.T) {
 
 }
 
-func Test_SortedTransferRuleFinder_OptionalSender(t *testing.T) {
+func Test_TransferRuleFinder_OptionalSender(t *testing.T) {
 	tcs := []struct {
 		name          string
 		rawLogStr     string
@@ -132,7 +132,7 @@ func Test_SortedTransferRuleFinder_OptionalSender(t *testing.T) {
 
 	for _, tc := range tcs {
 		t.Run(tc.name, func(t *testing.T) {
-			logFinder, err := CreateSortedTransferRuleFinder(nil)
+			logFinder, err := dex.CreateTransferRuleFinder(nil)
 			assert.NoError(t, err)
 
 			eventLogs := eventlog.LogResults{}
@@ -149,10 +149,10 @@ func Test_SortedTransferRuleFinder_OptionalSender(t *testing.T) {
 	}
 }
 
-func Test_SortedTransferRuleFinder_FiltersPairRecipient(t *testing.T) {
+func Test_TransferRuleFinder_FiltersPairRecipient(t *testing.T) {
 	const pairAddr = "terra1zdpq84j8ex29wz9tmygqtftplrw87x8wmuyfh0rsy60uq7nadtsq5pjr7y"
 
-	logFinder, err := CreateSortedTransferRuleFinder(map[string]bool{pairAddr: true})
+	logFinder, err := dex.CreateTransferRuleFinder(map[string]bool{pairAddr: true})
 	assert.NoError(t, err)
 
 	eventLogs := eventlog.LogResults{}
@@ -160,9 +160,9 @@ func Test_SortedTransferRuleFinder_FiltersPairRecipient(t *testing.T) {
 
 	matchedResults := logFinder.FindFromLogs(eventLogs)
 	assert.Len(t, matchedResults, 1)
-	assert.Equal(t, pairAddr, matchedResults[0][SortedTransferRecipientIdx].Value)
+	assert.Equal(t, pairAddr, matchedResults[0][1].Value)
 
-	logFinder, err = CreateSortedTransferRuleFinder(map[string]bool{"other_pair": true})
+	logFinder, err = dex.CreateTransferRuleFinder(map[string]bool{"other_pair": true})
 	assert.NoError(t, err)
 
 	matchedResults = logFinder.FindFromLogs(eventLogs)

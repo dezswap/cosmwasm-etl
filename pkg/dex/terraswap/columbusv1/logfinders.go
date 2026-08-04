@@ -36,21 +36,6 @@ func CreateWasmCommonTransferRuleFinder(pairs map[string]bool) (eventlog.LogFind
 	return eventlog.NewLogFinder(col4WasmTransferCommonRule)
 }
 
-// Track transfer from user to Pair
-func CreateTransferRuleFinder(pairs map[string]bool) (eventlog.LogFinder, error) {
-	var filter func(v string) bool
-	if pairs != nil {
-		filter = func(v string) bool {
-			_, ok := pairs[v]
-			return ok
-		}
-	}
-	rule := transferRule
-	rule.Items[TransferRecipientIdx].Filter = filter
-
-	return eventlog.NewLogFinder(rule)
-}
-
 var col4CreatePairRule = eventlog.Rule{Type: eventlog.FromContract, Items: eventlog.RuleItems{
 	eventlog.RuleItem{Key: "contract_address", Filter: nil},
 	eventlog.RuleItem{Key: "action", Filter: "create_pair"},
@@ -71,10 +56,4 @@ var col4WasmTransferCommonRule = eventlog.Rule{Type: eventlog.FromContract, Unti
 	eventlog.RuleItem{Key: "action", Filter: func(v string) bool {
 		return v == WasmTransferAction || v == WasmTransferFromAction
 	}},
-}}
-
-var transferRule = eventlog.Rule{Type: eventlog.TransferType, Items: eventlog.RuleItems{
-	eventlog.RuleItem{Key: "recipient", Filter: nil},
-	eventlog.RuleItem{Key: "sender", Filter: nil},
-	eventlog.RuleItem{Key: "amount", Filter: nil},
 }}

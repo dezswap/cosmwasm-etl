@@ -4,6 +4,7 @@ import (
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/parser/dex"
+	pdex "github.com/dezswap/cosmwasm-etl/pkg/dex"
 	sf "github.com/dezswap/cosmwasm-etl/pkg/dex/starfleit"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
@@ -164,7 +165,7 @@ func (p *starfleitApp) UpdateParsers(tokenExceptions map[string]bool, height uin
 		},
 	)
 
-	transferRule, err := sf.CreateTransferRuleFinder()
+	transferRule, err := pdex.CreateTransferRuleFinder(nil)
 	if err != nil {
 		return errors.Wrap(err, "updateParsers")
 	}

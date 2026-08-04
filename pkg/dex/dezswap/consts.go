@@ -37,7 +37,7 @@ const (
 	WasmCommonTransferMatchedLen = WasmCommonTransferActionIdx + 1
 	WasmTransferMatchedLen       = WasmTransferToIdx + 1
 	WasmTransferFromMatchedLen   = WasmTransferFromToIdx + 1
-	TransferMatchedLen           = TransferAmountIdx + 1
+	TransferMatchedLen           = 3
 )
 
 const (
@@ -102,10 +102,4 @@ const (
 	WasmTransferFromByIdx
 	WasmTransferFromFromIdx
 	WasmTransferFromToIdx
-)
-
-const (
-	TransferRecipientIdx = iota
-	TransferSenderIdx
-	TransferAmountIdx
 )

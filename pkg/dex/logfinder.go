@@ -16,6 +16,30 @@ func CreatePairInitialProvideRuleFinder(pairs map[string]bool) (eventlog.LogFind
 	return eventlog.NewLogFinder(rule)
 }
 
+// CreateTransferRuleFinder finds normalized native transfer events.
+// Transfer attributes are normalized to amount, recipient, sender before parsing.
+// Sender is optional on some Cosmos SDK versions, so only amount and recipient
+// are required and the remaining attributes are appended until the next amount.
+func CreateTransferRuleFinder(pairs map[string]bool) (eventlog.LogFinder, error) {
+	var recipientFilter func(v string) bool
+	if pairs != nil {
+		recipientFilter = func(v string) bool {
+			_, ok := pairs[v]
+			return ok
+		}
+	}
+
+	rule := eventlog.Rule{
+		Type:  eventlog.TransferType,
+		Until: TransferAmountKey,
+		Items: eventlog.RuleItems{
+			{Key: TransferAmountKey},
+			{Key: TransferRecipientKey, Filter: recipientFilter},
+		},
+	}
+	return eventlog.NewLogFinder(rule)
+}
+
 var initialProvideRule = eventlog.Rule{Type: eventlog.WasmType, Items: eventlog.RuleItems{
 	eventlog.RuleItem{Key: "_contract_address", Filter: nil},
 	eventlog.RuleItem{Key: "action", Filter: func(v string) bool {

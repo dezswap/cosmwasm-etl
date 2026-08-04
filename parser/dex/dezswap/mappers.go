@@ -134,8 +134,17 @@ func (m *transferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals
 	if err := m.mixin.CheckResult(res, ds.TransferMatchedLen); err != nil {
 		return nil, errors.Wrap(err, "transferMapper.MatchedToParsedTx")
 	}
-	from := res[ds.TransferSenderIdx].Value
-	to := res[ds.TransferRecipientIdx].Value
+	matchMap, err := eventlog.ResultToItemMapForKeys(
+		res,
+		pdex.TransferSenderKey,
+		pdex.TransferRecipientKey,
+		pdex.TransferAmountKey,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "transferMapper.MatchedToParsedTx")
+	}
+	from := matchMap[pdex.TransferSenderKey].Value
+	to := matchMap[pdex.TransferRecipientKey].Value
 
 	pair, fromPair, err := m.mixin.pairBy(m.pairSet, from, to)
 	if err != nil {
@@ -150,7 +159,7 @@ func (m *transferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals
 		{Addr: pair.Assets[0]},
 		{Addr: pair.Assets[1]},
 	}
-	amountValue := res[ds.TransferAmountIdx].Value
+	amountValue := matchMap[pdex.TransferAmountKey].Value
 	if amountValue == "" {
 		return nil, errors.New("empty amount")
 	}
@@ -176,7 +185,7 @@ func (m *transferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals
 
 	return []*dex.ParsedTx{{
 		Type:         dex.Transfer,
-		Sender:       res[ds.TransferSenderIdx].Value,
+		Sender:       from,
 		ContractAddr: pair.ContractAddr,
 		Assets:       assets,
 		LpAddr:       "",

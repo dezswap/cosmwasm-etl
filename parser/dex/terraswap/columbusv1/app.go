@@ -136,7 +136,7 @@ func (p *terraswapApp) UpdateParsers(tokenExceptions map[string]bool, height uin
 		),
 	)
 
-	transferRule, err := cv1.CreateTransferRuleFinder(nil)
+	transferRule, err := dex.CreateTransferRuleFinder(nil)
 	if err != nil {
 		return errors.Wrap(err, "createParsers")
 	}
