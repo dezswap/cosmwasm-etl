@@ -94,6 +94,19 @@ func Test_parseTxs(t *testing.T) {
 		{[]string{swapLogStr, wasmTransferLogStr, transferLogStr}, 1, 0, []dex.ParsedTx{swapTx, transferTx}, ""},
 		{nil, 0, 0, []dex.ParsedTx{}, ""},
 		{nil, 3, 1, []dex.ParsedTx{}, ""},
+		// MsgMultiSend outputs emit "transfer" events without a "sender" attribute
+		// (a multisend can have multiple inputs); must fall back to the tx-level sender.
+		{[]string{transferLogStrWithoutSender}, 0, 0, []dex.ParsedTx{
+			{
+				Hash:         hash,
+				Timestamp:    time.Time{},
+				Type:         dex.Transfer,
+				Sender:       sender,
+				ContractAddr: "PAIR_ADDR",
+				Assets:       [2]dex.Asset{{Addr: "Asset0", Amount: "1000"}, {Addr: "Asset1", Amount: ""}},
+				Meta:         make(map[string]interface{}),
+			},
+		}, ""},
 	}
 
 	for idx, tc := range tcs {
@@ -145,5 +158,11 @@ const (
 	{"key":"to","value":"A"},{"key":"amount","value":"12418119"},{"key":"contract_address","value":"PAIR_ADDR"},{"key":"action","value":"withdraw_liquidity"},{"key":"withdrawn_share","value":"1000"},{"key":"refund_assets","value":"1000Asset0, 1000Asset1"},{"key":"contract_address","value":"asset1"},{"key":"action","value":"transfer"},{"key":"from","value":"A"},{"key":"to","value":"terra1cupj7d70jrtjxqhpr6s3qq68t8ky4smcjvccm4"},{"key":"amount","value":"24999998"},{"key":"contract_address","value":"terra1gte4eejaw3hrs2d8pt0zhp0yfd34xp24qdgqumjul29jt5hwl5tsx3qmw7"},{"key":"action","value":"burn"},{"key":"from","value":"A"},{"key":"amount","value":"12418119"}]}]`
 	wasmTransferLogStr = `[{"type":"from_contract","attributes":[{"key":"contract_address","value":"Asset1"},{"key":"action","value":"transfer"},{"key":"from","value":"sender"},
 	{"key":"to","value":"PAIR_ADDR"},{"key":"amount","value":"1000"}]}]`
+	// transferLogStr attributes are deliberately not in the canonical
+	// amount/recipient/sender order, so every test case using it also exercises
+	// NormalizeTransferAttrs.
 	transferLogStr = `[{"type":"transfer","attributes":[{"key":"recipient","value":"PAIR_ADDR"},{"key":"sender","value":"sender"},{"key":"amount","value":"1000Asset0"}]}]`
+	// transferLogStrWithoutSender mimics a MsgMultiSend output: bank emits "transfer"
+	// with recipient+amount only, no sender (a multisend can have multiple inputs).
+	transferLogStrWithoutSender = `[{"type":"transfer","attributes":[{"key":"recipient","value":"PAIR_ADDR"},{"key":"amount","value":"1000Asset0"}]}]`
 )

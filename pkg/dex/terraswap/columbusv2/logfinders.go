@@ -36,21 +36,6 @@ func CreateWasmCommonTransferRuleFinder(pairs map[string]bool) (eventlog.LogFind
 	return eventlog.NewLogFinder(wasmTransferCommonRule)
 }
 
-// Track transfer from user to Pair
-func CreateSortedTransferRuleFinder(pairs map[string]bool) (eventlog.LogFinder, error) {
-	var filter func(v string) bool
-	if pairs != nil {
-		filter = func(v string) bool {
-			_, ok := pairs[v]
-			return ok
-		}
-	}
-	rule := sortedTransferRule
-	rule.Items[SortedTransferRecipientIdx].Filter = filter
-
-	return eventlog.NewLogFinder(rule)
-}
-
 // CreateTaxPaymentRuleFinder finds tax_payment type logs
 func CreateTaxPaymentRuleFinder() (eventlog.LogFinder, error) {
 	return eventlog.NewLogFinder(taxPaymentRule)
@@ -76,11 +61,6 @@ var wasmTransferCommonRule = eventlog.Rule{Type: eventlog.WasmType, Until: "_con
 	eventlog.RuleItem{Key: "action", Filter: func(v string) bool {
 		return v == dex.WasmTransferAction || v == dex.WasmTransferFromAction
 	}},
-}}
-
-var sortedTransferRule = eventlog.Rule{Type: eventlog.TransferType, Until: "amount", Items: eventlog.RuleItems{
-	eventlog.RuleItem{Key: "amount", Filter: nil},
-	eventlog.RuleItem{Key: "recipient", Filter: nil},
 }}
 
 var taxPaymentRule = eventlog.Rule{Type: eventlog.TaxPaymentType, Items: eventlog.RuleItems{

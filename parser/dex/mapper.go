@@ -166,7 +166,7 @@ func (m *transferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals
 
 	sender, receiver := matchMap[pdex.TransferSenderKey].Value, matchMap[pdex.TransferRecipientKey].Value
 	if sender == "" {
-		sender = transferFallbackSender(optionals...)
+		sender = TransferFallbackSender(optionals...)
 	}
 	fp, fromPair := m.pairSet[sender]
 	tp, toPair := m.pairSet[receiver]
@@ -198,8 +198,11 @@ func (m *transferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals
 	return txs, nil
 }
 
-// transferFallbackSender returns the first non-empty string optional as the transfer sender fallback.
-func transferFallbackSender(optionals ...interface{}) string {
+// TransferFallbackSender returns the first non-empty string optional as the transfer sender fallback.
+// A MsgMultiSend tx emits one "transfer" event per output without a per-output sender (a multisend
+// can have multiple inputs, so no single sender applies), so callers pass the tx-level sender
+// (e.g. tx.Sender) as a fallback here instead of leaving ParsedTx.Sender empty.
+func TransferFallbackSender(optionals ...interface{}) string {
 	for _, optional := range optionals {
 		sender, ok := optional.(string)
 		if ok && sender != "" {

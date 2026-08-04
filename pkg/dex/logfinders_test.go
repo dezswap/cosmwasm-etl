@@ -7,6 +7,7 @@ import (
 
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func Test_LogFinders(t *testing.T) {
@@ -50,6 +51,58 @@ func Test_LogFinders(t *testing.T) {
 		}
 	}
 
+}
+
+func TestTransferRuleFinder(t *testing.T) {
+	const pair = "pair"
+	logs := eventlog.LogResults{{
+		Type: eventlog.TransferType,
+		Attributes: eventlog.Attributes{
+			{Key: TransferAmountKey, Value: "10ucoin", MsgIndex: 1},
+			{Key: TransferRecipientKey, Value: pair, MsgIndex: 1},
+			{Key: TransferSenderKey, Value: "sender", MsgIndex: 1},
+			{Key: TransferAmountKey, Value: "20ucoin", MsgIndex: 2},
+			{Key: TransferRecipientKey, Value: pair, MsgIndex: 2},
+		},
+	}}
+
+	finder, err := CreateTransferRuleFinder(map[string]bool{pair: true})
+	require.NoError(t, err)
+	require.Equal(t, eventlog.MatchedResults{
+		{
+			{Key: TransferAmountKey, Value: "10ucoin", MsgIndex: 1},
+			{Key: TransferRecipientKey, Value: pair, MsgIndex: 1},
+			{Key: TransferSenderKey, Value: "sender", MsgIndex: 1},
+		},
+		{
+			{Key: TransferAmountKey, Value: "20ucoin", MsgIndex: 2},
+			{Key: TransferRecipientKey, Value: pair, MsgIndex: 2},
+		},
+	}, finder.FindFromLogs(logs))
+
+	finder, err = CreateTransferRuleFinder(map[string]bool{"other": true})
+	require.NoError(t, err)
+	require.Empty(t, finder.FindFromLogs(logs))
+}
+
+func TestNormalizeTransferAttrs(t *testing.T) {
+	sorted, err := NormalizeTransferAttrs(eventlog.Attributes{
+		{Key: "sender", Value: "sender-1", MsgIndex: 1},
+		{Key: "ignored", Value: "metadata", MsgIndex: 1},
+		{Key: "recipient", Value: "recipient-1", MsgIndex: 1},
+		{Key: "amount", Value: "10ucoin", MsgIndex: 1},
+		{Key: "recipient", Value: "recipient-2", MsgIndex: 2},
+		{Key: "amount", Value: "20ucoin", MsgIndex: 2},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, eventlog.Attributes{
+		{Key: "amount", Value: "10ucoin", MsgIndex: 1},
+		{Key: "recipient", Value: "recipient-1", MsgIndex: 1},
+		{Key: "sender", Value: "sender-1", MsgIndex: 1},
+		{Key: "amount", Value: "20ucoin", MsgIndex: 2},
+		{Key: "recipient", Value: "recipient-2", MsgIndex: 2},
+	}, sorted)
 }
 
 func Test_BurnLogFinder(t *testing.T) {

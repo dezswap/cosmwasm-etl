@@ -349,6 +349,9 @@ const (
 	{"key":"to","value":"A"},{"key":"amount","value":"12418119"},{"key":"_contract_address","value":"PAIR_ADDR"},{"key":"action","value":"withdraw_liquidity"},{"key":"sender","value":"sender"},{"key":"withdrawn_share","value":"1000"},{"key":"refund_assets","value":"1000Asset0, 1000Asset1"},{"key":"_contract_address","value":"asset1"},{"key":"action","value":"transfer"},{"key":"from","value":"A"},{"key":"to","value":"terra1cupj7d70jrtjxqhpr6s3qq68t8ky4smcjvccm4"},{"key":"amount","value":"24999998"},{"key":"_contract_address","value":"terra1gte4eejaw3hrs2d8pt0zhp0yfd34xp24qdgqumjul29jt5hwl5tsx3qmw7"},{"key":"action","value":"burn"},{"key":"from","value":"A"},{"key":"amount","value":"12418119"}]}]`
 	wasmTransferLogStr = `[{"type":"wasm","attributes":[{"key":"_contract_address","value":"Asset1"},{"key":"action","value":"transfer"},{"key":"from","value":"sender"},
 	{"key":"to","value":"PAIR_ADDR"},{"key":"amount","value":"1000"}]}]`
+	// transferLogStr attributes are deliberately not in the canonical
+	// amount/recipient/sender order, so every test case using it also exercises
+	// NormalizeTransferAttrs.
 	transferLogStr                       = `[{"type":"transfer","attributes":[{"key":"recipient","value":"PAIR_ADDR"},{"key":"sender","value":"sender"},{"key":"amount","value":"1000Asset0"}]}]`
 	transferWithoutSenderLogStr          = `[{"type":"transfer","attributes":[{"key":"recipient","value":"PAIR_ADDR"},{"key":"amount","value":"1000Asset1"}]}]`
 	transferFromPairLogStr               = `[{"type":"transfer","attributes":[{"key":"recipient","value":"sender"},{"key":"sender","value":"PAIR_ADDR"},{"key":"amount","value":"1000Asset0"}]}]`

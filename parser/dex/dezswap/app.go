@@ -102,16 +102,13 @@ func (p *dezswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx, e
 		if raw.Type == eventlog.TransferType {
 			// event log messages are not sorted well
 			// bug tx: 8C4CF31E736AAC477F61704ECCBBB5A5ABBAA2A8A12576EFAA9F8546F1F60FE2 (cube_47-5)
-			filter := []string{
-				pdex.TransferRecipientKey, pdex.TransferSenderKey, pdex.TransferAmountKey,
-			}
-			attrs, err := eventlog.SortAttributes(raw.Attributes, filter)
+			sorted, err := pdex.NormalizeTransferAttrs(raw.Attributes)
 			if err != nil {
 				return nil, errors.Wrapf(err, "dezswap.ParseTxs sort_transfer_attrs tx_hash=%s", tx.Hash)
 			}
-			raw.Attributes = *attrs
+			raw.Attributes = sorted
 		}
-		transfers, err := p.Parsers.Transfer.Parse(eventlog.LogResults{raw}, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
+		transfers, err := p.Parsers.Transfer.Parse(eventlog.LogResults{raw}, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp}, tx.Sender)
 		if err != nil {
 			return nil, errors.Wrapf(err, "dezswap.ParseTxs transfer tx_hash=%s", tx.Hash)
 		}
@@ -190,7 +187,7 @@ func (p *dezswapApp) UpdateParsers(tokenExceptions map[string]bool, height uint6
 
 	// transfer parser
 	{
-		transferRule, err := ds.CreateTransferRuleFinder()
+		transferRule, err := pdex.CreateTransferRuleFinder(nil)
 		if err != nil {
 			return errors.Wrap(err, "updateParsers")
 		}

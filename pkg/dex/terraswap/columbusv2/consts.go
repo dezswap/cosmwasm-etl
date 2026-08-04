@@ -14,12 +14,6 @@ const (
 )
 
 const (
-	SortedTransferAmountIdx = iota
-	SortedTransferRecipientIdx
-	SortedTransferSenderIdx
-)
-
-const (
 	PairAddrKey   = "_contract_address"
 	PairActionKey = "action"
 )

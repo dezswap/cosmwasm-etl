@@ -134,8 +134,20 @@ func (m *transferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals
 		}
 		return nil, errors.Wrap(err, "transferMapper.MatchedToParsedTx")
 	}
-	from := res[sf.TransferSenderIdx].Value
-	to := res[sf.TransferRecipientIdx].Value
+	matchMap, err := eventlog.ResultToItemMapForKeys(
+		res,
+		pdex.TransferSenderKey,
+		pdex.TransferRecipientKey,
+		pdex.TransferAmountKey,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "transferMapper.MatchedToParsedTx")
+	}
+	from := matchMap[pdex.TransferSenderKey].Value
+	if from == "" {
+		from = dex.TransferFallbackSender(optionals...)
+	}
+	to := matchMap[pdex.TransferRecipientKey].Value
 
 	pair, fromPair, err := m.mixin.pairBy(m.pairSet, from, to)
 	if err != nil {
@@ -150,7 +162,7 @@ func (m *transferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals
 		{Addr: pair.Assets[0]},
 		{Addr: pair.Assets[1]},
 	}
-	amountStrs := strings.Split(res[sf.TransferAmountIdx].Value, ",")
+	amountStrs := strings.Split(matchMap[pdex.TransferAmountKey].Value, ",")
 	if len(amountStrs) == 0 {
 		return nil, errors.New("empty amount or wrong format(amounts separated by ,)")
 	}
@@ -172,7 +184,7 @@ func (m *transferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals
 
 	return []*dex.ParsedTx{{
 		Type:         dex.Transfer,
-		Sender:       res[sf.TransferSenderIdx].Value,
+		Sender:       from,
 		ContractAddr: pair.ContractAddr,
 		Assets:       assets,
 		LpAddr:       "",

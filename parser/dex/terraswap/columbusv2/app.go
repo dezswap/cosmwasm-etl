@@ -120,14 +120,11 @@ func (p *terraswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx,
 		if raw.Type == eventlog.TransferType {
 			// event log messages are not sorted well
 			// bug tx: C51473267BEF98BAE991C19AD8A5EFF6370BC64B63ACB68190170095C1AE0ABE
-			filter := []string{
-				pdex.TransferAmountKey, pdex.TransferRecipientKey, pdex.TransferSenderKey,
-			}
-			attrs, err := eventlog.SortAttributes(raw.Attributes, filter)
+			sorted, err := pdex.NormalizeTransferAttrs(raw.Attributes)
 			if err != nil {
 				return nil, errors.Wrapf(err, "columbusv2.ParseTxs sort_transfer_attrs tx_hash=%s", tx.Hash)
 			}
-			raw.Attributes = *attrs
+			raw.Attributes = sorted
 		}
 		transfers, err := p.Parsers.Transfer.Parse(eventlog.LogResults{raw}, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp}, tx.Sender)
 		if err != nil {
@@ -357,7 +354,7 @@ func (p *terraswapApp) UpdateParsers(tokenExceptions map[string]bool, height uin
 		),
 	)
 
-	transferRule, err := columbusv2.CreateSortedTransferRuleFinder(nil)
+	transferRule, err := pdex.CreateTransferRuleFinder(nil)
 	if err != nil {
 		return errors.Wrap(err, "updateParsers")
 	}

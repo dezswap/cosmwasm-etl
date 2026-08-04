@@ -88,7 +88,7 @@ func Test_LogFinders(t *testing.T) {
 		// WasmTransfer
 		{WasmTransferRawLogStr, nil, CreateWasmCommonTransferRuleFinder, 1, "must match once"},
 		// Transfer
-		{TransferRawLogStr, nil, CreateSortedTransferRuleFinder, 1, "must match once"},
+		{TransferRawLogStr, nil, dex.CreateTransferRuleFinder, 1, "must match once"},
 	}
 
 	for idx, tc := range tcs {

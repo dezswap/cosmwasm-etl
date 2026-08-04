@@ -90,8 +90,6 @@ func Test_LogFinders(t *testing.T) {
 		{PairWithdrawRawLogStr, nil, CreatePairCommonRulesFinder, 1, PairWithdrawMatchedLen, "must match once"},
 		// WasmTransfer
 		{WasmTransferRawLogStr, nil, CreateWasmCommonTransferRuleFinder, 1, WasmTransferMatchedLen, "must match once"},
-		// Transfer
-		{TransferRawLogStr, nil, CreateTransferRuleFinder, 1, TransferMatchedLen, "must match once"},
 	}
 
 	for idx, tc := range tcs {
