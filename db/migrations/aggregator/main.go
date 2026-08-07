@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net/url"
 	"os"
 	"strings"
 
@@ -17,7 +18,15 @@ func main() {
 	rollBack := os.Args[1:]
 	c := configs.New().Rdb
 
-	m, err := migrate.New("file://db/migrations/aggregator", c.MigrationURL(migTableName))
+	// x-multi-statement is required so migrations that mix an explicit
+	// BEGIN/COMMIT block with CREATE/DROP INDEX CONCURRENTLY (which cannot
+	// run inside any transaction block) execute as separate statements on
+	// the same connection instead of being sent as one multi-statement query.
+	params := url.Values{}
+	params.Set("x-migrations-table", migTableName)
+	params.Set("x-multi-statement", "true")
+
+	m, err := migrate.New("file://db/migrations/aggregator", c.PostgresURL(params))
 	if err != nil {
 		panic(err)
 	}

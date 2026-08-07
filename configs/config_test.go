@@ -92,7 +92,7 @@ func Test_RdbConfig_PostgresURL(t *testing.T) {
 	require.Equal(t, "require", parsed.Query().Get("sslmode"))
 }
 
-func Test_RdbConfig_MigrationURL(t *testing.T) {
+func Test_RdbConfig_PostgresURL_ExtraParams(t *testing.T) {
 	cfg := RdbConfig{
 		Host:     "localhost",
 		Port:     5432,
@@ -102,10 +102,37 @@ func Test_RdbConfig_MigrationURL(t *testing.T) {
 		SslMode:  "disable",
 	}
 
-	parsed, err := url.Parse(cfg.MigrationURL("collector_migration"))
+	extra := url.Values{}
+	extra.Set("x-migrations-table", "collector_migration")
+
+	parsed, err := url.Parse(cfg.PostgresURL(extra))
 	require.NoError(t, err)
 	require.Equal(t, "disable", parsed.Query().Get("sslmode"))
 	require.Equal(t, "collector_migration", parsed.Query().Get("x-migrations-table"))
+}
+
+func Test_RdbConfig_PostgresURL_ExtraParams_Multiple(t *testing.T) {
+	cfg := RdbConfig{
+		Host:     "localhost",
+		Port:     5432,
+		Database: "cosmwasm_etl",
+		Username: "app",
+		Password: "appPW",
+		SslMode:  "disable",
+	}
+
+	first := url.Values{}
+	first.Set("x-migrations-table", "collector_migration")
+	second := url.Values{}
+	second.Set("x-multi-statement", "true")
+	second.Set("x-migrations-table", "aggregator_migration")
+	second.Set("sslmode", "require")
+
+	parsed, err := url.Parse(cfg.PostgresURL(first, second))
+	require.NoError(t, err)
+	require.Equal(t, []string{"require"}, parsed.Query()["sslmode"], "extraParams should override the default sslmode")
+	require.Equal(t, "true", parsed.Query().Get("x-multi-statement"))
+	require.Equal(t, "aggregator_migration", parsed.Query().Get("x-migrations-table"), "later extraParams should override earlier ones")
 }
 
 func Test_S3Config_EnvVars(t *testing.T) {
