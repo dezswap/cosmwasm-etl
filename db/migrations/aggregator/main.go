@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net/url"
 	"os"
 	"strings"
 
@@ -17,7 +18,10 @@ func main() {
 	rollBack := os.Args[1:]
 	c := configs.New().Rdb
 
-	m, err := migrate.New("file://db/migrations/aggregator", c.MigrationURL(migTableName))
+	params := url.Values{}
+	params.Set("x-migrations-table", migTableName)
+
+	m, err := migrate.New("file://db/migrations/aggregator", c.PostgresURL(params))
 	if err != nil {
 		panic(err)
 	}

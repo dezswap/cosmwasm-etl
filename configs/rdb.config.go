@@ -31,18 +31,11 @@ func (c RdbConfig) Endpoint() string {
 	return c.Host + ":" + strconv.Itoa(c.Port)
 }
 
-func (c RdbConfig) PostgresURL() string {
-	return c.postgresURL(url.Values{})
-}
-
-func (c RdbConfig) MigrationURL(migrationTable string) string {
-	values := url.Values{}
-	values.Set("x-migrations-table", migrationTable)
-
-	return c.postgresURL(values)
-}
-
-func (c RdbConfig) postgresURL(extraQuery url.Values) string {
+// PostgresURL builds a postgres connection URL. extraParams are optional
+// query params (e.g. golang-migrate driver options like x-migrations-table,
+// x-multi-statement) to add to or override the defaults. Later params take
+// precedence, and only the last value is used when a key has multiple values.
+func (c RdbConfig) PostgresURL(extraParams ...url.Values) string {
 	u := url.URL{
 		Scheme: "postgres",
 		User:   url.UserPassword(c.Username, c.Password),
@@ -50,13 +43,16 @@ func (c RdbConfig) postgresURL(extraQuery url.Values) string {
 		Path:   c.Database,
 	}
 
-	query := u.Query()
+	query := url.Values{}
 	query.Set("sslmode", c.SslMode)
-	for key, values := range extraQuery {
-		for _, value := range values {
-			query.Add(key, value)
+	for _, params := range extraParams {
+		for key, values := range params {
+			if len(values) > 0 {
+				query.Set(key, values[len(values)-1])
+			}
 		}
 	}
+
 	u.RawQuery = query.Encode()
 
 	return u.String()
