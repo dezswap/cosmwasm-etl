@@ -1,6 +1,7 @@
 package router
 
 import (
+	"context"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 	"github.com/stretchr/testify/mock"
 )
@@ -42,7 +43,7 @@ func (r *routerMock) TokensFrom(from string, hopCount int) []string {
 }
 
 // Update implements Router
-func (r *routerMock) Update() error {
+func (r *routerMock) Update(context.Context) error {
 	args := r.MethodCalled("Update")
 	return args.Error(0)
 }

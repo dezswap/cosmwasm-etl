@@ -1,6 +1,7 @@
 package router
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"regexp"
@@ -44,7 +45,7 @@ func TestUpdateRoutes_Success(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(0, 2))
 	mock.ExpectCommit()
 
-	err := repo.UpdateRoutes(indexToAsset, routesMap)
+	err := repo.UpdateRoutes(context.Background(), indexToAsset, routesMap)
 
 	assert.NoError(t, err)
 	assert.NoError(t, mock.ExpectationsWereMet())
@@ -57,7 +58,7 @@ func TestUpdateRoutes_EmptyRoutes(t *testing.T) {
 	indexToAsset := map[int]string{}
 	routesMap := map[int]map[int][][]int{}
 
-	err := repo.UpdateRoutes(indexToAsset, routesMap)
+	err := repo.UpdateRoutes(context.Background(), indexToAsset, routesMap)
 
 	assert.NoError(t, err)
 	assert.NoError(t, mock.ExpectationsWereMet())
@@ -77,7 +78,7 @@ func TestUpdateRoutes_DBError(t *testing.T) {
 		WillReturnError(errors.New("db error"))
 	mock.ExpectRollback()
 
-	err := repo.UpdateRoutes(indexToAsset, routesMap)
+	err := repo.UpdateRoutes(context.Background(), indexToAsset, routesMap)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "repo.UpdateRoutes")
@@ -104,7 +105,7 @@ func TestUpdateRoutes_DataTransformation(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 
-	err := repo.UpdateRoutes(indexToAsset, routesMap)
+	err := repo.UpdateRoutes(context.Background(), indexToAsset, routesMap)
 
 	assert.NoError(t, err)
 	assert.NoError(t, mock.ExpectationsWereMet())
@@ -137,7 +138,7 @@ func TestUpdateRoutes_BatchesLargeDataset(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(0, 1175))
 	mock.ExpectCommit()
 
-	err := repo.UpdateRoutes(indexToAsset, routesMap)
+	err := repo.UpdateRoutes(context.Background(), indexToAsset, routesMap)
 
 	assert.NoError(t, err)
 	assert.NoError(t, mock.ExpectationsWereMet())

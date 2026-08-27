@@ -2,37 +2,26 @@ package aggregator
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/dezswap/cosmwasm-etl/pkg/dex/router"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
-	"gorm.io/gorm"
 
 	"github.com/dezswap/cosmwasm-etl/pkg/db/schemas"
 	"github.com/dezswap/cosmwasm-etl/pkg/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
-
-type ConnPool struct{ gorm.TxCommitter }
-
-func (p ConnPool) PrepareContext(_ context.Context, _ string) (*sql.Stmt, error) { return nil, nil }
-func (p ConnPool) ExecContext(_ context.Context, _ string, _ ...interface{}) (sql.Result, error) {
-	return nil, nil
-}
-func (p ConnPool) QueryContext(_ context.Context, _ string, _ ...interface{}) (*sql.Rows, error) {
-	return nil, nil
-}
-func (p ConnPool) QueryRowContext(_ context.Context, _ string, _ ...interface{}) *sql.Row { return nil }
-func (p ConnPool) Commit() error                                                          { return nil }
-func (p ConnPool) Rollback() error                                                        { return nil }
 
 type completedTask struct {
 	height atomic.Uint64
 }
+
+func (t *completedTask) Name() string { return "completed" }
 
 func (t *completedTask) Execute(_ context.Context, _ time.Time, _ time.Time) error {
 	return nil
@@ -235,7 +224,6 @@ func TestPairStatsRecentUpdateTaskExecute(t *testing.T) {
 	rp.On("LastHeightOfPrice").Return(txs[len(txs)-1].Height, nil)
 	rp.On("GetRecentParsedTxs", mock.Anything, mock.Anything, mock.Anything).Return(txs, nil)
 	rp.On("RecentPrices", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(priceMap, nil)
-	rp.On("BeginTx").Return(&gorm.DB{Statement: &gorm.Statement{ConnPool: &ConnPool{}}}, nil)
 
 	task := pairStatsRecentUpdateTask{
 		taskImpl: taskImpl{
@@ -250,6 +238,103 @@ func TestPairStatsRecentUpdateTaskExecute(t *testing.T) {
 	err := task.Execute(context.Background(), time.Time{}, time.Time{})
 	assert.NoError(err)
 	assert.Equal(expected[0], rp.updatedPairStatsRecent[len(rp.updatedPairStatsRecent)-1])
+}
+
+func TestPairStatsRecentUpdateTaskDoesNotAdvanceHeightWhenTransactionFails(t *testing.T) {
+	expectedErr := errors.New("transaction failed")
+	rp := repoMock{withinTxErr: expectedErr}
+	rp.On("HeightOnTimestamp").Return(uint64(10), nil)
+	rp.On("GetRecentParsedTxs").Return([]schemas.ParsedTxWithPrice{}, nil)
+	task := pairStatsRecentUpdateTask{
+		taskImpl:  taskImpl{destDb: &rp, logger: logging.Discard},
+		srcDb:     &rp,
+		timeRange: time.Hour,
+	}
+
+	err := task.Execute(context.Background(), time.Time{}, time.Now())
+
+	require.ErrorIs(t, err, expectedErr)
+	require.Zero(t, task.LastProcessedHeight())
+}
+
+// routerSrcRepoStub feeds routerTask.Execute a pair set without a database.
+type routerSrcRepoStub struct {
+	pairs []router.Pair
+	err   error
+}
+
+func (r *routerSrcRepoStub) Pairs(context.Context) ([]router.Pair, error) {
+	return r.pairs, r.err
+}
+
+func (*routerSrcRepoStub) UpdateRoutes(context.Context, map[int]string, map[int]map[int][][]int) error {
+	return nil
+}
+
+func (*routerSrcRepoStub) Close() error { return nil }
+
+// routerStub counts rebuilds and can fail them on demand.
+type routerStub struct {
+	router.Router
+	err     error
+	updates int
+}
+
+func (r *routerStub) Update(context.Context) error {
+	r.updates++
+	return r.err
+}
+
+func newRouterTaskForTest(db router.SrcRepo, rt router.Router) *routerTask {
+	return &routerTask{
+		taskImpl: taskImpl{logger: logging.Discard},
+		router:   rt,
+		db:       db,
+	}
+}
+
+// pairCnt records how many pairs the cached graph was built from, so it must only
+// advance once the rebuild actually succeeded. Advancing it first would make the
+// next run see no growth and skip the retry, leaving the router permanently stale.
+func TestRouterTaskRetriesUpdateAfterFailure(t *testing.T) {
+	db := &routerSrcRepoStub{pairs: []router.Pair{
+		{Contract: "pair0", AssetInfos: []string{"uusd", "uluna"}},
+		{Contract: "pair1", AssetInfos: []string{"uluna", "ukrw"}},
+	}}
+	rt := &routerStub{err: errors.New("route rebuild failed")}
+	task := newRouterTaskForTest(db, rt)
+
+	require.Error(t, task.Execute(context.Background(), time.Time{}, time.Time{}))
+	require.Equal(t, 1, rt.updates)
+	require.Zero(t, task.pairCnt, "a failed rebuild must not be recorded as applied")
+
+	rt.err = nil
+	require.NoError(t, task.Execute(context.Background(), time.Time{}, time.Time{}))
+	require.Equal(t, 2, rt.updates, "the next run must retry the rebuild")
+	require.Equal(t, len(db.pairs), task.pairCnt)
+}
+
+// Once the graph matches the pair set, repeated runs must not rebuild it.
+func TestRouterTaskSkipsUpdateWhenPairCountUnchanged(t *testing.T) {
+	db := &routerSrcRepoStub{pairs: []router.Pair{
+		{Contract: "pair0", AssetInfos: []string{"uusd", "uluna"}},
+	}}
+	rt := &routerStub{}
+	task := newRouterTaskForTest(db, rt)
+
+	require.NoError(t, task.Execute(context.Background(), time.Time{}, time.Time{}))
+	require.NoError(t, task.Execute(context.Background(), time.Time{}, time.Time{}))
+
+	require.Equal(t, 1, rt.updates)
+}
+
+func TestRouterTaskReturnsPairLookupError(t *testing.T) {
+	expectedErr := errors.New("pairs query failed")
+	rt := &routerStub{}
+	task := newRouterTaskForTest(&routerSrcRepoStub{err: expectedErr}, rt)
+
+	require.ErrorIs(t, task.Execute(context.Background(), time.Time{}, time.Time{}), expectedErr)
+	require.Zero(t, rt.updates)
 }
 
 func TestPairStatsUpdateTaskExecute(t *testing.T) {

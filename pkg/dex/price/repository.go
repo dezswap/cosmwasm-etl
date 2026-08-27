@@ -1,6 +1,7 @@
 package price
 
 import (
+	"context"
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/pkg/db"
 	"github.com/dezswap/cosmwasm-etl/pkg/db/schemas"
@@ -9,17 +10,23 @@ import (
 	"gorm.io/gorm"
 )
 
+// SrcRepo reads and writes the price source database. Every query takes a context
+// so that a shutdown cancels work already in flight. WithinTx hands the callback a
+// SrcRepo bound to one transaction.
 type SrcRepo interface {
-	FirstHeight(priceToken string) (int64, error)
-	CurrHeight() (int64, error)
-	NextHeight(minHeight uint64) (int64, error)
-	Txs(height uint64) ([]schemas.ParsedTx, error)
-	Decimals(asset string) (int64, error)
-	LatestRouteUpdateTimestamp() (float64, error)
-	Route(endToken string) (map[string][][]string, error)
-	Liquidity(height uint64, token string, priceToken string) (string, string, error)
-	UpdateDirectPrice(height uint64, txId uint64, token string, price string, priceToken string, isReverse bool) error
-	UpdateRoutePrice(height uint64, txId uint64, token string, price string, priceToken string, route []string) error
+	FirstHeight(ctx context.Context, priceToken string) (int64, error)
+	CurrHeight(ctx context.Context) (int64, error)
+	NextHeight(ctx context.Context, minHeight uint64) (int64, error)
+	Txs(ctx context.Context, height uint64) ([]schemas.ParsedTx, error)
+	Decimals(ctx context.Context, asset string) (int64, error)
+	LatestRouteUpdateTimestamp(ctx context.Context) (float64, error)
+	Route(ctx context.Context, endToken string) (map[string][][]string, error)
+	Liquidity(ctx context.Context, height uint64, token string, priceToken string) (string, string, error)
+	UpdateDirectPrice(ctx context.Context, height uint64, txId uint64, token string, price string, priceToken string, isReverse bool) error
+	UpdateRoutePrice(ctx context.Context, height uint64, txId uint64, token string, price string, priceToken string, route []string) error
+
+	WithinTx(ctx context.Context, fn func(SrcRepo) error) error
+	Close() error
 }
 
 var _ SrcRepo = &srcRepoImpl{}
@@ -29,21 +36,40 @@ type srcRepoImpl struct {
 	chainId string
 }
 
-func NewRepo(chainId string, dbConfig configs.RdbConfig) SrcRepo {
+func NewRepo(chainId string, dbConfig configs.RdbConfig) (SrcRepo, error) {
 	gormDB, err := db.OpenGormPostgres(dbConfig)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	return &srcRepoImpl{
 		db:      gormDB,
 		chainId: chainId,
-	}
+	}, nil
 }
 
-func (r *srcRepoImpl) FirstHeight(priceToken string) (int64, error) {
+// conn binds the repository handle to ctx so every query is cancellable.
+func (r *srcRepoImpl) conn(ctx context.Context) *gorm.DB { return r.db.WithContext(ctx) }
+
+// WithinTx scopes every read and write in the callback to one transaction so a
+// partially calculated height rolls back cleanly.
+func (r *srcRepoImpl) WithinTx(ctx context.Context, fn func(SrcRepo) error) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return fn(&srcRepoImpl{db: tx, chainId: r.chainId})
+	})
+}
+
+func (r *srcRepoImpl) Close() error {
+	db, err := r.db.DB()
+	if err != nil {
+		return err
+	}
+	return db.Close()
+}
+
+func (r *srcRepoImpl) FirstHeight(ctx context.Context, priceToken string) (int64, error) {
 	height := NaValue
-	tx := r.db.Model(schemas.ParsedTx{}).Where(
+	tx := r.conn(ctx).Model(schemas.ParsedTx{}).Where(
 		"chain_id = ? and (asset0 = ? or asset1 = ?)", r.chainId, priceToken, priceToken).Select(
 		"coalesce(min(height), ?)", NaValue).Find(&height)
 	if tx.Error != nil {
@@ -53,12 +79,12 @@ func (r *srcRepoImpl) FirstHeight(priceToken string) (int64, error) {
 	return height, nil
 }
 
-func (r *srcRepoImpl) CurrHeight() (int64, error) {
+func (r *srcRepoImpl) CurrHeight(ctx context.Context) (int64, error) {
 	query := `
 select coalesce(max(height), 0) from price where chain_id = ?
 `
 	height := NaValue
-	tx := r.db.Raw(query, r.chainId).Find(&height)
+	tx := r.conn(ctx).Raw(query, r.chainId).Find(&height)
 	if tx.Error != nil {
 		return 0, errors.Wrap(tx.Error, "srcRepoImpl.NextHeight")
 	}
@@ -66,7 +92,7 @@ select coalesce(max(height), 0) from price where chain_id = ?
 	return height, nil
 }
 
-func (r *srcRepoImpl) NextHeight(minHeight uint64) (int64, error) {
+func (r *srcRepoImpl) NextHeight(ctx context.Context, minHeight uint64) (int64, error) {
 	query := `
 select coalesce(min(pt.height), ?)
 from parsed_tx pt
@@ -81,7 +107,7 @@ where pt.chain_id = ?
 	and pt.height > ?
 `
 	height := NaValue
-	tx := r.db.Raw(query, NaValue, r.chainId, r.chainId, minHeight).Find(&height)
+	tx := r.conn(ctx).Raw(query, NaValue, r.chainId, r.chainId, minHeight).Find(&height)
 	if tx.Error != nil {
 		return 0, errors.Wrap(tx.Error, "srcRepoImpl.NextHeight")
 	}
@@ -89,9 +115,9 @@ where pt.chain_id = ?
 	return height, nil
 }
 
-func (r *srcRepoImpl) Txs(height uint64) ([]schemas.ParsedTx, error) {
+func (r *srcRepoImpl) Txs(ctx context.Context, height uint64) ([]schemas.ParsedTx, error) {
 	var res []schemas.ParsedTx
-	tx := r.db.Model(
+	tx := r.conn(ctx).Model(
 		schemas.ParsedTx{}).Joins(
 		"left join (select contract, min(height) height from parsed_tx where type = 'provide' group by contract) t "+ // include first provision
 			"on parsed_tx.contract = t.contract and parsed_tx.height = t.height and parsed_tx.type = 'provide'").Where(
@@ -104,9 +130,9 @@ func (r *srcRepoImpl) Txs(height uint64) ([]schemas.ParsedTx, error) {
 	return res, nil
 }
 
-func (r *srcRepoImpl) Decimals(asset string) (int64, error) {
+func (r *srcRepoImpl) Decimals(ctx context.Context, asset string) (int64, error) {
 	var res int64
-	tx := r.db.Table("tokens").Select(
+	tx := r.conn(ctx).Table("tokens").Select(
 		"decimals").Where(
 		"chain_id = ? and address = ?", r.chainId, asset).Find(&res)
 	if tx.Error != nil {
@@ -116,9 +142,9 @@ func (r *srcRepoImpl) Decimals(asset string) (int64, error) {
 	return res, nil
 }
 
-func (r *srcRepoImpl) LatestRouteUpdateTimestamp() (float64, error) {
+func (r *srcRepoImpl) LatestRouteUpdateTimestamp(ctx context.Context) (float64, error) {
 	var ts float64
-	if tx := r.db.Model(schemas.Route{}).Where(
+	if tx := r.conn(ctx).Model(schemas.Route{}).Where(
 		"chain_id = ?", r.chainId).Select(
 		"coalesce(min(created_at), 0)").Find(&ts); tx.Error != nil {
 		return 0, errors.Wrap(tx.Error, "srcRepoImpl.LatestRouteUpdateTimestamp")
@@ -127,13 +153,13 @@ func (r *srcRepoImpl) LatestRouteUpdateTimestamp() (float64, error) {
 	return ts, nil
 }
 
-func (r *srcRepoImpl) Route(endToken string) (map[string][][]string, error) {
+func (r *srcRepoImpl) Route(ctx context.Context, endToken string) (map[string][][]string, error) {
 	type result struct {
 		Asset0 string
 		Route  pq.StringArray `gorm:"column:route;type:text[]"`
 	}
 	var res []result
-	tx := r.db.Model(schemas.Route{}).Select(
+	tx := r.conn(ctx).Model(schemas.Route{}).Select(
 		"asset0, route").Where(
 		"chain_id = ? and asset1 = ?", r.chainId, endToken).Order(
 		"hop_count asc").Find( // hop_count ordering is essential for routes comparison, refer to priceImpl.selectRoute(...)
@@ -154,7 +180,7 @@ func (r *srcRepoImpl) Route(endToken string) (map[string][][]string, error) {
 	return convertedRes, nil
 }
 
-func (r *srcRepoImpl) Liquidity(height uint64, token string, priceToken string) (string, string, error) {
+func (r *srcRepoImpl) Liquidity(ctx context.Context, height uint64, token string, priceToken string) (string, string, error) {
 	type result struct {
 		Asset0     string
 		Liquidity0 string
@@ -163,7 +189,7 @@ func (r *srcRepoImpl) Liquidity(height uint64, token string, priceToken string) 
 	}
 
 	var res result
-	tx := r.db.Model(schemas.LpHistory{}).Joins(
+	tx := r.conn(ctx).Model(schemas.LpHistory{}).Joins(
 		"join (select p.id pair_id, p.asset0, p.asset1, max(lh.height) height from lp_history lh join pair p on p.id = lh.pair_id "+
 			"where lh.chain_id = ? and lh.height <= ? and ((p.asset0 = ? and p.asset1 = ?) or (p.asset0 = ? and p.asset1 = ?)) group by p.id) t "+
 			"on lp_history.height = t.height and lp_history.pair_id = t.pair_id",
@@ -180,7 +206,7 @@ func (r *srcRepoImpl) Liquidity(height uint64, token string, priceToken string) 
 	return "0", "0", nil
 }
 
-func (r *srcRepoImpl) UpdateDirectPrice(height uint64, txId uint64, token string, price string, priceToken string, isReverse bool) error {
+func (r *srcRepoImpl) UpdateDirectPrice(ctx context.Context, height uint64, txId uint64, token string, price string, priceToken string, isReverse bool) error {
 	type result struct {
 		TokenId      uint64
 		PriceTokenId uint64
@@ -190,7 +216,7 @@ func (r *srcRepoImpl) UpdateDirectPrice(height uint64, txId uint64, token string
 	var res result
 	var tx *gorm.DB
 	if isReverse {
-		tx = r.db.Table(
+		tx = r.conn(ctx).Table(
 			"tokens").Select(
 			"tokens.id token_id, tr.token_id price_token_id, tr.route_id").Joins(
 			"join (select t.id token_id, t.chain_id, r.asset1, r.id route_id "+
@@ -199,7 +225,7 @@ func (r *srcRepoImpl) UpdateDirectPrice(height uint64, txId uint64, token string
 				"on tr.chain_id = tokens.chain_id and tr.asset1 = tokens.address", r.chainId, priceToken).Where(
 			"tokens.address = ?", token).Find(&res)
 	} else {
-		tx = r.db.Table(
+		tx = r.conn(ctx).Table(
 			"tokens").Select(
 			"tr.token_id, tokens.id price_token_id, tr.route_id").Joins(
 			"join (select t.id token_id, t.chain_id, r.asset1, r.id route_id "+
@@ -212,7 +238,7 @@ func (r *srcRepoImpl) UpdateDirectPrice(height uint64, txId uint64, token string
 		return errors.Wrap(tx.Error, "srcRepoImpl.UpdateDirectPrice")
 	}
 
-	tx = r.db.Model(schemas.Price{}).Create(
+	tx = r.conn(ctx).Model(schemas.Price{}).Create(
 		&schemas.Price{
 			Height:       height,
 			ChainId:      r.chainId,
@@ -228,7 +254,7 @@ func (r *srcRepoImpl) UpdateDirectPrice(height uint64, txId uint64, token string
 	return nil
 }
 
-func (r *srcRepoImpl) UpdateRoutePrice(height uint64, txId uint64, token string, price string, priceToken string, route []string) error {
+func (r *srcRepoImpl) UpdateRoutePrice(ctx context.Context, height uint64, txId uint64, token string, price string, priceToken string, route []string) error {
 	type result struct {
 		TokenId      uint64
 		PriceTokenId uint64
@@ -237,7 +263,7 @@ func (r *srcRepoImpl) UpdateRoutePrice(height uint64, txId uint64, token string,
 
 	var res result
 	var tx *gorm.DB
-	tx = r.db.Table(
+	tx = r.conn(ctx).Table(
 		"tokens").Select(
 		"tr.token_id, tokens.id price_token_id, tr.route_id").Joins(
 		"join (select t.id token_id, t.chain_id, r.asset1, r.id route_id "+
@@ -250,7 +276,7 @@ func (r *srcRepoImpl) UpdateRoutePrice(height uint64, txId uint64, token string,
 		return errors.Wrap(tx.Error, "srcRepoImpl.UpdateRoutePrice")
 	}
 
-	tx = r.db.Model(schemas.Price{}).Create(
+	tx = r.conn(ctx).Model(schemas.Price{}).Create(
 		&schemas.Price{
 			Height:       height,
 			ChainId:      r.chainId,

@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"context"
 	"database/sql"
 	"flag"
 	"fmt"
@@ -208,7 +209,7 @@ func (s *readSyncedHeightSuite) Test_ReadGetSyncedHeight() {
 		s.Mock.ExpectQuery(`^SELECT (.+) FROM "synced_height" WHERE chain_id = `).WillReturnRows(rows)
 
 		msg := fmt.Sprintf("tc(%d)", idx)
-		actual, err := s.Repo.GetSyncedHeight()
+		actual, err := s.Repo.GetSyncedHeight(context.Background())
 		assert.NoError(err, msg)
 		assert.Equal(height, actual, msg)
 	}
@@ -229,7 +230,7 @@ func (s *readPairsSuite) Test_GetPairs() {
 	}
 	s.Mock.ExpectQuery(`^SELECT \* FROM "pair" WHERE "pair"\."chain_id" = \$1`).WillReturnRows(rows)
 
-	actual, err := s.Repo.GetPairs()
+	actual, err := s.Repo.GetPairs(context.Background())
 	assert.NoError(err)
 
 	for idx := range actual {
@@ -255,7 +256,7 @@ func (s *readPoolInfosSuite) Test_GetPoolInfos() {
 	}
 	s.Mock.ExpectQuery(`^SELECT \* FROM "pool_info" WHERE "pool_info"\."chain_id" = \$1 AND "pool_info"\."height" = \$2`).WillReturnRows(rows)
 
-	actual, err := s.Repo.GetPoolInfosByHeight(height)
+	actual, err := s.Repo.GetPoolInfosByHeight(context.Background(), height)
 	assert.NoError(err)
 
 	for idx, row := range actual {
@@ -267,7 +268,7 @@ func (s *readPoolInfosSuite) Test_GetPoolInfos() {
 	}
 
 	s.Mock.ExpectQuery(`^SELECT \* FROM "pool_info" WHERE "pool_info"\."chain_id" = \$1 AND "pool_info"\."height" = \$2`).WillReturnRows(sqlmock.NewRows([]string{}))
-	actual, err = s.Repo.GetPoolInfosByHeight(height)
+	actual, err = s.Repo.GetPoolInfosByHeight(context.Background(), height)
 	assert.NoError(err)
 	assert.Len(actual, 0)
 }
@@ -288,12 +289,12 @@ func (s *readParsedTxsSuite) Test_GetParsedTxs() {
 	}
 	s.Mock.ExpectQuery(`^SELECT \* FROM "parsed_tx" WHERE "parsed_tx"\."chain_id" = \$1 AND "parsed_tx"\."height" = \$2`).WillReturnRows(rows)
 
-	actual, err := s.Repo.GetParsedTxs(height)
+	actual, err := s.Repo.GetParsedTxs(context.Background(), height)
 	assert.NoError(err)
 	assert.Len(actual, len(parsedTxs))
 
 	s.Mock.ExpectQuery(`^SELECT \* FROM "parsed_tx" WHERE "parsed_tx"\."chain_id" = \$1 AND "parsed_tx"\."height" = \$2`).WillReturnRows(sqlmock.NewRows([]string{}))
-	actual, err = s.Repo.GetParsedTxs(height)
+	actual, err = s.Repo.GetParsedTxs(context.Background(), height)
 	assert.NoError(err)
 	assert.Len(actual, 0)
 }
@@ -316,12 +317,12 @@ func (s *readParsedTxsSuite) Test_GetParsedTxsOfPair() {
 	}
 	s.Mock.ExpectQuery(`^SELECT \* FROM "parsed_tx" WHERE "parsed_tx"\."chain_id" = \$1 AND "parsed_tx"\."height" = \$2 AND "parsed_tx"\."contract" = \$3`).WillReturnRows(rows)
 
-	actual, err := s.Repo.GetParsedTxsOfPair(height, pair)
+	actual, err := s.Repo.GetParsedTxsOfPair(context.Background(), height, pair)
 	assert.NoError(err)
 	assert.Len(actual, len(parsedTxs))
 
 	s.Mock.ExpectQuery(`^SELECT \* FROM "parsed_tx" WHERE "parsed_tx"\."chain_id" = \$1 AND "parsed_tx"\."height" = \$2 AND "parsed_tx"\."contract" = \$3`).WillReturnRows(sqlmock.NewRows([]string{}))
-	actual, err = s.Repo.GetParsedTxsOfPair(height, pair)
+	actual, err = s.Repo.GetParsedTxsOfPair(context.Background(), height, pair)
 	assert.NoError(err)
 	assert.Len(actual, 0)
 }
@@ -336,10 +337,12 @@ type aggregatorReadRepoSuite struct {
 
 func (s *aggregatorReadRepoSuite) SetupSuite() {
 	s.C = configs.NewWithFileName(configName).Aggregator.SrcDb
-	s.Repo = NewReadRepo(chainName, s.C)
+	var err error
+	s.Repo, err = NewReadRepo(chainName, s.C)
+	require.NoError(s.T(), err)
 
 	pq := pkgdb.PostgresDb{}
-	err := pq.Init(s.C)
+	err = pq.Init(s.C)
 	require.NoError(s.T(), err)
 
 	s.DB, err = pkgdb.OpenGormPostgresWithConn(pq.Db)
@@ -367,7 +370,7 @@ VALUES($1, 9787251, EXTRACT(EPOCH FROM TIMESTAMP '2022-10-13 04:50:27.000000'), 
 		chainName)
 
 	// execute
-	actual, err := s.Repo.OldestTxTimestamp()
+	actual, err := s.Repo.OldestTxTimestamp(context.Background())
 
 	// verify
 	assert.NoError(err)
@@ -395,7 +398,7 @@ VALUES($1, 9787251, EXTRACT(EPOCH FROM TIMESTAMP '2022-10-13 04:50:27.000000'), 
 		chainName)
 
 	// execute
-	actual, err := s.Repo.LatestTxTimestamp()
+	actual, err := s.Repo.LatestTxTimestamp(context.Background())
 
 	assert.NoError(err)
 	assert.Equal(expected, actual)
@@ -415,7 +418,7 @@ func (s *aggregatorReadRepoSuite) Test_PairIds() {
 	createTestPairs(s.DB)
 
 	// execute
-	actual, err := s.Repo.PairIds()
+	actual, err := s.Repo.PairIds(context.Background())
 
 	// verify
 	assert.NoError(err)
@@ -432,7 +435,7 @@ func (s *aggregatorReadRepoSuite) Test_NewPairIds() {
 	createTestPairs(s.DB)
 	createTestTxs(s.DB, dex.Provide)
 
-	actual, err := s.Repo.NewPairIds(accounts[0].Address, start, end)
+	actual, err := s.Repo.NewPairIds(context.Background(), accounts[0].Address, start, end)
 
 	// verify
 	assert.NoError(err)
@@ -449,7 +452,7 @@ func (s *aggregatorReadRepoSuite) Test_NewAccounts() {
 	createTestTxs(s.DB, dex.Provide)
 
 	// execute
-	actual, err := s.Repo.NewAccounts(start, end)
+	actual, err := s.Repo.NewAccounts(context.Background(), start, end)
 
 	// verify
 	assert.NoError(err)
@@ -467,7 +470,7 @@ func (s *aggregatorReadRepoSuite) Test_ProviderCount() {
 	createTestTxs(s.DB, dex.Provide)
 
 	// execute
-	actual, err := s.Repo.ProviderCount(pairId, start, end)
+	actual, err := s.Repo.ProviderCount(context.Background(), pairId, start, end)
 
 	// verify
 	assert.NoError(err)
@@ -486,7 +489,7 @@ func (s *aggregatorReadRepoSuite) Test_TxCountOfAccount() {
 	createTestTxs(s.DB, dex.Provide)
 
 	// execute
-	actual, err := s.Repo.TxCountOfAccount(accounts[0].Address, pairId, start, end)
+	actual, err := s.Repo.TxCountOfAccount(context.Background(), accounts[0].Address, pairId, start, end)
 
 	// verify
 	assert.NoError(err)
@@ -505,7 +508,7 @@ func (s *aggregatorReadRepoSuite) Test_AssetAmountInPair() {
 	createTestTxs(s.DB, dex.Provide)
 
 	// execute
-	actualAsset0, actualAsset1, actualLp, err := s.Repo.AssetAmountInPair(pairId, start, end)
+	actualAsset0, actualAsset1, actualLp, err := s.Repo.AssetAmountInPair(context.Background(), pairId, start, end)
 
 	// verify
 	assert.NoError(err)
@@ -526,7 +529,7 @@ func (s *aggregatorReadRepoSuite) Test_AssetAmountInPairOfAccount() {
 	createTestTxs(s.DB, dex.Provide)
 
 	// execute
-	actualAsset0, actualAsset1, actualLp, err := s.Repo.AssetAmountInPairOfAccount(accounts[0].Address, pairId, start, end)
+	actualAsset0, actualAsset1, actualLp, err := s.Repo.AssetAmountInPairOfAccount(context.Background(), accounts[0].Address, pairId, start, end)
 
 	// verify
 	assert.NoError(err)
@@ -568,7 +571,7 @@ func (s *aggregatorReadRepoSuite) Test_AccountStats_UsesTxHeightPrice() {
 		chainName, start, account, contract, priceToken, asset,
 	).Error)
 
-	actual, err := s.Repo.AccountStats(start, end, priceToken)
+	actual, err := s.Repo.AccountStats(context.Background(), start, end, priceToken)
 
 	require.NoError(err)
 	require.Len(actual, 1)
@@ -617,7 +620,7 @@ func (s *aggregatorReadRepoSuite) Test_AccountStats_UsesInputSideSwapVolumeWhenA
 		chainName, start, account, contract, asset, priceToken,
 	).Error)
 
-	actual, err := s.Repo.AccountStats(start, end, priceToken)
+	actual, err := s.Repo.AccountStats(context.Background(), start, end, priceToken)
 
 	require.NoError(err)
 	require.Len(actual, 1)
@@ -653,7 +656,7 @@ func (s *aggregatorReadRepoSuite) Test_AccountStats_UsesZeroWhenNonPriceTokenHas
 		chainName, start, account, contract, asset, priceToken,
 	).Error)
 
-	actual, err := s.Repo.AccountStats(start, end, priceToken)
+	actual, err := s.Repo.AccountStats(context.Background(), start, end, priceToken)
 
 	require.NoError(err)
 	require.Len(actual, 1)
@@ -693,7 +696,7 @@ func (s *aggregatorReadRepoSuite) Test_AccountStats_GroupsByAccountAndPair() {
 		chainName, start, accountA, priceToken, assetA, assetB, accountB,
 	).Error)
 
-	actual, err := s.Repo.AccountStats(start, end, priceToken)
+	actual, err := s.Repo.AccountStats(context.Background(), start, end, priceToken)
 
 	require.NoError(err)
 	require.Len(actual, 3)
@@ -733,7 +736,7 @@ func (s *aggregatorReadRepoSuite) Test_AccountStats_CountsDistinctHashesButSumsR
 		chainName, start, account, contract, priceToken, asset,
 	).Error)
 
-	actual, err := s.Repo.AccountStats(start, end, priceToken)
+	actual, err := s.Repo.AccountStats(context.Background(), start, end, priceToken)
 
 	require.NoError(err)
 	require.Len(actual, 1)
@@ -768,7 +771,7 @@ func (s *aggregatorReadRepoSuite) Test_RecentPrices_FiltersByPriceTokenId() {
 		chainName,
 	).Error)
 
-	actual, err := s.Repo.RecentPrices(100, 120, []string{"3002"}, priceToken)
+	actual, err := s.Repo.RecentPrices(context.Background(), 100, 120, []string{"3002"}, priceToken)
 
 	require.NoError(err)
 	require.Contains(actual, uint64(3002))
@@ -799,7 +802,7 @@ func (s *aggregatorReadRepoSuite) Test_RecentPrices_ReturnsFirstInWindowPriceWit
 		chainName,
 	).Error)
 
-	actual, err := s.Repo.RecentPrices(100, 120, []string{"3101"}, priceToken)
+	actual, err := s.Repo.RecentPrices(context.Background(), 100, 120, []string{"3101"}, priceToken)
 
 	require.NoError(err)
 	require.Contains(actual, uint64(3101))
@@ -842,7 +845,7 @@ func (s *aggregatorReadRepoSuite) Test_GetParsedTxsWithPriceOfPair_FiltersByPric
 		chainName, start, contract, asset, priceToken,
 	).Error)
 
-	actual, err := s.Repo.GetParsedTxsWithPriceOfPair(pairId, priceToken, start, end)
+	actual, err := s.Repo.GetParsedTxsWithPriceOfPair(context.Background(), pairId, priceToken, start, end)
 
 	require.NoError(err)
 	require.Len(actual, 1)
@@ -884,7 +887,7 @@ func (s *aggregatorReadRepoSuite) Test_PairStats_FiltersByPriceTokenId() {
 		chainName, start, contract, asset, priceToken,
 	).Error)
 
-	actual, err := s.Repo.PairStats(start, end, priceToken, map[uint64]schemas.PairStats30m{})
+	actual, err := s.Repo.PairStats(context.Background(), start, end, priceToken, map[uint64]schemas.PairStats30m{})
 
 	require.NoError(err)
 	require.Len(actual, 1)
@@ -903,7 +906,7 @@ func (s *aggregatorReadRepoSuite) Test_CommissionAmountInPair() {
 	createTestPairs(s.DB)
 	createTestTxs(s.DB, dex.Swap)
 
-	actualAsset0, actualAsset1, err := s.Repo.CommissionAmountInPair(pairId, start, end)
+	actualAsset0, actualAsset1, err := s.Repo.CommissionAmountInPair(context.Background(), pairId, start, end)
 
 	assert.NoError(err)
 	assert.Equal(expectedAsset0, actualAsset0)
@@ -940,7 +943,7 @@ func (s *aggregatorReadRepoSuite) Test_LiquiditiesOfPairStats_UsesOneForPriceTok
 		100, pairId, chainName, "1000000", "2000000", start,
 	).Error)
 
-	actual, err := s.Repo.LiquiditiesOfPairStats(start, end, priceToken)
+	actual, err := s.Repo.LiquiditiesOfPairStats(context.Background(), start, end, priceToken)
 
 	require.NoError(err)
 	require.Contains(actual, pairId)

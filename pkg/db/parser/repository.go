@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"context"
 	"database/sql"
 	"strings"
 
@@ -16,32 +17,33 @@ import (
 )
 
 type ReadRepository interface {
-	GetSyncedHeight() (uint64, error)
-	GetPairs() ([]schemas.Pair, error)
-	GetPoolInfosByHeight(height uint64) ([]schemas.PoolInfo, error)
-	GetParsedTxs(height uint64) ([]schemas.ParsedTx, error)
-	GetParsedTxsOfPair(height uint64, pair string) ([]schemas.ParsedTx, error)
+	GetSyncedHeight(ctx context.Context) (uint64, error)
+	GetPairs(ctx context.Context) ([]schemas.Pair, error)
+	GetPoolInfosByHeight(ctx context.Context, height uint64) ([]schemas.PoolInfo, error)
+	GetParsedTxs(ctx context.Context, height uint64) ([]schemas.ParsedTx, error)
+	GetParsedTxsOfPair(ctx context.Context, height uint64, pair string) ([]schemas.ParsedTx, error)
 
 	// aggregator
-	HeightOnTimestamp(timestamp float64) (uint64, error)
-	LastHeightOfPrice() (uint64, error)
-	GetParsedTxsWithLimit(startHeight uint64, limit int) ([]schemas.ParsedTxWithPrice, error)
-	GetRecentParsedTxs(startHeight uint64, endHeight uint64) ([]schemas.ParsedTxWithPrice, error)
-	RecentPrices(startHeight uint64, endHeight uint64, targetTokens []string, priceToken string) (map[uint64][]schemas.Price, error)
-	GetParsedTxsWithPriceOfPair(pairId uint64, priceToken string, startTs float64, endTs float64) ([]schemas.ParsedTxWithPrice, error)
-	PairStats(startTs float64, endTs float64, priceToken string, prevStatsMap map[uint64]schemas.PairStats30m) ([]schemas.PairStats30m, error)
-	AccountStats(startTs float64, endTs float64, priceToken string) ([]schemas.AccountStats30m, error)
-	LiquiditiesOfPairStats(startTs float64, endTs float64, priceToken string) (map[uint64]schemas.PairStats30m, error)
-	OldestTxTimestamp() (float64, error)
-	LatestTxTimestamp() (float64, error)
-	PairIds() ([]uint64, error)
-	NewPairIds(account string, startTs float64, endTs float64) ([]uint64, error)
-	NewAccounts(startTs float64, endTs float64) ([]string, error)
-	ProviderCount(pairId uint64, startTs float64, endTs float64) (uint64, error)
-	TxCountOfAccount(account string, pairId uint64, startTs float64, endTs float64) (uint64, error)
-	AssetAmountInPair(pairId uint64, startTs float64, endTs float64) (string, string, string, error)
-	AssetAmountInPairOfAccount(account string, pairId uint64, startTs float64, endTs float64) (string, string, string, error)
-	CommissionAmountInPair(pairId uint64, startTs float64, endTs float64) (string, string, error)
+	HeightOnTimestamp(ctx context.Context, timestamp float64) (uint64, error)
+	LastHeightOfPrice(ctx context.Context) (uint64, error)
+	GetParsedTxsWithLimit(ctx context.Context, startHeight uint64, limit int) ([]schemas.ParsedTxWithPrice, error)
+	GetRecentParsedTxs(ctx context.Context, startHeight uint64, endHeight uint64) ([]schemas.ParsedTxWithPrice, error)
+	RecentPrices(ctx context.Context, startHeight uint64, endHeight uint64, targetTokens []string, priceToken string) (map[uint64][]schemas.Price, error)
+	GetParsedTxsWithPriceOfPair(ctx context.Context, pairId uint64, priceToken string, startTs float64, endTs float64) ([]schemas.ParsedTxWithPrice, error)
+	PairStats(ctx context.Context, startTs float64, endTs float64, priceToken string, prevStatsMap map[uint64]schemas.PairStats30m) ([]schemas.PairStats30m, error)
+	AccountStats(ctx context.Context, startTs float64, endTs float64, priceToken string) ([]schemas.AccountStats30m, error)
+	LiquiditiesOfPairStats(ctx context.Context, startTs float64, endTs float64, priceToken string) (map[uint64]schemas.PairStats30m, error)
+	OldestTxTimestamp(ctx context.Context) (float64, error)
+	LatestTxTimestamp(ctx context.Context) (float64, error)
+	PairIds(ctx context.Context) ([]uint64, error)
+	NewPairIds(ctx context.Context, account string, startTs float64, endTs float64) ([]uint64, error)
+	NewAccounts(ctx context.Context, startTs float64, endTs float64) ([]string, error)
+	ProviderCount(ctx context.Context, pairId uint64, startTs float64, endTs float64) (uint64, error)
+	TxCountOfAccount(ctx context.Context, account string, pairId uint64, startTs float64, endTs float64) (uint64, error)
+	AssetAmountInPair(ctx context.Context, pairId uint64, startTs float64, endTs float64) (string, string, string, error)
+	AssetAmountInPairOfAccount(ctx context.Context, account string, pairId uint64, startTs float64, endTs float64) (string, string, string, error)
+	CommissionAmountInPair(ctx context.Context, pairId uint64, startTs float64, endTs float64) (string, string, error)
+
 	Close() error
 }
 
@@ -52,29 +54,32 @@ type readRepoImpl struct {
 
 var _ ReadRepository = &readRepoImpl{}
 
-func NewReadRepo(chainId string, dbConfig configs.RdbConfig) ReadRepository {
+func NewReadRepo(chainId string, dbConfig configs.RdbConfig) (ReadRepository, error) {
 	gormDB, err := db.OpenGormPostgres(dbConfig)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	return &readRepoImpl{
 		db:      gormDB,
 		chainId: chainId,
-	}
+	}, nil
 }
 
+// conn binds the repository handle to ctx so every query is cancellable.
+func (r *readRepoImpl) conn(ctx context.Context) *gorm.DB { return r.db.WithContext(ctx) }
+
 // GetSyncedHeight implements parser.Repo
-func (r *readRepoImpl) GetSyncedHeight() (uint64, error) {
+func (r *readRepoImpl) GetSyncedHeight(ctx context.Context) (uint64, error) {
 	syncedHeight := schemas.SyncedHeight{}
-	tx := r.db.Select("height").Where("chain_id = ?", r.chainId).First(&syncedHeight)
+	tx := r.conn(ctx).Select("height").Where("chain_id = ?", r.chainId).First(&syncedHeight)
 
 	if tx.Error != nil {
 		if !strings.Contains(tx.Error.Error(), "not found") {
 			return 0, errors.Wrap(tx.Error, "repo.GetSyncedHeight")
 		}
 
-		if err := r.db.Model(&schemas.SyncedHeight{}).Create(&schemas.SyncedHeight{ChainId: r.chainId, Height: 0}); err.Error != nil {
+		if err := r.conn(ctx).Model(&schemas.SyncedHeight{}).Create(&schemas.SyncedHeight{ChainId: r.chainId, Height: 0}); err.Error != nil {
 			return 0, errors.Wrap(err.Error, "repo.GetSyncedHeight")
 		}
 	}
@@ -82,9 +87,9 @@ func (r *readRepoImpl) GetSyncedHeight() (uint64, error) {
 }
 
 // GetPairs implements parser.Repo
-func (r *readRepoImpl) GetPairs() ([]schemas.Pair, error) {
+func (r *readRepoImpl) GetPairs(ctx context.Context) ([]schemas.Pair, error) {
 	pairs := []schemas.Pair{}
-	tx := r.db.Where(schemas.Pair{ChainId: r.chainId}).Find(&pairs)
+	tx := r.conn(ctx).Where(schemas.Pair{ChainId: r.chainId}).Find(&pairs)
 	if tx.Error != nil {
 		return nil, errors.Wrap(tx.Error, "repo.GetPairs")
 	}
@@ -92,33 +97,33 @@ func (r *readRepoImpl) GetPairs() ([]schemas.Pair, error) {
 }
 
 // GetPairs implements parser.Repo
-func (r *readRepoImpl) GetPoolInfosByHeight(height uint64) ([]schemas.PoolInfo, error) {
+func (r *readRepoImpl) GetPoolInfosByHeight(ctx context.Context, height uint64) ([]schemas.PoolInfo, error) {
 	poolInfo := []schemas.PoolInfo{}
-	if tx := r.db.Where(schemas.PoolInfo{ChainId: r.chainId, Height: height}).Find(&poolInfo); tx.Error != nil {
+	if tx := r.conn(ctx).Where(schemas.PoolInfo{ChainId: r.chainId, Height: height}).Find(&poolInfo); tx.Error != nil {
 		return nil, errors.Wrap(tx.Error, "repo.GetPairs")
 	}
 	return poolInfo, nil
 }
 
-func (r *readRepoImpl) GetParsedTxs(height uint64) ([]schemas.ParsedTx, error) {
+func (r *readRepoImpl) GetParsedTxs(ctx context.Context, height uint64) ([]schemas.ParsedTx, error) {
 	parsedTxs := []schemas.ParsedTx{}
-	if tx := r.db.Where(schemas.ParsedTx{ChainId: r.chainId, Height: height}).Find(&parsedTxs); tx.Error != nil {
+	if tx := r.conn(ctx).Where(schemas.ParsedTx{ChainId: r.chainId, Height: height}).Find(&parsedTxs); tx.Error != nil {
 		return nil, errors.Wrap(tx.Error, "repo.GetParsedTxs")
 	}
 	return parsedTxs, nil
 }
 
-func (r *readRepoImpl) GetParsedTxsOfPair(height uint64, pair string) ([]schemas.ParsedTx, error) {
+func (r *readRepoImpl) GetParsedTxsOfPair(ctx context.Context, height uint64, pair string) ([]schemas.ParsedTx, error) {
 	parsedTxs := []schemas.ParsedTx{}
-	if tx := r.db.Where(schemas.PoolInfo{ChainId: r.chainId, Height: height, Contract: pair}).Find(&parsedTxs); tx.Error != nil {
+	if tx := r.conn(ctx).Where(schemas.PoolInfo{ChainId: r.chainId, Height: height, Contract: pair}).Find(&parsedTxs); tx.Error != nil {
 		return nil, errors.Wrap(tx.Error, "repo.GetParsedTxs")
 	}
 	return parsedTxs, nil
 }
 
-func (r *readRepoImpl) HeightOnTimestamp(timestamp float64) (uint64, error) {
+func (r *readRepoImpl) HeightOnTimestamp(ctx context.Context, timestamp float64) (uint64, error) {
 	var height uint64
-	if tx := r.db.Model(schemas.ParsedTx{}).Where(
+	if tx := r.conn(ctx).Model(schemas.ParsedTx{}).Where(
 		"chain_id = ? and timestamp <= ?", r.chainId, timestamp).Select("coalesce(max(height), 0)").Find(&height); tx.Error != nil {
 		return 0, errors.Wrap(tx.Error, "repo.HeightOnTimestamp")
 	}
@@ -126,8 +131,8 @@ func (r *readRepoImpl) HeightOnTimestamp(timestamp float64) (uint64, error) {
 	return height, nil
 }
 
-func (r *readRepoImpl) LastHeightOfPrice() (uint64, error) {
-	row := r.db.Model(schemas.Price{}).Where("chain_id = ?", r.chainId).Select("coalesce(max(height), 0)").Row()
+func (r *readRepoImpl) LastHeightOfPrice(ctx context.Context) (uint64, error) {
+	row := r.conn(ctx).Model(schemas.Price{}).Where("chain_id = ?", r.chainId).Select("coalesce(max(height), 0)").Row()
 	if err := row.Err(); err != nil {
 		return 0, err
 	}
@@ -140,7 +145,7 @@ func (r *readRepoImpl) LastHeightOfPrice() (uint64, error) {
 	return height, nil
 }
 
-func (r *readRepoImpl) GetParsedTxsWithLimit(startHeight uint64, limit int) ([]schemas.ParsedTxWithPrice, error) {
+func (r *readRepoImpl) GetParsedTxsWithLimit(ctx context.Context, startHeight uint64, limit int) ([]schemas.ParsedTxWithPrice, error) {
 	query := `
 select p.id pair_id, pt.chain_id, pt.asset0_amount, pt.asset1_amount,
        pt.commission0_amount, pt.commission1_amount, pt.height, pt.timestamp
@@ -156,7 +161,7 @@ where pt.chain_id = ?
 order by pt.height asc, p.id asc
 `
 	var res []schemas.ParsedTxWithPrice
-	if tx := r.db.Raw(query, r.chainId, startHeight, r.chainId, startHeight, limit).Scan(&res); tx.Error != nil {
+	if tx := r.conn(ctx).Raw(query, r.chainId, startHeight, r.chainId, startHeight, limit).Scan(&res); tx.Error != nil {
 		return nil, errors.Wrap(tx.Error, "repo.GetParsedTxsWithLimit")
 	}
 
@@ -164,7 +169,7 @@ order by pt.height asc, p.id asc
 }
 
 // GetRecentParsedTxs return value is ordered by ascending height
-func (r *readRepoImpl) GetRecentParsedTxs(startHeight uint64, endHeight uint64) ([]schemas.ParsedTxWithPrice, error) {
+func (r *readRepoImpl) GetRecentParsedTxs(ctx context.Context, startHeight uint64, endHeight uint64) ([]schemas.ParsedTxWithPrice, error) {
 	query := `
 select p.id pair_id,
        case when pt.type = 'swap' then pt.asset0_amount else 0 end as asset0_amount,
@@ -190,7 +195,7 @@ where pt.chain_id = ?
   and pt.type in ('swap', 'provide', 'withdraw')
 `
 	res := []schemas.ParsedTxWithPrice{}
-	if tx := r.db.Raw(query, r.chainId, startHeight, endHeight).Scan(&res); tx.Error != nil {
+	if tx := r.conn(ctx).Raw(query, r.chainId, startHeight, endHeight).Scan(&res); tx.Error != nil {
 		return nil, errors.Wrap(tx.Error, "repo.GetRecentParsedTxs")
 	}
 
@@ -198,7 +203,7 @@ where pt.chain_id = ?
 }
 
 // RecentPrices returns prices ordered by token and height because searchPrice scans each token's slice in order.
-func (r *readRepoImpl) RecentPrices(startHeight uint64, endHeight uint64, targetTokens []string, priceToken string) (map[uint64][]schemas.Price, error) {
+func (r *readRepoImpl) RecentPrices(ctx context.Context, startHeight uint64, endHeight uint64, targetTokens []string, priceToken string) (map[uint64][]schemas.Price, error) {
 	query := `
 with price_token as (
 	select id
@@ -243,7 +248,7 @@ where p.chain_id = ?
 order by token_id, height
 	`
 	var res []schemas.Price
-	if tx := r.db.Raw(query, r.chainId, priceToken, pq.Array(targetTokens), r.chainId, startHeight, r.chainId, startHeight, r.chainId, endHeight).Scan(&res); tx.Error != nil {
+	if tx := r.conn(ctx).Raw(query, r.chainId, priceToken, pq.Array(targetTokens), r.chainId, startHeight, r.chainId, startHeight, r.chainId, endHeight).Scan(&res); tx.Error != nil {
 		return nil, errors.Wrap(tx.Error, "repo.RecentPrices")
 	}
 
@@ -259,10 +264,10 @@ order by token_id, height
 	return priceMap, nil
 }
 
-func (r *readRepoImpl) GetParsedTxsWithPriceOfPair(pairId uint64, priceToken string, startTs float64, endTs float64) ([]schemas.ParsedTxWithPrice, error) {
+func (r *readRepoImpl) GetParsedTxsWithPriceOfPair(ctx context.Context, pairId uint64, priceToken string, startTs float64, endTs float64) ([]schemas.ParsedTxWithPrice, error) {
 	res := []schemas.ParsedTxWithPrice{}
 
-	if tx := r.db.Model(schemas.ParsedTx{}).Joins(
+	if tx := r.conn(ctx).Model(schemas.ParsedTx{}).Joins(
 		"join pair p on parsed_tx.chain_id = p.chain_id and parsed_tx.contract = p.contract "+
 			"join tokens t0 on parsed_tx.chain_id = t0.chain_id and parsed_tx.asset0 = t0.address "+
 			"join tokens t1 on parsed_tx.chain_id = t1.chain_id and parsed_tx.asset1 = t1.address "+
@@ -282,7 +287,7 @@ func (r *readRepoImpl) GetParsedTxsWithPriceOfPair(pairId uint64, priceToken str
 	return res, nil
 }
 
-func (r *readRepoImpl) PairStats(startTs float64, endTs float64, priceToken string, prevStatsMap map[uint64]schemas.PairStats30m) (stats []schemas.PairStats30m, err error) {
+func (r *readRepoImpl) PairStats(ctx context.Context, startTs float64, endTs float64, priceToken string, prevStatsMap map[uint64]schemas.PairStats30m) (stats []schemas.PairStats30m, err error) {
 	query := `
 select -- asset0's stats by pairs
     pair_id,
@@ -330,7 +335,7 @@ from (select distinct -- processed asset0 values
 group by pair_id
 `
 	var asset0Stats []schemas.PairStats30m
-	if tx := r.db.Raw(query, priceToken, r.chainId, r.chainId, startTs, endTs).Scan(&asset0Stats); tx.Error != nil {
+	if tx := r.conn(ctx).Raw(query, priceToken, r.chainId, r.chainId, startTs, endTs).Scan(&asset0Stats); tx.Error != nil {
 		return nil, errors.Wrap(tx.Error, "readRepoImpl.PairStats")
 	}
 
@@ -377,7 +382,7 @@ from (select distinct -- processed asset1 values
 group by pair_id
 `
 	var asset1Stats []schemas.PairStats30m
-	if tx := r.db.Raw(query, priceToken, r.chainId, r.chainId, startTs, endTs).Scan(&asset1Stats); tx.Error != nil {
+	if tx := r.conn(ctx).Raw(query, priceToken, r.chainId, r.chainId, startTs, endTs).Scan(&asset1Stats); tx.Error != nil {
 		return nil, errors.Wrap(tx.Error, "readRepoImpl.PairStats")
 	}
 	asset1StatsMap := make(map[uint64]schemas.PairStats30m)
@@ -401,7 +406,7 @@ group by pair_id
 				if p, ok := prevStatsMap[asset0.PairId]; ok {
 					lastSwapPrice = p.LastSwapPrice
 				} else {
-					lps, err := r.latestPairStat(asset0.PairId)
+					lps, err := r.latestPairStat(ctx, asset0.PairId)
 					if err != nil {
 						return nil, errors.Wrap(err, "readRepoImpl.PairStats")
 					}
@@ -445,10 +450,10 @@ group by pair_id
 	return
 }
 
-func (r *readRepoImpl) latestPairStat(pairId uint64) (schemas.PairStats30m, error) {
+func (r *readRepoImpl) latestPairStat(ctx context.Context, pairId uint64) (schemas.PairStats30m, error) {
 	var stat schemas.PairStats30m
 
-	if tx := r.db.Model(schemas.PairStats30m{}).Where("chain_id = ? and pair_id = ?", r.chainId, pairId).Order(
+	if tx := r.conn(ctx).Model(schemas.PairStats30m{}).Where("chain_id = ? and pair_id = ?", r.chainId, pairId).Order(
 		"timestamp desc").Limit(1).Find(&stat); tx.Error != nil {
 		if errors.Is(tx.Error, sql.ErrNoRows) {
 			return schemas.PairStats30m{}, nil
@@ -459,7 +464,7 @@ func (r *readRepoImpl) latestPairStat(pairId uint64) (schemas.PairStats30m, erro
 	return stat, nil
 }
 
-func (r *readRepoImpl) AccountStats(startTs float64, endTs float64, priceToken string) ([]schemas.AccountStats30m, error) {
+func (r *readRepoImpl) AccountStats(ctx context.Context, startTs float64, endTs float64, priceToken string) ([]schemas.AccountStats30m, error) {
 	query := `
 WITH tx_values AS (
     SELECT
@@ -532,14 +537,14 @@ FROM tx_values
 GROUP BY address, pair_id;
 `
 	res := []schemas.AccountStats30m{}
-	if tx := r.db.Raw(query, priceToken, priceToken, priceToken, priceToken, priceToken, r.chainId, r.chainId, r.chainId, startTs, endTs, priceToken).Scan(&res); tx.Error != nil {
+	if tx := r.conn(ctx).Raw(query, priceToken, priceToken, priceToken, priceToken, priceToken, r.chainId, r.chainId, r.chainId, startTs, endTs, priceToken).Scan(&res); tx.Error != nil {
 		return nil, errors.Wrap(tx.Error, "repo.AccountStats")
 	}
 
 	return res, nil
 }
 
-func (r *readRepoImpl) LiquiditiesOfPairStats(startTs float64, endTs float64, priceToken string) (pairIdLpMap map[uint64]schemas.PairStats30m, err error) {
+func (r *readRepoImpl) LiquiditiesOfPairStats(ctx context.Context, startTs float64, endTs float64, priceToken string) (pairIdLpMap map[uint64]schemas.PairStats30m, err error) {
 	query := `
 WITH price_token AS (
     SELECT id
@@ -595,7 +600,7 @@ FROM lp_history lh
 `
 
 	var pairLps []schemas.PairStats30m
-	if tx := r.db.Raw(query, r.chainId, priceToken, r.chainId, startTs, endTs, priceToken, r.chainId).Scan(&pairLps); tx.Error != nil {
+	if tx := r.conn(ctx).Raw(query, r.chainId, priceToken, r.chainId, startTs, endTs, priceToken, r.chainId).Scan(&pairLps); tx.Error != nil {
 		return nil, errors.Wrap(tx.Error, "repo.LiquiditiesOfPairStats")
 	}
 
@@ -607,7 +612,7 @@ FROM lp_history lh
 	return
 }
 
-func (r *readRepoImpl) TxHeightToSync(syncedHeight int64, condition ...string) (int64, error) {
+func (r *readRepoImpl) TxHeightToSync(ctx context.Context, syncedHeight int64, condition ...string) (int64, error) {
 	where := "chain_id = ? and height > ?"
 	if len(condition) > 0 {
 		for _, c := range condition {
@@ -616,7 +621,7 @@ func (r *readRepoImpl) TxHeightToSync(syncedHeight int64, condition ...string) (
 	}
 
 	var height int64
-	tx := r.db.Model(schemas.ParsedTx{}).Where(
+	tx := r.conn(ctx).Model(schemas.ParsedTx{}).Where(
 		where, r.chainId, syncedHeight).Select(
 		"coalesce(min(height), -1)").Find(&height)
 	if tx.Error != nil {
@@ -626,8 +631,8 @@ func (r *readRepoImpl) TxHeightToSync(syncedHeight int64, condition ...string) (
 	return height, nil
 }
 
-func (r *readRepoImpl) OldestTxTimestamp() (float64, error) {
-	row := r.db.Table("parsed_tx").Where("chain_id = ?", r.chainId).Select("coalesce(min(timestamp), 0)").Row()
+func (r *readRepoImpl) OldestTxTimestamp(ctx context.Context) (float64, error) {
+	row := r.conn(ctx).Table("parsed_tx").Where("chain_id = ?", r.chainId).Select("coalesce(min(timestamp), 0)").Row()
 	if err := row.Err(); err != nil {
 		return 0, err
 	}
@@ -640,8 +645,8 @@ func (r *readRepoImpl) OldestTxTimestamp() (float64, error) {
 	return ts, nil
 }
 
-func (r *readRepoImpl) LatestTxTimestamp() (float64, error) {
-	row := r.db.Table("parsed_tx").Where("chain_id = ?", r.chainId).Select("MAX(timestamp)").Row()
+func (r *readRepoImpl) LatestTxTimestamp(ctx context.Context) (float64, error) {
+	row := r.conn(ctx).Table("parsed_tx").Where("chain_id = ?", r.chainId).Select("MAX(timestamp)").Row()
 	if err := row.Err(); err != nil {
 		return 0, err
 	}
@@ -654,8 +659,8 @@ func (r *readRepoImpl) LatestTxTimestamp() (float64, error) {
 	return ts, nil
 }
 
-func (r *readRepoImpl) PairIds() ([]uint64, error) {
-	rows, err := r.db.Table("pair").Where("chain_id = ?", r.chainId).Select("id").Rows()
+func (r *readRepoImpl) PairIds(ctx context.Context) ([]uint64, error) {
+	rows, err := r.conn(ctx).Table("pair").Where("chain_id = ?", r.chainId).Select("id").Rows()
 	if err != nil {
 		return nil, err
 	}
@@ -674,124 +679,83 @@ func (r *readRepoImpl) PairIds() ([]uint64, error) {
 	return pairs, nil
 }
 
-func (r *readRepoImpl) NewPairIds(account string, startTs float64, endTs float64) ([]uint64, error) {
+func (r *readRepoImpl) NewPairIds(ctx context.Context, account string, startTs float64, endTs float64) ([]uint64, error) {
 	query := `
 SELECT DISTINCT p.id
 FROM parsed_tx pt JOIN pair p ON pt.contract = p.contract AND pt.chain_id = p.chain_id
-WHERE pt.chain_id = $1
-  AND pt.sender = $2
-  AND pt.timestamp >= $3
-  AND pt.timestamp < $4
+WHERE pt.chain_id = ?
+  AND pt.sender = ?
+  AND pt.timestamp >= ?
+  AND pt.timestamp < ?
   AND pt.type IN ('provide', 'withdraw')
 `
-	db, err := r.db.DB()
-	if err != nil {
-		return nil, err
-	}
-
-	rows, err := db.Query(query, r.chainId, account, startTs, endTs)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
 	pairIds := []uint64{}
-	for rows.Next() {
-		var id uint64
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		pairIds = append(pairIds, id)
+	if tx := r.conn(ctx).Raw(query, r.chainId, account, startTs, endTs).Scan(&pairIds); tx.Error != nil {
+		return nil, errors.Wrap(tx.Error, "readRepoImpl.NewPairIds")
 	}
 
 	return pairIds, nil
 }
 
-func (r *readRepoImpl) NewAccounts(startTs float64, endTs float64) ([]string, error) {
+func (r *readRepoImpl) NewAccounts(ctx context.Context, startTs float64, endTs float64) ([]string, error) {
 	query := `
 SELECT sender FROM (
     SELECT DISTINCT ON(sender) sender, timestamp
     FROM parsed_tx
-    WHERE chain_id = $1
+    WHERE chain_id = ?
           AND type IN ('provide', 'withdraw')
     ORDER BY sender ASC, timestamp ASC) t
-WHERE timestamp >= $2
-  AND timestamp < $3
+WHERE timestamp >= ?
+  AND timestamp < ?
 `
-	db, err := r.db.DB()
-	if err != nil {
-		return nil, err
-	}
-
-	rows, err := db.Query(query, r.chainId, startTs, endTs)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
 	accounts := []string{}
-	for rows.Next() {
-		var account string
-		if err := rows.Scan(&account); err != nil {
-			return nil, err
-		}
-
-		accounts = append(accounts, account)
+	if tx := r.conn(ctx).Raw(query, r.chainId, startTs, endTs).Scan(&accounts); tx.Error != nil {
+		return nil, errors.Wrap(tx.Error, "readRepoImpl.NewAccounts")
 	}
 
 	return accounts, nil
 }
 
-func (r *readRepoImpl) ProviderCount(pairId uint64, startTs float64, endTs float64) (uint64, error) {
+func (r *readRepoImpl) ProviderCount(ctx context.Context, pairId uint64, startTs float64, endTs float64) (uint64, error) {
 	query := `
 SELECT COUNT(*)
 FROM (SELECT pt.sender
       FROM parsed_tx pt JOIN pair p ON pt.contract = p.contract AND pt.chain_id = p.chain_id
-      WHERE pt.chain_id = $1
-        AND p.id = $2
-        AND pt.timestamp >= $3
-        AND pt.timestamp < $4
+      WHERE pt.chain_id = ?
+        AND p.id = ?
+        AND pt.timestamp >= ?
+        AND pt.timestamp < ?
         AND pt.type = 'provide'
       GROUP BY pt.sender) t
 `
-	db, err := r.db.DB()
-	if err != nil {
-		return 0, err
-	}
-
 	var cnt uint64
-	if err := db.QueryRow(query, r.chainId, pairId, startTs, endTs).Scan(&cnt); err != nil && !errors.Is(err, sql.ErrNoRows) {
+	if err := r.conn(ctx).Raw(query, r.chainId, pairId, startTs, endTs).Row().Scan(&cnt); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return cnt, err
 	}
 
 	return cnt, nil
 }
 
-func (r *readRepoImpl) TxCountOfAccount(account string, pairId uint64, startTs float64, endTs float64) (uint64, error) {
+func (r *readRepoImpl) TxCountOfAccount(ctx context.Context, account string, pairId uint64, startTs float64, endTs float64) (uint64, error) {
 	query := `
 SELECT COUNT(*)
 FROM parsed_tx pt JOIN pair p ON pt.contract = p.contract AND pt.chain_id = p.chain_id
-WHERE pt.chain_id = $1
-  AND pt.sender = $2
-  AND p.id = $3
-  AND pt.timestamp >= $4
-  AND pt.timestamp < $5
+WHERE pt.chain_id = ?
+  AND pt.sender = ?
+  AND p.id = ?
+  AND pt.timestamp >= ?
+  AND pt.timestamp < ?
   AND pt.type IN ('provide', 'withdraw')
 `
-	db, err := r.db.DB()
-	if err != nil {
-		return 0, err
-	}
-
 	var cnt uint64
-	if err := db.QueryRow(query, r.chainId, account, pairId, startTs, endTs).Scan(&cnt); err != nil && !errors.Is(err, sql.ErrNoRows) {
+	if err := r.conn(ctx).Raw(query, r.chainId, account, pairId, startTs, endTs).Row().Scan(&cnt); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return 0, err
 	}
 
 	return cnt, nil
 }
 
-func (r *readRepoImpl) AssetAmountInPair(pairId uint64, startTs float64, endTs float64) (string, string, string, error) {
+func (r *readRepoImpl) AssetAmountInPair(ctx context.Context, pairId uint64, startTs float64, endTs float64) (string, string, string, error) {
 	query := `
 SELECT
        coalesce(sum(asset0_amount), 0),
@@ -803,28 +767,23 @@ SELECT
            end
        ), 0)
 FROM parsed_tx pt JOIN pair p ON pt.contract = p.contract AND pt.chain_id = p.chain_id
-WHERE pt.chain_id = $1
-  AND p.id = $2
-  AND pt.timestamp >= $3
-  AND pt.timestamp < $4
+WHERE pt.chain_id = ?
+  AND p.id = ?
+  AND pt.timestamp >= ?
+  AND pt.timestamp < ?
   AND pt.type IN ('swap', 'provide', 'withdraw')
 `
-	db, err := r.db.DB()
-	if err != nil {
-		return "", "", "", err
-	}
-
 	var asset0Amount string
 	var asset1Amount string
 	var lpAmount string
-	if err := db.QueryRow(query, r.chainId, pairId, startTs, endTs).Scan(&asset0Amount, &asset1Amount, &lpAmount); err != nil && !errors.Is(err, sql.ErrNoRows) {
+	if err := r.conn(ctx).Raw(query, r.chainId, pairId, startTs, endTs).Row().Scan(&asset0Amount, &asset1Amount, &lpAmount); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return asset0Amount, asset1Amount, lpAmount, err
 	}
 
 	return asset0Amount, asset1Amount, lpAmount, nil
 }
 
-func (r *readRepoImpl) AssetAmountInPairOfAccount(account string, pairId uint64, startTs float64, endTs float64) (string, string, string, error) {
+func (r *readRepoImpl) AssetAmountInPairOfAccount(ctx context.Context, account string, pairId uint64, startTs float64, endTs float64) (string, string, string, error) {
 	query := `
 SELECT
        coalesce(sum(pt.asset0_amount), 0),
@@ -836,37 +795,32 @@ SELECT
            end
        ), 0)
 FROM parsed_tx pt JOIN pair p ON pt.contract = p.contract AND pt.chain_id = p.chain_id
-WHERE pt.chain_id = $1
-  AND pt.sender = $2
-  AND p.id = $3
-  AND pt.timestamp >= $4
-  AND pt.timestamp < $5
+WHERE pt.chain_id = ?
+  AND pt.sender = ?
+  AND p.id = ?
+  AND pt.timestamp >= ?
+  AND pt.timestamp < ?
   AND pt.type IN ('provide', 'withdraw')
 `
-	db, err := r.db.DB()
-	if err != nil {
-		return "", "", "", err
-	}
-
 	var asset0Amount string
 	var asset1Amount string
 	var lpAmount string
-	if err := db.QueryRow(query, r.chainId, account, pairId, startTs, endTs).Scan(&asset0Amount, &asset1Amount, &lpAmount); err != nil && !errors.Is(err, sql.ErrNoRows) {
+	if err := r.conn(ctx).Raw(query, r.chainId, account, pairId, startTs, endTs).Row().Scan(&asset0Amount, &asset1Amount, &lpAmount); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return "", "", "", err
 	}
 
 	return asset0Amount, asset1Amount, lpAmount, nil
 }
 
-func (r *readRepoImpl) CommissionAmountInPair(pairId uint64, startTs float64, endTs float64) (string, string, error) {
+func (r *readRepoImpl) CommissionAmountInPair(ctx context.Context, pairId uint64, startTs float64, endTs float64) (string, string, error) {
 	query := `
 WITH t AS (
     SELECT commission_amount, asset0_amount, asset1_amount
     FROM parsed_tx
-    WHERE chain_id = $1
-      AND contract IN (SELECT contract FROM pair WHERE id = $2)
-      AND timestamp >= $3
-      AND timestamp < $4
+    WHERE chain_id = ?
+      AND contract IN (SELECT contract FROM pair WHERE id = ?)
+      AND timestamp >= ?
+      AND timestamp < ?
       AND type='swap')
 SELECT
        (
@@ -878,14 +832,9 @@ SELECT
            FROM t
            WHERE asset1_amount < 0) asset1_commission
 `
-	db, err := r.db.DB()
-	if err != nil {
-		return "", "", err
-	}
-
 	var asset0Commission string
 	var asset1Commission string
-	if err := db.QueryRow(query, r.chainId, pairId, startTs, endTs).Scan(&asset0Commission, &asset1Commission); err != nil && !errors.Is(err, sql.ErrNoRows) {
+	if err := r.conn(ctx).Raw(query, r.chainId, pairId, startTs, endTs).Row().Scan(&asset0Commission, &asset1Commission); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return "", "", err
 	}
 
