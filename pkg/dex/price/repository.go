@@ -84,9 +84,10 @@ func (r *srcRepoImpl) CurrHeight(ctx context.Context) (int64, error) {
 select coalesce(max(height), 0) from price where chain_id = ?
 `
 	height := NaValue
+	height := NaValue
 	tx := r.conn(ctx).Raw(query, r.chainId).Find(&height)
 	if tx.Error != nil {
-		return 0, errors.Wrap(tx.Error, "srcRepoImpl.NextHeight")
+		return 0, errors.Wrap(tx.Error, "srcRepoImpl.CurrHeight")
 	}
 
 	return height, nil
