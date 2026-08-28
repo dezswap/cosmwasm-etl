@@ -747,7 +747,7 @@ func (s *aggregatorReadRepoSuite) Test_AccountStats_CountsDistinctHashesButSumsR
 	assert.Equal("3", actual[0].NetAsset1Amount)
 }
 
-func (s *aggregatorReadRepoSuite) Test_RecentPrices_FiltersByPriceTokenId() {
+func (s *aggregatorReadRepoSuite) Test_PricesForHeightRange_FiltersByPriceTokenId() {
 	assert := assert.New(s.T())
 	require := require.New(s.T())
 
@@ -771,7 +771,7 @@ func (s *aggregatorReadRepoSuite) Test_RecentPrices_FiltersByPriceTokenId() {
 		chainName,
 	).Error)
 
-	actual, err := s.Repo.RecentPrices(context.Background(), 100, 120, []string{"3002"}, priceToken)
+	actual, err := s.Repo.PricesForHeightRange(context.Background(), 100, 120, []string{"3002"}, priceToken)
 
 	require.NoError(err)
 	require.Contains(actual, uint64(3002))
@@ -782,7 +782,7 @@ func (s *aggregatorReadRepoSuite) Test_RecentPrices_FiltersByPriceTokenId() {
 	assert.Equal("9", actual[3002][1].Price)
 }
 
-func (s *aggregatorReadRepoSuite) Test_RecentPrices_ReturnsFirstInWindowPriceWithoutPreStartPrice() {
+func (s *aggregatorReadRepoSuite) Test_PricesForHeightRange_ReturnsFirstInWindowPriceWithoutPreStartPrice() {
 	assert := assert.New(s.T())
 	require := require.New(s.T())
 
@@ -802,7 +802,7 @@ func (s *aggregatorReadRepoSuite) Test_RecentPrices_ReturnsFirstInWindowPriceWit
 		chainName,
 	).Error)
 
-	actual, err := s.Repo.RecentPrices(context.Background(), 100, 120, []string{"3101"}, priceToken)
+	actual, err := s.Repo.PricesForHeightRange(context.Background(), 100, 120, []string{"3101"}, priceToken)
 
 	require.NoError(err)
 	require.Contains(actual, uint64(3101))

@@ -27,8 +27,8 @@ type ReadRepository interface {
 	HeightOnTimestamp(ctx context.Context, timestamp float64) (uint64, error)
 	LastHeightOfPrice(ctx context.Context) (uint64, error)
 	GetParsedTxsWithLimit(ctx context.Context, startHeight uint64, limit int) ([]schemas.ParsedTxWithPrice, error)
-	GetRecentParsedTxs(ctx context.Context, startHeight uint64, endHeight uint64) ([]schemas.ParsedTxWithPrice, error)
-	RecentPrices(ctx context.Context, startHeight uint64, endHeight uint64, targetTokens []string, priceToken string) (map[uint64][]schemas.Price, error)
+	GetParsedTxsInHeightRange(ctx context.Context, startHeight uint64, endHeight uint64) ([]schemas.ParsedTxWithPrice, error)
+	PricesForHeightRange(ctx context.Context, startHeight uint64, endHeight uint64, targetTokens []string, priceToken string) (map[uint64][]schemas.Price, error)
 	GetParsedTxsWithPriceOfPair(ctx context.Context, pairId uint64, priceToken string, startTs float64, endTs float64) ([]schemas.ParsedTxWithPrice, error)
 	PairStats(ctx context.Context, startTs float64, endTs float64, priceToken string, prevStatsMap map[uint64]schemas.PairStats30m) ([]schemas.PairStats30m, error)
 	AccountStats(ctx context.Context, startTs float64, endTs float64, priceToken string) ([]schemas.AccountStats30m, error)
@@ -168,8 +168,9 @@ order by pt.height asc, p.id asc
 	return res, nil
 }
 
-// GetRecentParsedTxs return value is ordered by ascending height
-func (r *readRepoImpl) GetRecentParsedTxs(ctx context.Context, startHeight uint64, endHeight uint64) ([]schemas.ParsedTxWithPrice, error) {
+// GetParsedTxsInHeightRange returns rows ordered by ascending height. Callers close a pair's
+// group when the height changes, so the ordering is required, not incidental.
+func (r *readRepoImpl) GetParsedTxsInHeightRange(ctx context.Context, startHeight uint64, endHeight uint64) ([]schemas.ParsedTxWithPrice, error) {
 	query := `
 select p.id pair_id,
        case when pt.type = 'swap' then pt.asset0_amount else 0 end as asset0_amount,
@@ -193,17 +194,22 @@ where pt.chain_id = ?
   and pt.height >= ?
   and pt.height <= ?
   and pt.type in ('swap', 'provide', 'withdraw')
+order by pt.height asc, p.id asc
 `
 	res := []schemas.ParsedTxWithPrice{}
 	if tx := r.conn(ctx).Raw(query, r.chainId, startHeight, endHeight).Scan(&res); tx.Error != nil {
-		return nil, errors.Wrap(tx.Error, "repo.GetRecentParsedTxs")
+		return nil, errors.Wrap(tx.Error, "repo.GetParsedTxsInHeightRange")
 	}
 
 	return res, nil
 }
 
-// RecentPrices returns prices ordered by token and height because searchPrice scans each token's slice in order.
-func (r *readRepoImpl) RecentPrices(ctx context.Context, startHeight uint64, endHeight uint64, targetTokens []string, priceToken string) (map[uint64][]schemas.Price, error) {
+// PricesForHeightRange returns prices ordered by token and height because searchPrice scans each token's slice in order.
+//
+// Each token is seeded with its last price at or before startHeight, so a narrow range
+// prices its heights exactly as a wider one would. Callers read span by span and rely
+// on it: without the seed, a span whose prices were set earlier resolves them to zero.
+func (r *readRepoImpl) PricesForHeightRange(ctx context.Context, startHeight uint64, endHeight uint64, targetTokens []string, priceToken string) (map[uint64][]schemas.Price, error) {
 	query := `
 with price_token as (
 	select id
@@ -249,7 +255,7 @@ order by token_id, height
 	`
 	var res []schemas.Price
 	if tx := r.conn(ctx).Raw(query, r.chainId, priceToken, pq.Array(targetTokens), r.chainId, startHeight, r.chainId, startHeight, r.chainId, endHeight).Scan(&res); tx.Error != nil {
-		return nil, errors.Wrap(tx.Error, "repo.RecentPrices")
+		return nil, errors.Wrap(tx.Error, "repo.PricesForHeightRange")
 	}
 
 	priceMap := make(map[uint64][]schemas.Price)

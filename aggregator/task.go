@@ -20,7 +20,12 @@ import (
 	"github.com/dezswap/cosmwasm-etl/pkg/util"
 )
 
-const LpHistoryUpdateLimit = 100
+const (
+	LpHistoryUpdateLimit      = 100
+	PairStatsRecentTimeRange  = 48 * time.Hour
+	PairStatsRecentHeightSpan = 1000
+)
+
 const WaitPeriod = 10 * time.Second
 
 type task interface {
@@ -316,7 +321,7 @@ func newPairStatsRecentUpdateTask(config configs.AggregatorConfig, srcRepo parse
 		},
 		priceToken: config.PriceToken,
 		srcDb:      srcRepo,
-		timeRange:  48 * time.Hour,
+		timeRange:  PairStatsRecentTimeRange,
 	}
 }
 
@@ -341,53 +346,36 @@ func (t *pairStatsRecentUpdateTask) Execute(ctx context.Context, _ time.Time, en
 		return err
 	}
 
-	var stats []schemas.PairStatsRecent
-	if endHeight > lastProcessedHeight {
-		if err := waitUntilReachingHeight(ctx, t.parentTasks, endHeight, t.taskWaitTimeout); err != nil {
+	// Rows fall out of the trailing window, so the prune runs either way.
+	if endHeight <= lastProcessedHeight {
+		if err := t.destDb.DeletePairStatsRecent(ctx, startTs); err != nil {
 			return err
 		}
+		t.logger.Infof("Complete pair stats recent update.")
 
-		if startHeight <= lastProcessedHeight {
-			startHeight = lastProcessedHeight + 1
-		}
-		txs, err := t.srcDb.GetRecentParsedTxs(ctx, startHeight, endHeight)
-		if err != nil {
-			return err
-		}
-
-		if len(txs) > 0 {
-			tokenIdMap := make(map[string]bool)
-			for _, tx := range txs {
-				tokenIdMap[tx.Price0] = true
-				tokenIdMap[tx.Price1] = true
-			}
-
-			var tokenIds []string
-			for key := range tokenIdMap {
-				tokenIds = append(tokenIds, key)
-			}
-
-			priceMap, err := t.srcDb.RecentPrices(ctx, startHeight, endHeight, tokenIds, t.priceToken)
-			if err != nil {
-				return err
-			}
-
-			stats, err = t.generateStats(txs, priceMap)
-			if err != nil {
-				return err
-			}
-		}
+		return nil
 	}
 
-	err = t.destDb.WithinTx(ctx, func(txRepo repo.Repo) error {
-		if len(stats) > 0 {
-			if err := txRepo.UpdatePairStatsRecent(ctx, stats); err != nil {
-				return err
-			}
+	if err := waitUntilReachingHeight(ctx, t.parentTasks, endHeight, t.taskWaitTimeout); err != nil {
+		return err
+	}
+
+	if startHeight <= lastProcessedHeight {
+		startHeight = lastProcessedHeight + 1
+	}
+
+	// The span loop reads inside this transaction on purpose, which keeps it open for a
+	// whole cold start: pair_stats_recent has no unique constraint (its _uidx indexes
+	// are not unique), so a span committed on its own becomes duplicate rows once a
+	// later span fails and the round retries. To shorten the transaction, add that
+	// unique index first and commit spans separately.
+	if err := t.destDb.WithinTx(ctx, func(txRepo repo.Repo) error {
+		if err := t.updateStatsBySpan(ctx, txRepo, startHeight, endHeight); err != nil {
+			return err
 		}
+
 		return txRepo.DeletePairStatsRecent(ctx, startTs)
-	})
-	if err != nil {
+	}); err != nil {
 		return err
 	}
 
@@ -396,6 +384,69 @@ func (t *pairStatsRecentUpdateTask) Execute(ctx context.Context, _ time.Time, en
 	t.logger.Infof("Complete pair stats recent update.")
 
 	return nil
+}
+
+// updateStatsBySpan walks [startHeight, endHeight] in spans, writing each before
+// reading the next, so a cold start never holds the whole window in memory.
+//
+// Splitting matches a single pass only while both of these hold:
+//
+//   - a stats row covers one pair at one height, so no group straddles a boundary;
+//   - PricesForHeightRange seeds each token from its last price at or before the start height,
+//     so a span prices a transaction as the full window would. Without the seed, a span
+//     whose prices were all set earlier values its transactions at zero.
+func (t *pairStatsRecentUpdateTask) updateStatsBySpan(ctx context.Context, txRepo repo.Repo, startHeight, endHeight uint64) error {
+	for spanStart := startHeight; spanStart <= endHeight; spanStart += PairStatsRecentHeightSpan {
+		spanEnd := min(spanStart+PairStatsRecentHeightSpan-1, endHeight)
+
+		stats, err := t.statsOfSpan(ctx, spanStart, spanEnd)
+		if err != nil {
+			return err
+		}
+		if len(stats) == 0 {
+			// a cold start walks over long stretches with no activity at all
+			continue
+		}
+		if err := txRepo.UpdatePairStatsRecent(ctx, stats); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// statsOfSpan derives one span's stats; the transactions and prices it reads stay
+// local, so only the derived rows outlive the call.
+func (t *pairStatsRecentUpdateTask) statsOfSpan(ctx context.Context, startHeight, endHeight uint64) ([]schemas.PairStatsRecent, error) {
+	txs, err := t.srcDb.GetParsedTxsInHeightRange(ctx, startHeight, endHeight)
+	if err != nil {
+		return nil, err
+	}
+	if len(txs) == 0 {
+		return nil, nil
+	}
+
+	priceMap, err := t.srcDb.PricesForHeightRange(ctx, startHeight, endHeight, uniquePriceTokenIds(txs), t.priceToken)
+	if err != nil {
+		return nil, err
+	}
+
+	return t.generateStats(txs, priceMap)
+}
+
+func uniquePriceTokenIds(txs []schemas.ParsedTxWithPrice) []string {
+	tokenIdMap := make(map[string]bool)
+	for _, tx := range txs {
+		tokenIdMap[tx.Price0] = true
+		tokenIdMap[tx.Price1] = true
+	}
+
+	tokenIds := make([]string, 0, len(tokenIdMap))
+	for key := range tokenIdMap {
+		tokenIds = append(tokenIds, key)
+	}
+
+	return tokenIds
 }
 
 func (t *pairStatsRecentUpdateTask) generateStats(txs []schemas.ParsedTxWithPrice, priceMap map[uint64][]schemas.Price) ([]schemas.PairStatsRecent, error) {

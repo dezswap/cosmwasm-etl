@@ -1,12 +1,16 @@
 package aggregator
 
 import (
+	"cmp"
 	"context"
 	"errors"
+	"fmt"
+	"slices"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/dezswap/cosmwasm-etl/aggregator/repo"
 	"github.com/dezswap/cosmwasm-etl/pkg/dex/router"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 
@@ -222,8 +226,8 @@ func TestPairStatsRecentUpdateTaskExecute(t *testing.T) {
 	rp := repoMock{}
 	rp.On("HeightOnTimestamp").Return(txs[0].Height, nil)
 	rp.On("LastHeightOfPrice").Return(txs[len(txs)-1].Height, nil)
-	rp.On("GetRecentParsedTxs", mock.Anything, mock.Anything, mock.Anything).Return(txs, nil)
-	rp.On("RecentPrices", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(priceMap, nil)
+	rp.On("GetParsedTxsInHeightRange", mock.Anything, mock.Anything, mock.Anything).Return(txs, nil)
+	rp.On("PricesForHeightRange", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(priceMap, nil)
 
 	task := pairStatsRecentUpdateTask{
 		taskImpl: taskImpl{
@@ -240,11 +244,244 @@ func TestPairStatsRecentUpdateTaskExecute(t *testing.T) {
 	assert.Equal(expected[0], rp.updatedPairStatsRecent[len(rp.updatedPairStatsRecent)-1])
 }
 
+// spanRecordingRepo serves transactions by height and records the spans it was asked
+// for, so a test can see how a window was split and what each split wrote.
+type spanRecordingRepo struct {
+	*repoMock
+
+	heightByTs  map[float64]uint64
+	txsByHeight map[uint64][]schemas.ParsedTxWithPrice
+	prices      []schemas.Price
+	readErr     error
+
+	readSpans [][2]uint64
+	written   []schemas.PairStatsRecent
+	pruneCnt  int
+}
+
+// spanTestWindowEnd is the end the span tests hand to Execute. The task derives the
+// window start from it, so the stub can key on the timestamp it is asked about.
+var spanTestWindowEnd = time.Time{}
+
+// HeightOnTimestamp answers by timestamp rather than by call order: if Execute ever
+// asks about a window this stub was not built for, the test fails outright instead of
+// quietly receiving the other end of the range.
+func (r *spanRecordingRepo) HeightOnTimestamp(_ context.Context, ts float64) (uint64, error) {
+	height, ok := r.heightByTs[ts]
+	if !ok {
+		return 0, fmt.Errorf("spanRecordingRepo: no height stubbed for timestamp %v", ts)
+	}
+
+	return height, nil
+}
+
+// GetParsedTxsInHeightRange mirrors the repository contract: rows ordered by height, then pair.
+func (r *spanRecordingRepo) GetParsedTxsInHeightRange(_ context.Context, startHeight, endHeight uint64) ([]schemas.ParsedTxWithPrice, error) {
+	r.readSpans = append(r.readSpans, [2]uint64{startHeight, endHeight})
+	if r.readErr != nil {
+		return nil, r.readErr
+	}
+
+	var txs []schemas.ParsedTxWithPrice
+	for height := startHeight; height <= endHeight; height++ {
+		atHeight := slices.Clone(r.txsByHeight[height])
+		slices.SortStableFunc(atHeight, func(a, b schemas.ParsedTxWithPrice) int {
+			return cmp.Compare(a.PairId, b.PairId)
+		})
+		txs = append(txs, atHeight...)
+	}
+
+	return txs, nil
+}
+
+// PricesForHeightRange mirrors the real query's seeding: each token starts from its last price
+// at or before startHeight. Returning only in-range prices instead would let a broken
+// seed pass here while the aggregator valued transactions at zero.
+func (r *spanRecordingRepo) PricesForHeightRange(_ context.Context, startHeight, endHeight uint64, _ []string, _ string) (map[uint64][]schemas.Price, error) {
+	seed := map[uint64]uint64{}
+	for _, p := range r.prices {
+		if p.Height <= startHeight && p.Height >= seed[p.TokenId] {
+			seed[p.TokenId] = p.Height
+		}
+	}
+
+	prices := map[uint64][]schemas.Price{}
+	for _, p := range r.prices {
+		if p.Height >= seed[p.TokenId] && p.Height <= endHeight {
+			prices[p.TokenId] = append(prices[p.TokenId], p)
+		}
+	}
+	for _, ps := range prices {
+		slices.SortStableFunc(ps, func(a, b schemas.Price) int {
+			return cmp.Compare(a.Height, b.Height)
+		})
+	}
+
+	return prices, nil
+}
+
+func (r *spanRecordingRepo) WithinTx(_ context.Context, fn func(repo.Repo) error) error {
+	return fn(r)
+}
+
+func (r *spanRecordingRepo) UpdatePairStatsRecent(_ context.Context, stats []schemas.PairStatsRecent) error {
+	r.written = append(r.written, stats...)
+	return nil
+}
+
+func (r *spanRecordingRepo) DeletePairStatsRecent(_ context.Context, _ time.Time) error {
+	r.pruneCnt++
+	return nil
+}
+
+// spanTx places one transaction of a pair at a height. Varying amount keeps a lost or
+// double counted transaction from cancelling out of the totals.
+type spanTx struct {
+	height uint64
+	pairId uint64
+	amount string
+}
+
+func newSpanRecordingRepo(startHeight, endHeight uint64, txs []spanTx) *spanRecordingRepo {
+	r := &spanRecordingRepo{
+		repoMock: &repoMock{},
+		heightByTs: map[float64]uint64{
+			util.ToEpoch(spanTestWindowEnd.Add(-PairStatsRecentTimeRange)): startHeight,
+			util.ToEpoch(spanTestWindowEnd):                                endHeight,
+		},
+		txsByHeight: map[uint64][]schemas.ParsedTxWithPrice{},
+		prices: []schemas.Price{
+			{Height: 0, TokenId: 1, Price: "1"},
+			{Height: 0, TokenId: 2, Price: "2"},
+			// repriced mid-window: later spans have to seed from this height
+			{Height: 500, TokenId: 1, Price: "5"},
+		},
+	}
+	for _, tx := range txs {
+		r.txsByHeight[tx.height] = append(r.txsByHeight[tx.height], schemas.ParsedTxWithPrice{
+			PairId:            tx.pairId,
+			Asset0Amount:      tx.amount,
+			Asset1Amount:      tx.amount,
+			Asset0Liquidity:   "6000000",
+			Asset1Liquidity:   "7000000",
+			Commission0Amount: "1000000",
+			Commission1Amount: "2000000",
+			Price0:            "1",
+			Price1:            "2",
+			Decimals0:         6,
+			Decimals1:         6,
+			Height:            tx.height,
+		})
+	}
+
+	return r
+}
+
+// The task splits a cold start's window into spans so it never holds all of it in
+// memory. Splitting must not change what gets written.
+func TestPairStatsRecentUpdateTaskReadsInHeightSpans(t *testing.T) {
+	const startHeight, endHeight = 1, 2*PairStatsRecentHeightSpan + 500
+	const spanBoundary = PairStatsRecentHeightSpan // last height of the first span
+
+	txs := []spanTx{
+		{height: startHeight, pairId: 1, amount: "1000000"},
+		// one pair twice at one height: drives generateStats' accumulate branch
+		{height: spanBoundary, pairId: 1, amount: "2000000"},
+		{height: spanBoundary, pairId: 1, amount: "3000000"},
+		{height: spanBoundary, pairId: 2, amount: "4000000"},
+		// same pair across the boundary: its closed group must not bleed into the next
+		{height: spanBoundary + 1, pairId: 1, amount: "5000000"},
+		{height: spanBoundary + 1, pairId: 1, amount: "6000000"},
+		{height: endHeight, pairId: 2, amount: "7000000"},
+	}
+
+	rp := newSpanRecordingRepo(startHeight, endHeight, txs)
+	task := pairStatsRecentUpdateTask{
+		taskImpl:   taskImpl{chainId: "test-chain", destDb: rp, logger: logging.Discard},
+		priceToken: "test-price-token",
+		srcDb:      rp,
+		timeRange:  PairStatsRecentTimeRange,
+	}
+
+	require.NoError(t, task.Execute(context.Background(), time.Time{}, spanTestWindowEnd))
+
+	require.Equal(t, [][2]uint64{
+		{startHeight, PairStatsRecentHeightSpan},
+		{PairStatsRecentHeightSpan + 1, 2 * PairStatsRecentHeightSpan},
+		{2*PairStatsRecentHeightSpan + 1, endHeight},
+	}, rp.readSpans, "the window must be read one span at a time")
+
+	// Compare against a single pass over the whole window. Reading prices through the
+	// same stub covers the seeding too: an unseeded span would price differently.
+	ctx := context.Background()
+	singlePass := newSpanRecordingRepo(startHeight, endHeight, txs)
+	allTxs, err := singlePass.GetParsedTxsInHeightRange(ctx, startHeight, endHeight)
+	require.NoError(t, err)
+	allPrices, err := singlePass.PricesForHeightRange(ctx, startHeight, endHeight, nil, "")
+	require.NoError(t, err)
+	expected, err := task.generateStats(allTxs, allPrices)
+	require.NoError(t, err)
+
+	// one row per pair per height; a leaky boundary would merge or add one
+	require.Len(t, expected, 5)
+	// generateStats flushes its leftovers in map order, so compare as a set
+	require.ElementsMatch(t, expected, rp.written)
+	require.Equal(t, uint64(endHeight), task.LastProcessedHeight())
+
+	// The comparison above cancels out anything the task stamps on every row, since both
+	// sides come from the same task. Assert those separately.
+	for _, s := range rp.written {
+		require.Equal(t, "test-chain", s.ChainId)
+		require.Equal(t, "test-price-token", s.PriceToken)
+	}
+}
+
+// endHeight drops when source transactions are pruned. Following it down would re-read
+// an already written range, which lands as duplicate rows.
+func TestPairStatsRecentUpdateTaskNeverMovesHeightBackward(t *testing.T) {
+	const processed = 9999
+
+	rp := newSpanRecordingRepo(1, processed-500, nil)
+	task := pairStatsRecentUpdateTask{
+		taskImpl:  taskImpl{destDb: rp, logger: logging.Discard},
+		srcDb:     rp,
+		timeRange: PairStatsRecentTimeRange,
+	}
+	task.lastProcessedHeight.Store(processed)
+
+	require.NoError(t, task.Execute(context.Background(), time.Time{}, spanTestWindowEnd))
+
+	require.Equal(t, uint64(processed), task.LastProcessedHeight())
+	require.Empty(t, rp.readSpans, "a window already covered must not be read again")
+	// Rows keep falling out of the trailing window while the source stands still, so
+	// skipping the round entirely would leave pair_stats_recent holding stale rows.
+	require.Equal(t, 1, rp.pruneCnt, "the prune must run even with nothing new to derive")
+}
+
+// A failed span must abort the round, not commit a window with a hole and advance past it.
+func TestPairStatsRecentUpdateTaskStopsOnSpanFailure(t *testing.T) {
+	expectedErr := errors.New("read failed")
+	rp := newSpanRecordingRepo(1, 2*PairStatsRecentHeightSpan, nil)
+	rp.readErr = expectedErr
+
+	task := pairStatsRecentUpdateTask{
+		taskImpl:  taskImpl{destDb: rp, logger: logging.Discard},
+		srcDb:     rp,
+		timeRange: PairStatsRecentTimeRange,
+	}
+
+	err := task.Execute(context.Background(), time.Time{}, spanTestWindowEnd)
+
+	require.ErrorIs(t, err, expectedErr)
+	require.Len(t, rp.readSpans, 1, "the round must stop at the failed span")
+	require.Zero(t, task.LastProcessedHeight())
+}
+
 func TestPairStatsRecentUpdateTaskDoesNotAdvanceHeightWhenTransactionFails(t *testing.T) {
 	expectedErr := errors.New("transaction failed")
 	rp := repoMock{withinTxErr: expectedErr}
 	rp.On("HeightOnTimestamp").Return(uint64(10), nil)
-	rp.On("GetRecentParsedTxs").Return([]schemas.ParsedTxWithPrice{}, nil)
+	rp.On("GetParsedTxsInHeightRange").Return([]schemas.ParsedTxWithPrice{}, nil)
 	task := pairStatsRecentUpdateTask{
 		taskImpl:  taskImpl{destDb: &rp, logger: logging.Discard},
 		srcDb:     &rp,

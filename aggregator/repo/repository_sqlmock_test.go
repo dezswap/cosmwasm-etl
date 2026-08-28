@@ -8,11 +8,13 @@ import (
 	"context"
 	"database/sql/driver"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	rootdb "github.com/dezswap/cosmwasm-etl/pkg/db"
+	"github.com/dezswap/cosmwasm-etl/pkg/db/schemas"
 	"github.com/stretchr/testify/require"
 )
 
@@ -202,6 +204,107 @@ func TestDeleteDuplicatesNestsInsideAnEnclosingTransaction(t *testing.T) {
 	})
 
 	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// Every writer taking a slice has to split it. A single INSERT would build the whole
+// statement in memory and fail outright once a busy window crosses the 65535 limit.
+func TestSliceWritersSplitIntoBatches(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		statement string
+		write     func(ctx context.Context, r Repo, rows int) error
+	}{
+		{
+			name:      "UpdatePairStatsRecent",
+			statement: `INSERT INTO "pair_stats_recent"`,
+			write: func(ctx context.Context, r Repo, rows int) error {
+				return r.UpdatePairStatsRecent(ctx, make([]schemas.PairStatsRecent, rows))
+			},
+		},
+		{
+			name:      "UpdateLpHistory",
+			statement: `INSERT INTO "lp_history"`,
+			write: func(ctx context.Context, r Repo, rows int) error {
+				return r.UpdateLpHistory(ctx, make([]schemas.LpHistory, rows))
+			},
+		},
+		{
+			name:      "UpdatePairStats",
+			statement: `INSERT INTO "pair_stats_30m"`,
+			write: func(ctx context.Context, r Repo, rows int) error {
+				return r.UpdatePairStats(ctx, make([]schemas.PairStats30m, rows))
+			},
+		},
+		{
+			name:      "UpdateAccountStats",
+			statement: `INSERT INTO "account_stats_30m"`,
+			write: func(ctx context.Context, r Repo, rows int) error {
+				return r.UpdateAccountStats(ctx, make([]schemas.AccountStats30m, rows))
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sqlDB, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			defer sqlDB.Close()
+
+			gormDB, err := rootdb.OpenGormPostgresWithConn(sqlDB)
+			require.NoError(t, err)
+			repository := &repoImpl{db: gormDB, chainId: "test-chain"}
+
+			// one row past the batch size is the smallest input that has to split
+			mock.ExpectBegin()
+			for range 2 {
+				mock.ExpectExec(tc.statement).WillReturnResult(sqlmock.NewResult(0, InsertBatchSize))
+			}
+			mock.ExpectCommit()
+
+			require.NoError(t, tc.write(context.Background(), repository, InsertBatchSize+1))
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
+// One batch size serves every writer, so it has to clear the widest model's ceiling.
+// Counts come from the models themselves: adding a field narrows that ceiling, and it
+// should fail here rather than on a busy window.
+func TestBatchSizesStayUnderBindParameterLimit(t *testing.T) {
+	const maxBindParams = 65535
+
+	for _, tc := range []struct {
+		name  string
+		model any
+		// fields the writer passes to Omit, which cost no bind parameter
+		omitted int
+	}{
+		{name: "account", model: schemas.Account{}, omitted: 2}, // Id, CreatedAt
+		{name: "lp_history", model: schemas.LpHistory{}},
+		{name: "pair_stats_recent", model: schemas.PairStatsRecent{}},
+		{name: "pair_stats_30m", model: schemas.PairStats30m{}},
+		{name: "account_stats_30m", model: schemas.AccountStats30m{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			columnCnt := reflect.TypeOf(tc.model).NumField() - tc.omitted
+			require.LessOrEqual(t, InsertBatchSize*columnCnt, maxBindParams)
+		})
+	}
+}
+
+func TestSliceWritersSkipEmptyInput(t *testing.T) {
+	sqlDB, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer sqlDB.Close()
+
+	gormDB, err := rootdb.OpenGormPostgresWithConn(sqlDB)
+	require.NoError(t, err)
+	repository := &repoImpl{db: gormDB, chainId: "test-chain"}
+	ctx := context.Background()
+
+	require.NoError(t, repository.UpdatePairStatsRecent(ctx, nil))
+	require.NoError(t, repository.UpdateLpHistory(ctx, nil))
+	require.NoError(t, repository.UpdatePairStats(ctx, nil))
+	require.NoError(t, repository.UpdateAccountStats(ctx, nil))
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

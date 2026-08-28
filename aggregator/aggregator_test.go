@@ -89,13 +89,13 @@ func (r *repoMock) LastHeightOfPrice(_ context.Context) (uint64, error) {
 	return args.Get(0).(uint64), args.Error(1)
 }
 
-func (r *repoMock) GetRecentParsedTxs(_ context.Context, _ uint64, _ uint64) ([]schemas.ParsedTxWithPrice, error) {
-	args := r.Mock.MethodCalled("GetRecentParsedTxs")
+func (r *repoMock) GetParsedTxsInHeightRange(_ context.Context, _ uint64, _ uint64) ([]schemas.ParsedTxWithPrice, error) {
+	args := r.Mock.MethodCalled("GetParsedTxsInHeightRange")
 	return args.Get(0).([]schemas.ParsedTxWithPrice), args.Error(1)
 }
 
-func (r *repoMock) RecentPrices(_ context.Context, _ uint64, _ uint64, _ []string, _ string) (map[uint64][]schemas.Price, error) {
-	args := r.Mock.MethodCalled("RecentPrices")
+func (r *repoMock) PricesForHeightRange(_ context.Context, _ uint64, _ uint64, _ []string, _ string) (map[uint64][]schemas.Price, error) {
+	args := r.Mock.MethodCalled("PricesForHeightRange")
 	return args.Get(0).(map[uint64][]schemas.Price), args.Error(1)
 }
 

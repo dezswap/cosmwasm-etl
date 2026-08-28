@@ -22,9 +22,9 @@ const (
 	TupleLength
 )
 
-// CreateAccountBatchSize keeps a single INSERT well below the 65535 bind
-// parameter limit of the postgres wire protocol.
-const CreateAccountBatchSize = 1000
+// InsertBatchSize caps every slice INSERT here, keeping one statement under postgres'
+// 65535 bind parameter limit and bounding what GORM builds in memory per round trip.
+const InsertBatchSize = 1000
 
 type Repo interface {
 	LatestTimestamp(ctx context.Context, tableName string) (float64, error)
@@ -161,7 +161,11 @@ func (r *repoImpl) LastLiquidity(ctx context.Context, pairId uint64, timestamp f
 }
 
 func (r *repoImpl) UpdatePairStatsRecent(ctx context.Context, stats []schemas.PairStatsRecent) error {
-	tx := r.conn(ctx).Model(schemas.PairStatsRecent{}).CreateInBatches(stats, len(stats))
+	if len(stats) == 0 {
+		return nil
+	}
+
+	tx := r.conn(ctx).Model(schemas.PairStatsRecent{}).CreateInBatches(stats, InsertBatchSize)
 	if tx.Error != nil {
 		return errors.Wrap(tx.Error, "repo.UpdatePairStatsRecent")
 	}
@@ -170,7 +174,11 @@ func (r *repoImpl) UpdatePairStatsRecent(ctx context.Context, stats []schemas.Pa
 }
 
 func (r *repoImpl) UpdateLpHistory(ctx context.Context, history []schemas.LpHistory) error {
-	if tx := r.conn(ctx).Model(schemas.LpHistory{}).CreateInBatches(&history, len(history)); tx.Error != nil {
+	if len(history) == 0 {
+		return nil
+	}
+
+	if tx := r.conn(ctx).Model(schemas.LpHistory{}).CreateInBatches(&history, InsertBatchSize); tx.Error != nil {
 		return tx.Error
 	}
 
@@ -217,7 +225,11 @@ func (r *repoImpl) DeleteDuplicates(ctx context.Context, ts time.Time) error {
 }
 
 func (r *repoImpl) UpdatePairStats(ctx context.Context, stats []schemas.PairStats30m) error {
-	if tx := r.conn(ctx).Omit("Id", "CreatedAt").Create(&stats); tx.Error != nil {
+	if len(stats) == 0 {
+		return nil
+	}
+
+	if tx := r.conn(ctx).Omit("Id", "CreatedAt").CreateInBatches(&stats, InsertBatchSize); tx.Error != nil {
 		return tx.Error
 	}
 
@@ -257,7 +269,7 @@ func (r *repoImpl) UpdateAccountStats(ctx context.Context, stats []schemas.Accou
 			"net_lp_amount":           gorm.Expr("excluded.net_lp_amount"),
 			"modified_at":             gorm.Expr("date_part('epoch'::text, now())"),
 		}),
-	}).Create(&stats)
+	}).CreateInBatches(&stats, InsertBatchSize)
 	if tx.Error != nil {
 		return tx.Error
 	}
@@ -278,7 +290,7 @@ func (r *repoImpl) CreateAccounts(ctx context.Context, addresses []string) error
 		accounts = append(accounts, schemas.Account{Address: address})
 	}
 
-	if tx := r.conn(ctx).Omit("Id", "CreatedAt").Clauses(clause.OnConflict{DoNothing: true}).CreateInBatches(accounts, CreateAccountBatchSize); tx.Error != nil {
+	if tx := r.conn(ctx).Omit("Id", "CreatedAt").Clauses(clause.OnConflict{DoNothing: true}).CreateInBatches(accounts, InsertBatchSize); tx.Error != nil {
 		return errors.Wrap(tx.Error, "repo.CreateAccounts")
 	}
 
