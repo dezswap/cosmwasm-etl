@@ -402,27 +402,27 @@ func Test_PairV2ProvideMapper_applyRefund(t *testing.T) {
 		errMsg   string
 	}{
 		{
-			[]dex.Asset{{xpla.NATIVE_GOVERNANCE_TOKEN, "1000"}, {fmt.Sprintf("%s%s", xpla.CW20_PREFIX, "Asset2"), "10000"}},
-			[]dex.Asset{{xpla.NATIVE_GOVERNANCE_TOKEN, "0"}, {fmt.Sprintf("%s%s", xpla.CW20_PREFIX, "Asset2"), "100"}},
-			[]dex.Asset{{xpla.NATIVE_GOVERNANCE_TOKEN, "1000"}, {fmt.Sprintf("%s%s", xpla.CW20_PREFIX, "Asset2"), "9900"}},
+			[]dex.Asset{{Addr: xpla.NATIVE_GOVERNANCE_TOKEN, Amount: "1000"}, {Addr: fmt.Sprintf("%s%s", xpla.CW20_PREFIX, "Asset2"), Amount: "10000"}},
+			[]dex.Asset{{Addr: xpla.NATIVE_GOVERNANCE_TOKEN, Amount: "0"}, {Addr: fmt.Sprintf("%s%s", xpla.CW20_PREFIX, "Asset2"), Amount: "100"}},
+			[]dex.Asset{{Addr: xpla.NATIVE_GOVERNANCE_TOKEN, Amount: "1000"}, {Addr: fmt.Sprintf("%s%s", xpla.CW20_PREFIX, "Asset2"), Amount: "9900"}},
 			"",
 		},
 		{
-			[]dex.Asset{{xpla.NATIVE_GOVERNANCE_TOKEN, "1234567890"}, {fmt.Sprintf("%s%s", xpla.CW20_PREFIX, "Asset2"), "10000"}},
-			[]dex.Asset{{xpla.NATIVE_GOVERNANCE_TOKEN, "123456"}, {fmt.Sprintf("%s%s", xpla.CW20_PREFIX, "Asset2"), "9999"}},
-			[]dex.Asset{{xpla.NATIVE_GOVERNANCE_TOKEN, "1234567890"}, {fmt.Sprintf("%s%s", xpla.CW20_PREFIX, "Asset2"), "1"}},
+			[]dex.Asset{{Addr: xpla.NATIVE_GOVERNANCE_TOKEN, Amount: "1234567890"}, {Addr: fmt.Sprintf("%s%s", xpla.CW20_PREFIX, "Asset2"), Amount: "10000"}},
+			[]dex.Asset{{Addr: xpla.NATIVE_GOVERNANCE_TOKEN, Amount: "123456"}, {Addr: fmt.Sprintf("%s%s", xpla.CW20_PREFIX, "Asset2"), Amount: "9999"}},
+			[]dex.Asset{{Addr: xpla.NATIVE_GOVERNANCE_TOKEN, Amount: "1234567890"}, {Addr: fmt.Sprintf("%s%s", xpla.CW20_PREFIX, "Asset2"), Amount: "1"}},
 			"",
 		},
 		{
-			[]dex.Asset{{xpla.NATIVE_GOVERNANCE_TOKEN, "1000"}, {fmt.Sprintf("%s%s", xpla.CW20_PREFIX, "Asset2"), "10000"}},
-			[]dex.Asset{{xpla.NATIVE_GOVERNANCE_TOKEN, "0"}, {fmt.Sprintf("%s%s", xpla.CW20_PREFIX, "Asset2"), "9999"}},
-			[]dex.Asset{{xpla.NATIVE_GOVERNANCE_TOKEN, "1000"}, {fmt.Sprintf("%s%s", xpla.CW20_PREFIX, "Asset2"), "10"}},
+			[]dex.Asset{{Addr: xpla.NATIVE_GOVERNANCE_TOKEN, Amount: "1000"}, {Addr: fmt.Sprintf("%s%s", xpla.CW20_PREFIX, "Asset2"), Amount: "10000"}},
+			[]dex.Asset{{Addr: xpla.NATIVE_GOVERNANCE_TOKEN, Amount: "0"}, {Addr: fmt.Sprintf("%s%s", xpla.CW20_PREFIX, "Asset2"), Amount: "9999"}},
+			[]dex.Asset{{Addr: xpla.NATIVE_GOVERNANCE_TOKEN, Amount: "1000"}, {Addr: fmt.Sprintf("%s%s", xpla.CW20_PREFIX, "Asset2"), Amount: "10"}},
 			"Asset2 must be 1",
 		},
 		{
-			[]dex.Asset{{xpla.NATIVE_GOVERNANCE_TOKEN, "1000"}, {fmt.Sprintf("%s%s", xpla.CW20_PREFIX, "Asset2"), "10000"}},
-			[]dex.Asset{{xpla.NATIVE_GOVERNANCE_TOKEN, "10"}, {fmt.Sprintf("%s%s", xpla.CW20_PREFIX, "Asset2"), "9999"}},
-			[]dex.Asset{{xpla.NATIVE_GOVERNANCE_TOKEN, "990"}, {fmt.Sprintf("%s%s", xpla.CW20_PREFIX, "Asset2"), "1"}},
+			[]dex.Asset{{Addr: xpla.NATIVE_GOVERNANCE_TOKEN, Amount: "1000"}, {Addr: fmt.Sprintf("%s%s", xpla.CW20_PREFIX, "Asset2"), Amount: "10000"}},
+			[]dex.Asset{{Addr: xpla.NATIVE_GOVERNANCE_TOKEN, Amount: "10"}, {Addr: fmt.Sprintf("%s%s", xpla.CW20_PREFIX, "Asset2"), Amount: "9999"}},
+			[]dex.Asset{{Addr: xpla.NATIVE_GOVERNANCE_TOKEN, Amount: "990"}, {Addr: fmt.Sprintf("%s%s", xpla.CW20_PREFIX, "Asset2"), Amount: "1"}},
 			"Native token must not be applied",
 		},
 	}

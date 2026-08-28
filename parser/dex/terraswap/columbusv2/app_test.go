@@ -229,7 +229,7 @@ func Test_taxDeduction(t *testing.T) {
 	pairTx := &dex.ParsedTx{
 		Type:         dex.Swap,
 		ContractAddr: "PAIR_ADDR",
-		Assets:       [2]dex.Asset{{"Asset0", "1000"}, {"Asset1", "-1000"}},
+		Assets:       [2]dex.Asset{{Addr: "Asset0", Amount: "1000"}, {Addr: "Asset1", Amount: "-1000"}},
 	}
 
 	// tax_payment log: tax of 10 Asset1
@@ -257,13 +257,13 @@ func Test_taxDeduction_MatchesMsgIndex(t *testing.T) {
 	pairTxMsg0 := &dex.ParsedTx{
 		Type:         dex.Swap,
 		ContractAddr: "PAIR_ADDR",
-		Assets:       [2]dex.Asset{{"Asset0", "1000"}, {"Asset1", "-1000"}},
+		Assets:       [2]dex.Asset{{Addr: "Asset0", Amount: "1000"}, {Addr: "Asset1", Amount: "-1000"}},
 		MsgIndex:     0,
 	}
 	pairTxMsg1 := &dex.ParsedTx{
 		Type:         dex.Swap,
 		ContractAddr: "PAIR_ADDR",
-		Assets:       [2]dex.Asset{{"Asset0", "2000"}, {"Asset1", "-1000"}},
+		Assets:       [2]dex.Asset{{Addr: "Asset0", Amount: "2000"}, {Addr: "Asset1", Amount: "-1000"}},
 		MsgIndex:     1,
 	}
 	taxTxMsg1 := &dex.ParsedTx{
@@ -327,16 +327,16 @@ func rawLogs(logStr string) eventlog.LogResults {
 
 var (
 	pair               = dex.Pair{ContractAddr: "PAIR_ADDR", Assets: []string{"Asset0", "Asset1"}, LpAddr: "Lp"}
-	createTx           = dex.ParsedTx{hash, time.Time{}, dex.CreatePair, sender, "PAIR_ADDR", [2]dex.Asset{{"Asset0", "1000"}, {"Asset1", "1000"}}, "Lp", "1000", "", 0, nil}
-	swapTx             = dex.ParsedTx{hash, time.Time{}, dex.Swap, sender, "PAIR_ADDR", [2]dex.Asset{{"Asset0", "1000"}, {"Asset1", "-1000"}}, "", "", "1", 0, nil}
-	provideTx          = dex.ParsedTx{hash, time.Time{}, dex.Provide, sender, "PAIR_ADDR", [2]dex.Asset{{"Asset0", "1000"}, {"Asset1", "1000"}}, "Lp", "1000", "", 0, nil}
-	withdrawTx         = dex.ParsedTx{hash, time.Time{}, dex.Withdraw, sender, "PAIR_ADDR", [2]dex.Asset{{"Asset0", "0"}, {"Asset1", "0"}}, "Lp", "1000", "", 0, map[string]interface{}{"withdraw_assets": []dex.Asset{{pair.Assets[0], "-1000"}, {pair.Assets[1], "-1000"}}}}
-	transferTx         = dex.ParsedTx{hash, time.Time{}, dex.Transfer, sender, "PAIR_ADDR", [2]dex.Asset{{"Asset0", ""}, {"Asset1", "1000"}}, "", "", "", 0, make(map[string]interface{})}
-	transferFromPairTx = dex.ParsedTx{hash, time.Time{}, dex.Transfer, "PAIR_ADDR", "PAIR_ADDR", [2]dex.Asset{
-		{"Asset0", "-1000"},
-		{"Asset1", ""},
-	}, "", "", "", 0, make(map[string]interface{})}
-	wasmTransferTx = dex.ParsedTx{hash, time.Time{}, dex.Transfer, sender, "PAIR_ADDR", [2]dex.Asset{{"Asset0", "1000"}, {"Asset1", ""}}, "", "", "", 0, make(map[string]interface{})}
+	createTx           = dex.ParsedTx{Hash: hash, Timestamp: time.Time{}, Type: dex.CreatePair, Sender: sender, ContractAddr: "PAIR_ADDR", Assets: [2]dex.Asset{{Addr: "Asset0", Amount: "1000"}, {Addr: "Asset1", Amount: "1000"}}, LpAddr: "Lp", LpAmount: "1000", CommissionAmount: "", MsgIndex: 0, Meta: nil}
+	swapTx             = dex.ParsedTx{Hash: hash, Timestamp: time.Time{}, Type: dex.Swap, Sender: sender, ContractAddr: "PAIR_ADDR", Assets: [2]dex.Asset{{Addr: "Asset0", Amount: "1000"}, {Addr: "Asset1", Amount: "-1000"}}, LpAddr: "", LpAmount: "", CommissionAmount: "1", MsgIndex: 0, Meta: nil}
+	provideTx          = dex.ParsedTx{Hash: hash, Timestamp: time.Time{}, Type: dex.Provide, Sender: sender, ContractAddr: "PAIR_ADDR", Assets: [2]dex.Asset{{Addr: "Asset0", Amount: "1000"}, {Addr: "Asset1", Amount: "1000"}}, LpAddr: "Lp", LpAmount: "1000", CommissionAmount: "", MsgIndex: 0, Meta: nil}
+	withdrawTx         = dex.ParsedTx{Hash: hash, Timestamp: time.Time{}, Type: dex.Withdraw, Sender: sender, ContractAddr: "PAIR_ADDR", Assets: [2]dex.Asset{{Addr: "Asset0", Amount: "0"}, {Addr: "Asset1", Amount: "0"}}, LpAddr: "Lp", LpAmount: "1000", CommissionAmount: "", MsgIndex: 0, Meta: map[string]interface{}{"withdraw_assets": []dex.Asset{{Addr: pair.Assets[0], Amount: "-1000"}, {Addr: pair.Assets[1], Amount: "-1000"}}}}
+	transferTx         = dex.ParsedTx{Hash: hash, Timestamp: time.Time{}, Type: dex.Transfer, Sender: sender, ContractAddr: "PAIR_ADDR", Assets: [2]dex.Asset{{Addr: "Asset0", Amount: ""}, {Addr: "Asset1", Amount: "1000"}}, LpAddr: "", LpAmount: "", CommissionAmount: "", MsgIndex: 0, Meta: make(map[string]interface{})}
+	transferFromPairTx = dex.ParsedTx{Hash: hash, Timestamp: time.Time{}, Type: dex.Transfer, Sender: "PAIR_ADDR", ContractAddr: "PAIR_ADDR", Assets: [2]dex.Asset{
+		{Addr: "Asset0", Amount: "-1000"},
+		{Addr: "Asset1", Amount: ""},
+	}, LpAddr: "", LpAmount: "", CommissionAmount: "", MsgIndex: 0, Meta: make(map[string]interface{})}
+	wasmTransferTx = dex.ParsedTx{Hash: hash, Timestamp: time.Time{}, Type: dex.Transfer, Sender: sender, ContractAddr: "PAIR_ADDR", Assets: [2]dex.Asset{{Addr: "Asset0", Amount: "1000"}, {Addr: "Asset1", Amount: ""}}, LpAddr: "", LpAmount: "", CommissionAmount: "", MsgIndex: 0, Meta: make(map[string]interface{})}
 )
 
 const (
