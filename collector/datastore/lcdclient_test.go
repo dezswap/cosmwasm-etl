@@ -1,10 +1,10 @@
 package datastore
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"errors"
 	"time"
 
 	txtypes "github.com/cosmos/cosmos-sdk/types/tx"
@@ -42,7 +42,6 @@ func Test_lcdClientImpl_GetBlock(t *testing.T) {
 		panic(err)
 	}
 }
-
 
 type errReader struct{}
 

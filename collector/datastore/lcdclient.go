@@ -7,10 +7,10 @@ import (
 	"net/http"
 	"strconv"
 
+	tm_types "github.com/cometbft/cometbft/types"
 	cosmos_types "github.com/cosmos/cosmos-sdk/types"
 	txtypes "github.com/cosmos/cosmos-sdk/types/tx"
 	"github.com/pkg/errors"
-	tm_types "github.com/cometbft/cometbft/types"
 )
 
 type httpClient interface {
