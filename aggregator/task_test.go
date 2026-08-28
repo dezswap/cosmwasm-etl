@@ -226,8 +226,8 @@ func TestPairStatsRecentUpdateTaskExecute(t *testing.T) {
 	rp := repoMock{}
 	rp.On("HeightOnTimestamp").Return(txs[0].Height, nil)
 	rp.On("LastHeightOfPrice").Return(txs[len(txs)-1].Height, nil)
-	rp.On("GetParsedTxsInHeightRange", mock.Anything, mock.Anything, mock.Anything).Return(txs, nil)
-	rp.On("PricesForHeightRange", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(priceMap, nil)
+	rp.On("GetParsedTxsInHeightRange").Return(txs, nil)
+	rp.On("PricesForHeightRange").Return(priceMap, nil)
 
 	task := pairStatsRecentUpdateTask{
 		taskImpl: taskImpl{
