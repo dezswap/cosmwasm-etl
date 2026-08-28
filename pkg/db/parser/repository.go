@@ -187,7 +187,7 @@ select p.id pair_id,
        pt.timestamp
 from parsed_tx pt
      join pair p on pt.chain_id = p.chain_id and pt.contract = p.contract
-     join lp_history lh on p.id = lh.pair_id and pt.height = lh.height
+     join lp_history lh on pt.chain_id = lh.chain_id and p.id = lh.pair_id and pt.height = lh.height
      join tokens t0 on pt.chain_id = t0.chain_id and pt.asset0 = t0.address
      join tokens t1 on pt.chain_id = t1.chain_id and pt.asset1 = t1.address
 where pt.chain_id = ?
