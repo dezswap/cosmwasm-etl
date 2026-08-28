@@ -1,6 +1,7 @@
 package router
 
 import (
+	"context"
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/pkg/db"
 	"github.com/dezswap/cosmwasm-etl/pkg/db/schemas"
@@ -11,8 +12,9 @@ import (
 )
 
 type SrcRepo interface {
-	Pairs() ([]Pair, error)
-	UpdateRoutes(indexToAsset map[int]string, routesMap map[int]map[int][][]int) error
+	Pairs(ctx context.Context) ([]Pair, error)
+	UpdateRoutes(ctx context.Context, indexToAsset map[int]string, routesMap map[int]map[int][][]int) error
+	Close() error
 }
 
 var _ SrcRepo = &srcRepoImpl{}
@@ -22,21 +24,29 @@ type srcRepoImpl struct {
 	chainId string
 }
 
-func NewSrcRepo(chainId string, dbConfig configs.RdbConfig) SrcRepo {
+func NewSrcRepo(chainId string, dbConfig configs.RdbConfig) (SrcRepo, error) {
 	gormDB, err := db.OpenGormPostgres(dbConfig)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	return &srcRepoImpl{
 		db:      gormDB,
 		chainId: chainId,
-	}
+	}, nil
 }
 
-func (r *srcRepoImpl) Pairs() ([]Pair, error) {
+func (r *srcRepoImpl) Close() error {
+	db, err := r.db.DB()
+	if err != nil {
+		return err
+	}
+	return db.Close()
+}
+
+func (r *srcRepoImpl) Pairs(ctx context.Context) ([]Pair, error) {
 	pairs := []schemas.Pair{}
-	tx := r.db.Where(schemas.Pair{ChainId: r.chainId}).Find(&pairs)
+	tx := r.db.WithContext(ctx).Where(schemas.Pair{ChainId: r.chainId}).Find(&pairs)
 	if tx.Error != nil {
 		return nil, errors.Wrap(tx.Error, "repo.Pairs")
 	}
@@ -50,7 +60,7 @@ func (r *srcRepoImpl) Pairs() ([]Pair, error) {
 	return newPairs, nil
 }
 
-func (r *srcRepoImpl) UpdateRoutes(indexToAsset map[int]string, routesMap map[int]map[int][][]int) error {
+func (r *srcRepoImpl) UpdateRoutes(ctx context.Context, indexToAsset map[int]string, routesMap map[int]map[int][][]int) error {
 	dbRoutes := make([]schemas.Route, 0) // nolint: prealloc
 	for a0, a1Routes := range routesMap {
 		for a1, routes := range a1Routes {
@@ -73,7 +83,7 @@ func (r *srcRepoImpl) UpdateRoutes(indexToAsset map[int]string, routesMap map[in
 
 	// batchSize limits inserts to avoid PostgreSQL's 65,535 parameter limit
 	const batchSize = 10000
-	tx := r.db.Model(schemas.Route{}).Clauses(
+	tx := r.db.WithContext(ctx).Model(schemas.Route{}).Clauses(
 		clause.OnConflict{
 			Columns:   []clause.Column{{Name: "chain_id"}, {Name: "asset0"}, {Name: "asset1"}, {Name: "route"}},
 			DoNothing: true,

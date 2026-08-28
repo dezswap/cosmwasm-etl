@@ -1,6 +1,7 @@
 package repo
 
 import (
+	"context"
 	"database/sql"
 	"flag"
 	"os"
@@ -10,7 +11,6 @@ import (
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/pkg/db"
 	"github.com/dezswap/cosmwasm-etl/pkg/db/schemas"
-	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 	"github.com/dezswap/cosmwasm-etl/pkg/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -92,15 +92,34 @@ func TestMain(m *testing.M) {
 	testConfig = configs.NewWithFileName(configName)
 
 	flag.Parse()
-	if *loc == "db" {
-		Logger = logging.Discard
+	os.Exit(m.Run())
+}
 
-		code := m.Run()
-		os.Exit(code)
+// requireDb skips tests that need a live postgres. TestMain used to gate the whole
+// package on the flag instead, which silently skipped the sqlmock-based tests too.
+func requireDb(t *testing.T) {
+	t.Helper()
+	if *loc != "db" {
+		t.Skip("needs a database; run with -type db")
 	}
 }
 
+// mustNewRepo opens a repository and closes its pool when the test ends. Callers
+// must not close it themselves; sql.DB.Close is idempotent, so the one test that
+// exercises Close directly is still safe.
+func mustNewRepo(t *testing.T, config configs.RdbConfig) Repo {
+	t.Helper()
+	repository, err := New(chainName, config)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, repository.Close()) })
+
+	return repository
+}
+
 func TestDeleteDuplicates(t *testing.T) {
+	requireDb(t)
+	ctx := context.Background()
+
 	assert := assert.New(t)
 
 	expectedPairStatsCnt, expectedAccountStatsCnt := 1, 0
@@ -134,9 +153,8 @@ VALUES (2022, 10, 13, 3, 0, 1665630000, 'columbus-5', 3, 4, 0, '3195129', '-2650
 	*/
 
 	// execute
-	repo := New(chainName, testConfig.Aggregator.DestDb)
-	defer repo.Close()
-	err = repo.DeleteDuplicates(util.ToTime(1665628200))
+	repo := mustNewRepo(t, testConfig.Aggregator.DestDb)
+	err = repo.DeleteDuplicates(ctx, util.ToTime(1665628200))
 
 	// verify
 	var pairStatsCnt, accountStatsCnt int
@@ -149,6 +167,9 @@ VALUES (2022, 10, 13, 3, 0, 1665630000, 'columbus-5', 3, 4, 0, '3195129', '-2650
 }
 
 func TestUpdatePairStats(t *testing.T) {
+	requireDb(t)
+	ctx := context.Background()
+
 	assert := assert.New(t)
 
 	expected := schemas.NewPairStat30min(chainName, "axpla", util.ToTime(1665626400), 3)
@@ -167,9 +188,8 @@ func TestUpdatePairStats(t *testing.T) {
 	gormDb.Exec(`TRUNCATE TABLE pair_stats_30m`)
 
 	// execute
-	repo := New(chainName, testConfig.Aggregator.DestDb)
-	defer repo.Close()
-	err = repo.UpdatePairStats([]schemas.PairStats30m{expected})
+	repo := mustNewRepo(t, testConfig.Aggregator.DestDb)
+	err = repo.UpdatePairStats(ctx, []schemas.PairStats30m{expected})
 
 	// verify
 	actual := []schemas.PairStats30m{}
@@ -194,6 +214,9 @@ func TestUpdatePairStats(t *testing.T) {
 }
 
 func TestUpdateAccountStats(t *testing.T) {
+	requireDb(t)
+	ctx := context.Background()
+
 	assert := assert.New(t)
 
 	expected := schemas.NewAccountStat30min(chainName, util.ToTime(1665637200), 3, 1, "xplaaabb")
@@ -212,9 +235,8 @@ func TestUpdateAccountStats(t *testing.T) {
 	gormDb.Exec(`TRUNCATE TABLE account_stats_30m`)
 
 	// execute
-	repo := New(chainName, testConfig.Aggregator.DestDb)
-	defer repo.Close()
-	err = repo.UpdateAccountStats([]schemas.AccountStats30m{expected})
+	repo := mustNewRepo(t, testConfig.Aggregator.DestDb)
+	err = repo.UpdateAccountStats(ctx, []schemas.AccountStats30m{expected})
 
 	// verify
 	actual := []schemas.AccountStats30m{}
@@ -240,6 +262,9 @@ func TestUpdateAccountStats(t *testing.T) {
 }
 
 func TestUpdateAccountStatsUpsertsOnAccountIdPairTimestamp(t *testing.T) {
+	requireDb(t)
+	ctx := context.Background()
+
 	assert := assert.New(t)
 	require := require.New(t)
 
@@ -272,10 +297,9 @@ func TestUpdateAccountStatsUpsertsOnAccountIdPairTimestamp(t *testing.T) {
 	defer db.Close()
 	require.NoError(gormDb.Exec(`TRUNCATE TABLE account_stats_30m`).Error)
 
-	repo := New(chainName, testConfig.Aggregator.DestDb)
-	defer repo.Close()
-	require.NoError(repo.UpdateAccountStats([]schemas.AccountStats30m{initial}))
-	require.NoError(repo.UpdateAccountStats([]schemas.AccountStats30m{updated}))
+	repo := mustNewRepo(t, testConfig.Aggregator.DestDb)
+	require.NoError(repo.UpdateAccountStats(ctx, []schemas.AccountStats30m{initial}))
+	require.NoError(repo.UpdateAccountStats(ctx, []schemas.AccountStats30m{updated}))
 
 	var count int64
 	require.NoError(gormDb.Model(&schemas.AccountStats30m{}).Count(&count).Error)
@@ -298,6 +322,9 @@ func TestUpdateAccountStatsUpsertsOnAccountIdPairTimestamp(t *testing.T) {
 }
 
 func TestUpdateAccountStatsNoopOnEmptyInput(t *testing.T) {
+	requireDb(t)
+	ctx := context.Background()
+
 	assert := assert.New(t)
 	require := require.New(t)
 
@@ -310,9 +337,8 @@ func TestUpdateAccountStatsNoopOnEmptyInput(t *testing.T) {
 	existing.TxCnt = 1
 	require.NoError(gormDb.Omit("Id", "CreatedAt").Create(&existing).Error)
 
-	repo := New(chainName, testConfig.Aggregator.DestDb)
-	defer repo.Close()
-	err = repo.UpdateAccountStats([]schemas.AccountStats30m{})
+	repo := mustNewRepo(t, testConfig.Aggregator.DestDb)
+	err = repo.UpdateAccountStats(ctx, []schemas.AccountStats30m{})
 
 	var count int64
 	require.NoError(gormDb.Model(&schemas.AccountStats30m{}).Count(&count).Error)
@@ -321,6 +347,9 @@ func TestUpdateAccountStatsNoopOnEmptyInput(t *testing.T) {
 }
 
 func TestCreateAccounts(t *testing.T) {
+	requireDb(t)
+	ctx := context.Background()
+
 	assert := assert.New(t)
 
 	expected := []string{"terra1234", "terra5678", "terra9012"}
@@ -333,9 +362,8 @@ func TestCreateAccounts(t *testing.T) {
 	gormDb.Exec(`TRUNCATE TABLE account`)
 
 	// execute
-	repo := New(chainName, testConfig.Aggregator.DestDb)
-	defer repo.Close()
-	err = repo.CreateAccounts(expected)
+	repo := mustNewRepo(t, testConfig.Aggregator.DestDb)
+	err = repo.CreateAccounts(ctx, expected)
 	assert.NoError(err)
 
 	// verify
@@ -356,6 +384,9 @@ func TestCreateAccounts(t *testing.T) {
 }
 
 func TestAccountIdsReturnsOnlyExistingAccounts(t *testing.T) {
+	requireDb(t)
+	ctx := context.Background()
+
 	assert := assert.New(t)
 	require := require.New(t)
 
@@ -365,19 +396,21 @@ func TestAccountIdsReturnsOnlyExistingAccounts(t *testing.T) {
 
 	createTestAccounts(gormDb)
 
-	repo := New(chainName, testConfig.Aggregator.DestDb)
-	defer repo.Close()
-	actual, err := repo.AccountIds([]string{accounts[0].Address, "terra0missing"})
+	repo := mustNewRepo(t, testConfig.Aggregator.DestDb)
+	actual, err := repo.AccountIds(ctx, []string{accounts[0].Address, "terra0missing"})
 
 	assert.NoError(err)
 	assert.Equal(map[string]uint64{accounts[0].Address: accounts[0].Id}, actual)
 
-	empty, err := repo.AccountIds([]string{})
+	empty, err := repo.AccountIds(ctx, []string{})
 	assert.NoError(err)
 	assert.Empty(empty)
 }
 
 func TestHoldingPairIds(t *testing.T) {
+	requireDb(t)
+	ctx := context.Background()
+
 	assert := assert.New(t)
 
 	expected := []uint64{1} // the index of `pairs`
@@ -389,9 +422,8 @@ func TestHoldingPairIds(t *testing.T) {
 
 	createTestAccountStats(gormDb)
 
-	repo := New(chainName, testConfig.Aggregator.DestDb)
-	defer repo.Close()
-	actual, err := repo.HoldingPairIds(accounts[1].Id)
+	repo := mustNewRepo(t, testConfig.Aggregator.DestDb)
+	actual, err := repo.HoldingPairIds(ctx, accounts[1].Id)
 
 	// verify
 	assert.NoError(err)
@@ -399,6 +431,9 @@ func TestHoldingPairIds(t *testing.T) {
 }
 
 func TestHoldingPairIdsExcludesZeroOrNegativeNetLp(t *testing.T) {
+	requireDb(t)
+	ctx := context.Background()
+
 	assert := assert.New(t)
 	require := require.New(t)
 
@@ -417,15 +452,17 @@ func TestHoldingPairIdsExcludesZeroOrNegativeNetLp(t *testing.T) {
 	stats[2].NetLpAmount = "-5"
 	require.NoError(gormDb.Omit("Id", "CreatedAt").Create(&stats).Error)
 
-	repo := New(chainName, testConfig.Aggregator.SrcDb)
-	defer repo.Close()
-	actual, err := repo.HoldingPairIds(accounts[0].Id)
+	repo := mustNewRepo(t, testConfig.Aggregator.SrcDb)
+	actual, err := repo.HoldingPairIds(ctx, accounts[0].Id)
 
 	assert.NoError(err)
 	assert.EqualValues([]uint64{1}, actual)
 }
 
 func TestAccounts(t *testing.T) {
+	requireDb(t)
+	ctx := context.Background()
+
 	assert := assert.New(t)
 
 	expected := make(map[uint64]string)
@@ -441,9 +478,8 @@ func TestAccounts(t *testing.T) {
 	createTestAccountStats(gormDb)
 
 	// execute
-	repo := New(chainName, testConfig.Aggregator.SrcDb)
-	defer repo.Close()
-	actual, err := repo.Accounts(end)
+	repo := mustNewRepo(t, testConfig.Aggregator.SrcDb)
+	actual, err := repo.Accounts(ctx, end)
 
 	// verify
 	assert.NoError(err)
@@ -451,6 +487,9 @@ func TestAccounts(t *testing.T) {
 }
 
 func TestAccountsIncludesPositiveLpAccountsAndRecentlyCreatedAccounts(t *testing.T) {
+	requireDb(t)
+	ctx := context.Background()
+
 	assert := assert.New(t)
 	require := require.New(t)
 
@@ -477,9 +516,8 @@ func TestAccountsIncludesPositiveLpAccountsAndRecentlyCreatedAccounts(t *testing
 	stats[1].NetLpAmount = "0"
 	require.NoError(gormDb.Omit("Id", "CreatedAt").Create(&stats).Error)
 
-	repo := New(chainName, testConfig.Aggregator.SrcDb)
-	defer repo.Close()
-	actual, err := repo.Accounts(endTs)
+	repo := mustNewRepo(t, testConfig.Aggregator.SrcDb)
+	actual, err := repo.Accounts(ctx, endTs)
 
 	assert.NoError(err)
 	assert.Equal(map[uint64]string{
@@ -489,6 +527,8 @@ func TestAccountsIncludesPositiveLpAccountsAndRecentlyCreatedAccounts(t *testing
 }
 
 func TestAccountStats30mMigrationDefaults(t *testing.T) {
+	requireDb(t)
+
 	assert := assert.New(t)
 	require := require.New(t)
 
@@ -521,6 +561,8 @@ INSERT INTO account_stats_30m (
 }
 
 func TestAccountSchemaDoesNotIncludeProfileColumns(t *testing.T) {
+	requireDb(t)
+
 	assert := assert.New(t)
 	require := require.New(t)
 
@@ -539,10 +581,12 @@ WHERE table_name = 'account'
 }
 
 func TestClose(t *testing.T) {
+	requireDb(t)
+
 	assert := assert.New(t)
 
-	repo := New(chainName, testConfig.Aggregator.SrcDb)
-	err := repo.Close()
+	repository := mustNewRepo(t, testConfig.Aggregator.SrcDb)
+	err := repository.Close()
 
 	assert.NoError(err)
 }

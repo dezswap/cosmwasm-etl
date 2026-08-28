@@ -1,6 +1,7 @@
 package repo
 
 import (
+	"context"
 	"time"
 
 	"github.com/pkg/errors"
@@ -9,7 +10,6 @@ import (
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/pkg/db"
 	"github.com/dezswap/cosmwasm-etl/pkg/db/schemas"
-	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 	"github.com/dezswap/cosmwasm-etl/pkg/util"
 	"gorm.io/gorm"
 )
@@ -22,25 +22,28 @@ const (
 	TupleLength
 )
 
-var Logger logging.Logger
+// CreateAccountBatchSize keeps a single INSERT well below the 65535 bind
+// parameter limit of the postgres wire protocol.
+const CreateAccountBatchSize = 1000
 
 type Repo interface {
-	LatestTimestamp(tableName string) (float64, error)
-	LastHeightOfPairStatsRecent() (uint64, error)
-	LastLpHistory(height uint64) ([]schemas.LpHistory, error)
-	LastLiquidity(pairId uint64, timestamp float64) ([TupleLength]string, error)
-	BeginTx() (*gorm.DB, error)
-	UpdatePairStatsRecent(tx *gorm.DB, stats []schemas.PairStatsRecent) error
-	UpdateLpHistory(history []schemas.LpHistory) error
-	DeletePairStatsRecent(tx *gorm.DB, deleteBefore time.Time) error
+	LatestTimestamp(ctx context.Context, tableName string) (float64, error)
+	LastHeightOfPairStatsRecent(ctx context.Context) (uint64, error)
+	LastLpHistory(ctx context.Context, height uint64) ([]schemas.LpHistory, error)
+	LastLiquidity(ctx context.Context, pairId uint64, timestamp float64) ([TupleLength]string, error)
+	UpdatePairStatsRecent(ctx context.Context, stats []schemas.PairStatsRecent) error
+	UpdateLpHistory(ctx context.Context, history []schemas.LpHistory) error
+	DeletePairStatsRecent(ctx context.Context, deleteBefore time.Time) error
 
-	DeleteDuplicates(end time.Time) error
-	UpdatePairStats(stats []schemas.PairStats30m) error
-	UpdateAccountStats(stats []schemas.AccountStats30m) error
-	CreateAccounts(addresses []string) error
-	AccountIds(addresses []string) (map[string]uint64, error)
-	HoldingPairIds(accountId uint64) ([]uint64, error)
-	Accounts(endTs float64) (map[uint64]string, error)
+	DeleteDuplicates(ctx context.Context, end time.Time) error
+	UpdatePairStats(ctx context.Context, stats []schemas.PairStats30m) error
+	UpdateAccountStats(ctx context.Context, stats []schemas.AccountStats30m) error
+	CreateAccounts(ctx context.Context, addresses []string) error
+	AccountIds(ctx context.Context, addresses []string) (map[string]uint64, error)
+	HoldingPairIds(ctx context.Context, accountId uint64) ([]uint64, error)
+	Accounts(ctx context.Context, endTs float64) (map[uint64]string, error)
+
+	WithinTx(ctx context.Context, fn func(Repo) error) error
 	Close() error
 }
 
@@ -49,18 +52,29 @@ type repoImpl struct {
 	chainId string
 }
 
-func New(chainId string, dbConfig configs.RdbConfig) Repo {
+var _ Repo = &repoImpl{}
+
+func New(chainId string, dbConfig configs.RdbConfig) (Repo, error) {
 	gormDB, err := db.OpenGormPostgres(dbConfig)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-
-	Logger.Infof("Successfully connected to the database %s:%d/%s.", dbConfig.Host, dbConfig.Port, dbConfig.Database)
 
 	return &repoImpl{
 		db:      gormDB,
 		chainId: chainId,
-	}
+	}, nil
+}
+
+// conn binds the repository handle to ctx so every query is cancellable.
+func (r *repoImpl) conn(ctx context.Context) *gorm.DB { return r.db.WithContext(ctx) }
+
+// WithinTx gives the callback a Repo bound to one transaction; GORM rolls back
+// when the callback fails or the context is canceled.
+func (r *repoImpl) WithinTx(ctx context.Context, fn func(Repo) error) error {
+	return r.conn(ctx).Transaction(func(tx *gorm.DB) error {
+		return fn(&repoImpl{db: tx, chainId: r.chainId})
+	})
 }
 
 func (r *repoImpl) Close() error {
@@ -72,8 +86,8 @@ func (r *repoImpl) Close() error {
 	return db.Close()
 }
 
-func (r *repoImpl) LatestTimestamp(tableName string) (float64, error) {
-	row := r.db.Table(tableName).Where("chain_id = ?", r.chainId).Select("coalesce(max(timestamp), 0)").Row()
+func (r *repoImpl) LatestTimestamp(ctx context.Context, tableName string) (float64, error) {
+	row := r.conn(ctx).Table(tableName).Where("chain_id = ?", r.chainId).Select("coalesce(max(timestamp), 0)").Row()
 	if err := row.Err(); err != nil {
 		return 0, err
 	}
@@ -86,8 +100,8 @@ func (r *repoImpl) LatestTimestamp(tableName string) (float64, error) {
 	return ts, nil
 }
 
-func (r *repoImpl) LastHeightOfPairStatsRecent() (uint64, error) {
-	row := r.db.Model(schemas.PairStatsRecent{}).Where("chain_id = ?", r.chainId).Select("coalesce(max(height), 0)").Row()
+func (r *repoImpl) LastHeightOfPairStatsRecent(ctx context.Context) (uint64, error) {
+	row := r.conn(ctx).Model(schemas.PairStatsRecent{}).Where("chain_id = ?", r.chainId).Select("coalesce(max(height), 0)").Row()
 	if err := row.Err(); err != nil {
 		return 0, err
 	}
@@ -100,7 +114,7 @@ func (r *repoImpl) LastHeightOfPairStatsRecent() (uint64, error) {
 	return height, nil
 }
 
-func (r *repoImpl) LastLpHistory(height uint64) ([]schemas.LpHistory, error) {
+func (r *repoImpl) LastLpHistory(ctx context.Context, height uint64) ([]schemas.LpHistory, error) {
 	query := `
 select lh.height,
        lh.pair_id,
@@ -115,21 +129,21 @@ where chain_id = ?
 order by lh.height asc
 `
 	history := []schemas.LpHistory{}
-	if tx := r.db.Raw(query, r.chainId, height, r.chainId).Scan(&history); tx.Error != nil {
+	if tx := r.conn(ctx).Raw(query, r.chainId, height, r.chainId).Scan(&history); tx.Error != nil {
 		return nil, errors.Wrap(tx.Error, "repo.LastLpHistory")
 	}
 
 	return history, nil
 }
 
-func (r *repoImpl) LastLiquidity(pairId uint64, timestamp float64) ([TupleLength]string, error) {
+func (r *repoImpl) LastLiquidity(ctx context.Context, pairId uint64, timestamp float64) ([TupleLength]string, error) {
 	type result struct {
 		Liquidity0 string
 		Liquidity1 string
 	}
 
 	res := result{}
-	if tx := r.db.Model(schemas.PairStats30m{}).Where(
+	if tx := r.conn(ctx).Model(schemas.PairStats30m{}).Where(
 		"pair_id = ? and timestamp = (select max(timestamp) from pair_stats_30m where pair_id = ? and timestamp <= ?)", pairId, pairId, timestamp).Select(
 		"liquidity0, liquidity1, liquidity0_in_price, liquidity1_in_price").Find(&res); tx.Error != nil {
 		return [TupleLength]string{}, errors.Wrap(tx.Error, "LastLiquidity")
@@ -146,17 +160,8 @@ func (r *repoImpl) LastLiquidity(pairId uint64, timestamp float64) ([TupleLength
 	return pairLiquidity, nil
 }
 
-func (r *repoImpl) BeginTx() (*gorm.DB, error) {
-	tx := r.db.Begin()
-	if tx.Error != nil {
-		return nil, errors.Wrap(tx.Error, "repo.BeginTx")
-	}
-
-	return tx, nil
-}
-
-func (r *repoImpl) UpdatePairStatsRecent(tx *gorm.DB, stats []schemas.PairStatsRecent) error {
-	tx = tx.Model(schemas.PairStatsRecent{}).CreateInBatches(stats, len(stats))
+func (r *repoImpl) UpdatePairStatsRecent(ctx context.Context, stats []schemas.PairStatsRecent) error {
+	tx := r.conn(ctx).Model(schemas.PairStatsRecent{}).CreateInBatches(stats, len(stats))
 	if tx.Error != nil {
 		return errors.Wrap(tx.Error, "repo.UpdatePairStatsRecent")
 	}
@@ -164,16 +169,16 @@ func (r *repoImpl) UpdatePairStatsRecent(tx *gorm.DB, stats []schemas.PairStatsR
 	return nil
 }
 
-func (r *repoImpl) UpdateLpHistory(history []schemas.LpHistory) error {
-	if tx := r.db.Model(schemas.LpHistory{}).CreateInBatches(&history, len(history)); tx.Error != nil {
+func (r *repoImpl) UpdateLpHistory(ctx context.Context, history []schemas.LpHistory) error {
+	if tx := r.conn(ctx).Model(schemas.LpHistory{}).CreateInBatches(&history, len(history)); tx.Error != nil {
 		return tx.Error
 	}
 
 	return nil
 }
 
-func (r *repoImpl) DeletePairStatsRecent(tx *gorm.DB, deleteBefore time.Time) error {
-	tx = tx.Where(
+func (r *repoImpl) DeletePairStatsRecent(ctx context.Context, deleteBefore time.Time) error {
+	tx := r.conn(ctx).Where(
 		"timestamp < ?", deleteBefore.Unix()).Delete(
 		&schemas.PairStatsRecent{})
 	if tx.Error != nil {
@@ -183,41 +188,48 @@ func (r *repoImpl) DeletePairStatsRecent(tx *gorm.DB, deleteBefore time.Time) er
 	return nil
 }
 
-func (r *repoImpl) DeleteDuplicates(ts time.Time) error {
-	if tx := r.db.Where("timestamp >= ? and chain_id = ?", util.ToEpoch(ts), r.chainId).Delete(&schemas.LpHistory{}); tx.Error != nil {
-		return tx.Error
-	}
-	if tx := r.db.Where("height >= (select min(height) from parsed_tx where timestamp >= ?) and chain_id = ?", util.ToEpoch(ts), r.chainId).Delete(&schemas.Price{}); tx.Error != nil {
-		return tx.Error
-	}
-	if tx := r.db.Where("timestamp >= ? and chain_id = ?", util.ToEpoch(ts), r.chainId).Delete(&schemas.PairStatsRecent{}); tx.Error != nil {
-		return tx.Error
-	}
+// DeleteDuplicates removes every derived record at or after ts, spanning its own
+// transaction so a failure or cancellation cannot leave only some of the five
+// aggregate tables purged. Callers need no wrapper; running it inside WithinTx is
+// still safe, since gorm nests the inner transaction as a savepoint.
+func (r *repoImpl) DeleteDuplicates(ctx context.Context, ts time.Time) error {
 	end := ts.Truncate(30 * time.Minute).Add(30 * time.Minute).UTC()
-	if tx := r.db.Where("timestamp >= ? and chain_id = ?", util.ToEpoch(end), r.chainId).Delete(&schemas.PairStats30m{}); tx.Error != nil {
-		return tx.Error
-	}
-	if tx := r.db.Where("timestamp >= ? and chain_id = ?", util.ToEpoch(end), r.chainId).Delete(&schemas.AccountStats30m{}); tx.Error != nil {
+
+	return r.conn(ctx).Transaction(func(tx *gorm.DB) error {
+		if result := tx.Where("timestamp >= ? and chain_id = ?", util.ToEpoch(ts), r.chainId).Delete(&schemas.LpHistory{}); result.Error != nil {
+			return result.Error
+		}
+		if result := tx.Where("height >= (select min(height) from parsed_tx where timestamp >= ?) and chain_id = ?", util.ToEpoch(ts), r.chainId).Delete(&schemas.Price{}); result.Error != nil {
+			return result.Error
+		}
+		if result := tx.Where("timestamp >= ? and chain_id = ?", util.ToEpoch(ts), r.chainId).Delete(&schemas.PairStatsRecent{}); result.Error != nil {
+			return result.Error
+		}
+		if result := tx.Where("timestamp >= ? and chain_id = ?", util.ToEpoch(end), r.chainId).Delete(&schemas.PairStats30m{}); result.Error != nil {
+			return result.Error
+		}
+		if result := tx.Where("timestamp >= ? and chain_id = ?", util.ToEpoch(end), r.chainId).Delete(&schemas.AccountStats30m{}); result.Error != nil {
+			return result.Error
+		}
+
+		return nil
+	})
+}
+
+func (r *repoImpl) UpdatePairStats(ctx context.Context, stats []schemas.PairStats30m) error {
+	if tx := r.conn(ctx).Omit("Id", "CreatedAt").Create(&stats); tx.Error != nil {
 		return tx.Error
 	}
 
 	return nil
 }
 
-func (r *repoImpl) UpdatePairStats(stats []schemas.PairStats30m) error {
-	if tx := r.db.Omit("Id", "CreatedAt").Create(&stats); tx.Error != nil {
-		return tx.Error
-	}
-
-	return nil
-}
-
-func (r *repoImpl) UpdateAccountStats(stats []schemas.AccountStats30m) error {
+func (r *repoImpl) UpdateAccountStats(ctx context.Context, stats []schemas.AccountStats30m) error {
 	if len(stats) == 0 {
 		return nil
 	}
 
-	tx := r.db.Omit("Id", "CreatedAt").Clauses(clause.OnConflict{
+	tx := r.conn(ctx).Omit("Id", "CreatedAt").Clauses(clause.OnConflict{
 		Columns: []clause.Column{
 			{Name: "chain_id"},
 			{Name: "timestamp"},
@@ -253,43 +265,33 @@ func (r *repoImpl) UpdateAccountStats(stats []schemas.AccountStats30m) error {
 	return nil
 }
 
-func (r *repoImpl) CreateAccounts(addresses []string) error {
-	db, err := r.db.DB()
-	if err != nil {
-		return err
+// CreateAccounts inserts through r.db so it joins an enclosing WithinTx instead of
+// running on a separate connection. Ids and created_at are left to the database,
+// so callers must resolve ids with AccountIds rather than reading them back.
+func (r *repoImpl) CreateAccounts(ctx context.Context, addresses []string) error {
+	if len(addresses) == 0 {
+		return nil
 	}
 
-	sql := `
-INSERT INTO account(address) VALUES($1) ON CONFLICT DO NOTHING
-`
-	tx, err := db.Begin()
-	if err != nil {
-		return err
-	}
-
+	accounts := make([]schemas.Account, 0, len(addresses))
 	for _, address := range addresses {
-		if _, err := tx.Exec(sql, address); err != nil {
-			if e := tx.Rollback(); e != nil { // lint issue, usually do not check this return
-				return e
-			}
-			return err
-		}
+		accounts = append(accounts, schemas.Account{Address: address})
 	}
 
-	if err := tx.Commit(); err != nil {
-		return err
+	if tx := r.conn(ctx).Omit("Id", "CreatedAt").Clauses(clause.OnConflict{DoNothing: true}).CreateInBatches(accounts, CreateAccountBatchSize); tx.Error != nil {
+		return errors.Wrap(tx.Error, "repo.CreateAccounts")
 	}
 
 	return nil
 }
 
-func (r *repoImpl) AccountIds(addresses []string) (map[string]uint64, error) {
+func (r *repoImpl) AccountIds(ctx context.Context, addresses []string) (map[string]uint64, error) {
 	if len(addresses) == 0 {
 		return map[string]uint64{}, nil
 	}
 
 	var accounts []schemas.Account
-	if tx := r.db.Model(schemas.Account{}).Where("address in ?", addresses).Find(&accounts); tx.Error != nil {
+	if tx := r.conn(ctx).Model(schemas.Account{}).Where("address in ?", addresses).Find(&accounts); tx.Error != nil {
 		return nil, tx.Error
 	}
 
@@ -301,41 +303,26 @@ func (r *repoImpl) AccountIds(addresses []string) (map[string]uint64, error) {
 	return accountIds, nil
 }
 
-func (r *repoImpl) HoldingPairIds(accountId uint64) ([]uint64, error) {
+func (r *repoImpl) HoldingPairIds(ctx context.Context, accountId uint64) ([]uint64, error) {
 	query := `
 SELECT pair_id
 FROM (
     SELECT pair_id, SUM(net_lp_amount) stla
     FROM account_stats_30m
-    WHERE chain_id = $1
-      AND account_id = $2
+    WHERE chain_id = ?
+      AND account_id = ?
     GROUP BY pair_id) t
 WHERE stla > 0
 `
-	db, err := r.db.DB()
-	if err != nil {
-		return nil, err
-	}
-
-	rows, err := db.Query(query, r.chainId, accountId)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
 	pairIds := []uint64{}
-	for rows.Next() {
-		var id uint64
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		pairIds = append(pairIds, id)
+	if tx := r.conn(ctx).Raw(query, r.chainId, accountId).Scan(&pairIds); tx.Error != nil {
+		return nil, errors.Wrap(tx.Error, "repo.HoldingPairIds")
 	}
 
 	return pairIds, nil
 }
 
-func (r *repoImpl) Accounts(endTs float64) (map[uint64]string, error) {
+func (r *repoImpl) Accounts(ctx context.Context, endTs float64) (map[uint64]string, error) {
 	query := `
 SELECT id, address
 FROM account
@@ -343,32 +330,20 @@ WHERE id IN (
     SELECT t.account_id
     FROM (SELECT account_id, SUM(net_lp_amount) tla_sum
     	  FROM account_stats_30m
-          WHERE chain_id = $1
+          WHERE chain_id = ?
           GROUP BY account_id) t
     WHERE t.tla_sum > 0
     )
-  OR created_at >= $2
+  OR created_at >= ?
 `
-	db, err := r.db.DB()
-	if err != nil {
-		return nil, err
+	rows := []schemas.Account{}
+	if tx := r.conn(ctx).Raw(query, r.chainId, endTs).Scan(&rows); tx.Error != nil {
+		return nil, errors.Wrap(tx.Error, "repo.Accounts")
 	}
 
-	rows, err := db.Query(query, r.chainId, endTs)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	accounts := make(map[uint64]string)
-	for rows.Next() {
-		var id uint64
-		var address string
-		if err := rows.Scan(&id, &address); err != nil {
-			return nil, err
-		}
-
-		accounts[id] = address
+	accounts := make(map[uint64]string, len(rows))
+	for _, account := range rows {
+		accounts[account.Id] = account.Address
 	}
 
 	return accounts, nil

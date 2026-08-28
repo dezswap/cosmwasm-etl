@@ -1,6 +1,7 @@
 package router
 
 import (
+	"context"
 	"sort"
 	"sync"
 
@@ -14,7 +15,7 @@ type Router interface {
 	RouterAddress() string
 	Routes(from, to string) [][]string
 	TokensFrom(from string, hopCount int) []string
-	Update() error
+	Update(context.Context) error
 }
 
 var _ Router = &routerImpl{}
@@ -27,10 +28,20 @@ type routerImpl struct {
 	maxHopCount   uint
 	writeDb       bool
 
-	// state
+	// state guarded by mutex; a published routeInfo is never mutated in place, so
+	// readers only need the lock long enough to take a reference.
 	cachedPairs []Pair
 	routeInfo
-	mutex *sync.Mutex
+	mutex *sync.RWMutex
+}
+
+// currentRouteInfo returns the published route graph, or nil before the first
+// successful Update.
+func (r *routerImpl) currentRouteInfo() routeInfo {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	return r.routeInfo
 }
 
 func New(repo SrcRepo, c configs.RouterConfig, logger logging.Logger) Router {
@@ -39,7 +50,7 @@ func New(repo SrcRepo, c configs.RouterConfig, logger logging.Logger) Router {
 		logger:        logger,
 		repo:          repo,
 		routerAddress: c.RouterAddr,
-		mutex:         &sync.Mutex{},
+		mutex:         &sync.RWMutex{},
 		maxHopCount:   c.MaxHopCount,
 		writeDb:       c.WriteDb,
 	}
@@ -50,7 +61,7 @@ func (r *routerImpl) RouterAddress() string {
 }
 
 func (r *routerImpl) TokensFrom(from string, hopCount int) []string {
-	routeInfo := r.routeInfo
+	routeInfo := r.currentRouteInfo()
 	if routeInfo == nil {
 		return nil
 	}
@@ -81,7 +92,7 @@ func (r *routerImpl) TokensFrom(from string, hopCount int) []string {
 }
 
 func (r *routerImpl) Routes(from, to string) [][]string {
-	cachedInfo := r.routeInfo
+	cachedInfo := r.currentRouteInfo()
 	if cachedInfo == nil {
 		return nil
 	}
@@ -103,20 +114,25 @@ func (r *routerImpl) Routes(from, to string) [][]string {
 	return routesArr
 }
 
-func (r *routerImpl) Update() error {
-	pairs, err := r.repo.Pairs()
+// Update holds the write lock across the whole rebuild, so readers never observe a
+// partially built graph and instead block until the swap completes. Pairs are read
+// before taking the lock; when writeDb is set the rebuild also persists routes, so
+// the lock is held for the duration of that write.
+func (r *routerImpl) Update(ctx context.Context) error {
+	pairs, err := r.repo.Pairs(ctx)
 	if err != nil {
 		return errors.Wrap(err, "routerImpl.Update")
 	}
 
 	r.mutex.Lock()
+	defer r.mutex.Unlock()
 
 	if r.shouldUpdate(pairs) {
-		var repo SrcRepo
+		var writeRepo SrcRepo
 		if r.writeDb {
-			repo = r.repo
+			writeRepo = r.repo
 		}
-		ri, err := newRouteInfo(pairs, r.maxHopCount, repo)
+		ri, err := newRouteInfo(ctx, pairs, r.maxHopCount, writeRepo)
 		if err != nil {
 			return err
 		}
@@ -125,7 +141,6 @@ func (r *routerImpl) Update() error {
 		r.cachedPairs = pairs
 	}
 
-	r.mutex.Unlock()
 	return nil
 }
 

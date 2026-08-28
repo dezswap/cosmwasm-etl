@@ -1,6 +1,7 @@
 package router
 
 import (
+	"context"
 	"sort"
 )
 
@@ -28,7 +29,7 @@ type routeInfoImpl struct {
 var _ routeInfo = &routeInfoImpl{}
 
 // newRouteInfo implements cache
-func newRouteInfo(pairs []Pair, maxHopCount uint, repo SrcRepo) (routeInfo, error) {
+func newRouteInfo(ctx context.Context, pairs []Pair, maxHopCount uint, repo SrcRepo) (routeInfo, error) {
 	if maxHopCount > MAX_ROUTE_HOP_COUNT {
 		maxHopCount = MAX_ROUTE_HOP_COUNT
 	}
@@ -36,7 +37,7 @@ func newRouteInfo(pairs []Pair, maxHopCount uint, repo SrcRepo) (routeInfo, erro
 
 	ri.setIndex(pairs)
 	ri.setPairMap(pairs)
-	if err := ri.setRoutesMap(repo); err != nil {
+	if err := ri.setRoutesMap(ctx, repo); err != nil {
 		return nil, err
 	}
 
@@ -105,7 +106,7 @@ func (ri *routeInfoImpl) setPairMap(pairs []Pair) {
 	}
 }
 
-func (ri *routeInfoImpl) setRoutesMap(repo SrcRepo) error {
+func (ri *routeInfoImpl) setRoutesMap(ctx context.Context, repo SrcRepo) error {
 	ri.routesMap = make(map[int]map[int][][]int)
 	keys := make([]int, 0, len(ri.initialPairMap))
 	visited := make(map[int]bool)
@@ -122,7 +123,7 @@ func (ri *routeInfoImpl) setRoutesMap(repo SrcRepo) error {
 	}
 
 	if repo != nil {
-		if err := repo.UpdateRoutes(ri.indexToAsset, ri.routesMap); err != nil {
+		if err := repo.UpdateRoutes(ctx, ri.indexToAsset, ri.routesMap); err != nil {
 			return err
 		}
 	}

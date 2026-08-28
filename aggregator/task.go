@@ -4,6 +4,7 @@ import (
 	"context"
 	"math"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	cmath "cosmossdk.io/math"
@@ -23,13 +24,14 @@ const LpHistoryUpdateLimit = 100
 const WaitPeriod = 10 * time.Second
 
 type task interface {
+	Name() string
 	Execute(ctx context.Context, start time.Time, end time.Time) error
 	LastProcessedHeight() uint64
 }
 
 type predeterminedTimeTask interface {
 	task
-	StartTimestamp(startTs time.Time) (time.Time, error)
+	StartTimestamp(ctx context.Context, startTs time.Time) (time.Time, error)
 }
 
 type taskImpl struct {
@@ -40,11 +42,11 @@ type taskImpl struct {
 	logger          logging.Logger
 
 	// State
-	lastProcessedHeight uint64
+	lastProcessedHeight atomic.Uint64
 }
 
 func (t *taskImpl) LastProcessedHeight() uint64 {
-	return t.lastProcessedHeight
+	return t.lastProcessedHeight.Load()
 }
 
 type lpHistoryTask struct {
@@ -90,6 +92,13 @@ type accountStatsUpdateTask struct {
 	srcDb      parser.ReadRepository
 }
 
+func (*lpHistoryTask) Name() string             { return "lp_history" }
+func (*routerTask) Name() string                { return "router" }
+func (*priceTask) Name() string                 { return "price" }
+func (*pairStatsRecentUpdateTask) Name() string { return "pair_stats_recent" }
+func (*pairStatsUpdateTask) Name() string       { return "pair_stats_30m" }
+func (*accountStatsUpdateTask) Name() string    { return "account_stats_30m" }
+
 func newLpHistoryTask(config configs.AggregatorConfig, srcRepo parser.ReadRepository, destRepo repo.Repo, logger logging.Logger) task {
 	return &lpHistoryTask{
 		taskImpl: taskImpl{
@@ -101,8 +110,8 @@ func newLpHistoryTask(config configs.AggregatorConfig, srcRepo parser.ReadReposi
 	}
 }
 
-func (t *lpHistoryTask) Execute(_ context.Context, _ time.Time, _ time.Time) error {
-	lastHistories, err := t.destDb.LastLpHistory(uint64(math.MaxInt64))
+func (t *lpHistoryTask) Execute(ctx context.Context, _ time.Time, _ time.Time) error {
+	lastHistories, err := t.destDb.LastLpHistory(ctx, uint64(math.MaxInt64))
 	if err != nil {
 		return err
 	}
@@ -110,13 +119,13 @@ func (t *lpHistoryTask) Execute(_ context.Context, _ time.Time, _ time.Time) err
 	latestLpMap := make(map[uint64][]string)
 	for _, h := range lastHistories {
 		latestLpMap[h.PairId] = []string{h.Liquidity0, h.Liquidity1}
-		if h.Height > t.lastProcessedHeight {
-			t.lastProcessedHeight = h.Height
+		if h.Height > t.lastProcessedHeight.Load() {
+			t.lastProcessedHeight.Store(h.Height)
 		}
 	}
 
 	for {
-		txs, err := t.srcDb.GetParsedTxsWithLimit(t.lastProcessedHeight+1, LpHistoryUpdateLimit)
+		txs, err := t.srcDb.GetParsedTxsWithLimit(ctx, t.lastProcessedHeight.Load()+1, LpHistoryUpdateLimit)
 		if err != nil {
 			return err
 		}
@@ -128,11 +137,11 @@ func (t *lpHistoryTask) Execute(_ context.Context, _ time.Time, _ time.Time) err
 		if err != nil {
 			return err
 		}
-		err = t.destDb.UpdateLpHistory(history)
+		err = t.destDb.UpdateLpHistory(ctx, history)
 		if err != nil {
 			return err
 		}
-		t.lastProcessedHeight = history[len(history)-1].Height
+		t.lastProcessedHeight.Store(history[len(history)-1].Height)
 	}
 
 	t.logger.Infof("Complete lp history update.")
@@ -140,7 +149,7 @@ func (t *lpHistoryTask) Execute(_ context.Context, _ time.Time, _ time.Time) err
 	return nil
 }
 
-func (t lpHistoryTask) generateHistory(latestLpMap map[uint64][]string, txs []schemas.ParsedTxWithPrice) ([]schemas.LpHistory, error) {
+func (t *lpHistoryTask) generateHistory(latestLpMap map[uint64][]string, txs []schemas.ParsedTxWithPrice) ([]schemas.LpHistory, error) {
 	history := []schemas.LpHistory{}
 
 	pairIdLpHistoryMap := make(map[uint64][2]cmath.LegacyDec)
@@ -218,9 +227,7 @@ func (t lpHistoryTask) generateHistory(latestLpMap map[uint64][]string, txs []sc
 	return history, nil
 }
 
-func newRouterTask(config configs.AggregatorConfig, logger logging.Logger) task {
-	repo := router.NewSrcRepo(config.ChainId, config.DestDb)
-
+func newRouterTask(config configs.AggregatorConfig, repo router.SrcRepo, logger logging.Logger) task {
 	return &routerTask{
 		taskImpl: taskImpl{
 			chainId: config.ChainId,
@@ -231,22 +238,26 @@ func newRouterTask(config configs.AggregatorConfig, logger logging.Logger) task 
 	}
 }
 
-func (t *routerTask) Execute(_ context.Context, _ time.Time, _ time.Time) error {
-	pairs, err := t.db.Pairs()
+func (t *routerTask) Execute(ctx context.Context, _ time.Time, _ time.Time) error {
+	pairs, err := t.db.Pairs(ctx)
 	if err != nil {
 		return err
 	}
 
 	if len(pairs) > t.pairCnt {
+		// only remember the new count once the rebuild succeeded, otherwise a failed
+		// update would be skipped on every later run
+		if err := t.router.Update(ctx); err != nil {
+			return err
+		}
 		t.pairCnt = len(pairs)
-		return t.router.Update()
 	}
 
 	return nil
 }
 
-func newPriceTask(config configs.AggregatorConfig, destRepo repo.Repo, logger logging.Logger, parentTasks []task) (task, error) {
-	pt, err := price.New(price.NewRepo(config.ChainId, config.SrcDb), config.PriceToken, logger)
+func newPriceTask(ctx context.Context, config configs.AggregatorConfig, destRepo repo.Repo, priceRepo price.SrcRepo, logger logging.Logger, parentTasks []task) (task, error) {
+	pt, err := price.New(ctx, priceRepo, config.PriceToken, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -267,16 +278,16 @@ func (t *priceTask) Execute(ctx context.Context, _ time.Time, _ time.Time) error
 	height := uint64(0)
 
 	for {
-		nextHeight, err := t.priceTracker.NextHeight(height)
+		nextHeight, err := t.priceTracker.NextHeight(ctx, height)
 		if err != nil {
 			return err
 		}
 		if nextHeight == price.NaValue {
-			currHeight, err := t.priceTracker.CurrHeight()
+			currHeight, err := t.priceTracker.CurrHeight(ctx)
 			if err != nil {
 				return err
 			}
-			t.lastProcessedHeight = uint64(currHeight) // update the current height for the child tasks
+			t.lastProcessedHeight.Store(uint64(currHeight)) // update the current height for the child tasks
 
 			return nil
 		}
@@ -286,11 +297,11 @@ func (t *priceTask) Execute(ctx context.Context, _ time.Time, _ time.Time) error
 			return err
 		}
 
-		err = t.priceTracker.Run(height)
+		err = t.priceTracker.Run(ctx, height)
 		if err != nil {
 			return err
 		}
-		t.lastProcessedHeight = height
+		t.lastProcessedHeight.Store(height)
 	}
 }
 
@@ -310,34 +321,36 @@ func newPairStatsRecentUpdateTask(config configs.AggregatorConfig, srcRepo parse
 }
 
 func (t *pairStatsRecentUpdateTask) Execute(ctx context.Context, _ time.Time, end time.Time) error {
-	if t.lastProcessedHeight == 0 {
-		var err error
-		t.lastProcessedHeight, err = t.destDb.LastHeightOfPairStatsRecent()
+	lastProcessedHeight := t.lastProcessedHeight.Load()
+	if lastProcessedHeight == 0 {
+		loadedHeight, err := t.destDb.LastHeightOfPairStatsRecent(ctx)
 		if err != nil {
 			return err
 		}
+		t.lastProcessedHeight.Store(loadedHeight)
+		lastProcessedHeight = loadedHeight
 	}
 	startTs := end.Add(-1 * t.timeRange)
-	startHeight, err := t.srcDb.HeightOnTimestamp(util.ToEpoch(startTs))
+	startHeight, err := t.srcDb.HeightOnTimestamp(ctx, util.ToEpoch(startTs))
 	if err != nil {
 		return err
 	}
 
-	endHeight, err := t.srcDb.HeightOnTimestamp(util.ToEpoch(end))
+	endHeight, err := t.srcDb.HeightOnTimestamp(ctx, util.ToEpoch(end))
 	if err != nil {
 		return err
 	}
 
 	var stats []schemas.PairStatsRecent
-	if endHeight > t.lastProcessedHeight {
+	if endHeight > lastProcessedHeight {
 		if err := waitUntilReachingHeight(ctx, t.parentTasks, endHeight, t.taskWaitTimeout); err != nil {
 			return err
 		}
 
-		if startHeight <= t.lastProcessedHeight {
-			startHeight = t.lastProcessedHeight + 1
+		if startHeight <= lastProcessedHeight {
+			startHeight = lastProcessedHeight + 1
 		}
-		txs, err := t.srcDb.GetRecentParsedTxs(startHeight, endHeight)
+		txs, err := t.srcDb.GetRecentParsedTxs(ctx, startHeight, endHeight)
 		if err != nil {
 			return err
 		}
@@ -354,7 +367,7 @@ func (t *pairStatsRecentUpdateTask) Execute(ctx context.Context, _ time.Time, en
 				tokenIds = append(tokenIds, key)
 			}
 
-			priceMap, err := t.srcDb.RecentPrices(startHeight, endHeight, tokenIds, t.priceToken)
+			priceMap, err := t.srcDb.RecentPrices(ctx, startHeight, endHeight, tokenIds, t.priceToken)
 			if err != nil {
 				return err
 			}
@@ -366,34 +379,26 @@ func (t *pairStatsRecentUpdateTask) Execute(ctx context.Context, _ time.Time, en
 		}
 	}
 
-	dbTx, err := t.destDb.BeginTx()
-	if err != nil {
-		return err
-	}
-
-	if len(stats) > 0 {
-		err = t.destDb.UpdatePairStatsRecent(dbTx, stats)
-		if err != nil {
-			return err
+	err = t.destDb.WithinTx(ctx, func(txRepo repo.Repo) error {
+		if len(stats) > 0 {
+			if err := txRepo.UpdatePairStatsRecent(ctx, stats); err != nil {
+				return err
+			}
 		}
-	}
-
-	err = t.destDb.DeletePairStatsRecent(dbTx, startTs)
+		return txRepo.DeletePairStatsRecent(ctx, startTs)
+	})
 	if err != nil {
 		return err
 	}
-	if dbTx = dbTx.Commit(); dbTx.Error != nil {
-		return errors.Wrap(dbTx.Error, "pairStatsRecentUpdateTask.Execute")
-	}
 
-	t.lastProcessedHeight = endHeight
+	t.lastProcessedHeight.Store(endHeight)
 
 	t.logger.Infof("Complete pair stats recent update.")
 
 	return nil
 }
 
-func (t pairStatsRecentUpdateTask) generateStats(txs []schemas.ParsedTxWithPrice, priceMap map[uint64][]schemas.Price) ([]schemas.PairStatsRecent, error) {
+func (t *pairStatsRecentUpdateTask) generateStats(txs []schemas.ParsedTxWithPrice, priceMap map[uint64][]schemas.Price) ([]schemas.PairStatsRecent, error) {
 	type pairStat struct {
 		PairId             uint64
 		ChainId            string
@@ -555,7 +560,7 @@ func (t pairStatsRecentUpdateTask) generateStats(txs []schemas.ParsedTxWithPrice
 	return stats, nil
 }
 
-func (t pairStatsRecentUpdateTask) searchPrice(tokenIdStr string, targetHeight uint64, priceMap map[uint64][]schemas.Price) (cmath.LegacyDec, error) {
+func (t *pairStatsRecentUpdateTask) searchPrice(tokenIdStr string, targetHeight uint64, priceMap map[uint64][]schemas.Price) (cmath.LegacyDec, error) {
 	tokenId, err := strconv.ParseUint(tokenIdStr, 10, 64)
 	if err != nil {
 		return cmath.LegacyZeroDec(), err
@@ -592,16 +597,16 @@ func newPairStatsUpdateTask(config configs.AggregatorConfig, srcRepo parser.Read
 	}
 }
 
-func (t pairStatsUpdateTask) StartTimestamp(startTs time.Time) (time.Time, error) {
+func (t *pairStatsUpdateTask) StartTimestamp(ctx context.Context, startTs time.Time) (time.Time, error) {
 	if !startTs.IsZero() {
 		return startTs, nil
 	}
 
-	destTsF, err := t.destDb.LatestTimestamp(schemas.PairStats30m{}.TableName())
+	destTsF, err := t.destDb.LatestTimestamp(ctx, schemas.PairStats30m{}.TableName())
 	if err != nil {
 		return time.Time{}, err
 	}
-	srcTsF, err := t.srcDb.OldestTxTimestamp()
+	srcTsF, err := t.srcDb.OldestTxTimestamp(ctx)
 	if err != nil {
 		return time.Time{}, err
 	}
@@ -616,7 +621,7 @@ func (t pairStatsUpdateTask) StartTimestamp(startTs time.Time) (time.Time, error
 }
 
 func (t *pairStatsUpdateTask) Execute(ctx context.Context, start time.Time, end time.Time) error {
-	lastHeight, err := t.srcDb.HeightOnTimestamp(util.ToEpoch(end))
+	lastHeight, err := t.srcDb.HeightOnTimestamp(ctx, util.ToEpoch(end))
 	if err != nil {
 		return err
 	}
@@ -626,7 +631,7 @@ func (t *pairStatsUpdateTask) Execute(ctx context.Context, start time.Time, end 
 
 	startTs := util.ToEpoch(start)
 	endTs := util.ToEpoch(end)
-	stats, err := t.srcDb.PairStats(startTs, endTs, t.priceToken, t.prevStatMap)
+	stats, err := t.srcDb.PairStats(ctx, startTs, endTs, t.priceToken, t.prevStatMap)
 	if err != nil {
 		return err
 	}
@@ -635,7 +640,7 @@ func (t *pairStatsUpdateTask) Execute(ctx context.Context, start time.Time, end 
 		return nil
 	}
 
-	lpMap, err := t.srcDb.LiquiditiesOfPairStats(startTs, endTs, t.priceToken)
+	lpMap, err := t.srcDb.LiquiditiesOfPairStats(ctx, startTs, endTs, t.priceToken)
 	if err != nil {
 		return err
 	}
@@ -653,11 +658,11 @@ func (t *pairStatsUpdateTask) Execute(ctx context.Context, start time.Time, end 
 	}
 
 	if len(stats) > 0 {
-		if err := t.destDb.UpdatePairStats(stats); err != nil {
+		if err := t.destDb.UpdatePairStats(ctx, stats); err != nil {
 			return err
 		}
 	}
-	t.lastProcessedHeight = lastHeight
+	t.lastProcessedHeight.Store(lastHeight)
 
 	t.logger.Infof("Complete pair stats update for the timeframe '%s - %s'.", start.String(), end.String())
 
@@ -678,16 +683,16 @@ func newAccountStatsUpdateTask(config configs.AggregatorConfig, srcRepo parser.R
 	}
 }
 
-func (t *accountStatsUpdateTask) StartTimestamp(startTs time.Time) (time.Time, error) {
+func (t *accountStatsUpdateTask) StartTimestamp(ctx context.Context, startTs time.Time) (time.Time, error) {
 	if !startTs.IsZero() {
 		return startTs, nil
 	}
 
-	destTsF, err := t.destDb.LatestTimestamp(schemas.AccountStats30m{}.TableName())
+	destTsF, err := t.destDb.LatestTimestamp(ctx, schemas.AccountStats30m{}.TableName())
 	if err != nil {
 		return time.Time{}, err
 	}
-	srcTsF, err := t.srcDb.OldestTxTimestamp()
+	srcTsF, err := t.srcDb.OldestTxTimestamp(ctx)
 	if err != nil {
 		return time.Time{}, err
 	}
@@ -704,7 +709,7 @@ func (t *accountStatsUpdateTask) StartTimestamp(startTs time.Time) (time.Time, e
 func (t *accountStatsUpdateTask) Execute(ctx context.Context, start time.Time, end time.Time) error {
 	startEpoch, endEpoch := util.ToEpoch(start), util.ToEpoch(end)
 
-	endHeight, err := t.srcDb.HeightOnTimestamp(endEpoch)
+	endHeight, err := t.srcDb.HeightOnTimestamp(ctx, endEpoch)
 	if err != nil {
 		return err
 	}
@@ -712,18 +717,18 @@ func (t *accountStatsUpdateTask) Execute(ctx context.Context, start time.Time, e
 		return err
 	}
 
-	stats, err := t.srcDb.AccountStats(startEpoch, endEpoch, t.priceToken)
+	stats, err := t.srcDb.AccountStats(ctx, startEpoch, endEpoch, t.priceToken)
 	if err != nil {
 		return err
 	}
 
 	if len(stats) > 0 {
 		addresses := uniqueAccountAddresses(stats)
-		if err := t.destDb.CreateAccounts(addresses); err != nil {
+		if err := t.destDb.CreateAccounts(ctx, addresses); err != nil {
 			return err
 		}
 
-		accountIds, err := t.destDb.AccountIds(addresses)
+		accountIds, err := t.destDb.AccountIds(ctx, addresses)
 		if err != nil {
 			return err
 		}
@@ -745,13 +750,13 @@ func (t *accountStatsUpdateTask) Execute(ctx context.Context, start time.Time, e
 			stats[i] = s
 		}
 
-		err = t.destDb.UpdateAccountStats(stats)
+		err = t.destDb.UpdateAccountStats(ctx, stats)
 		if err != nil {
 			return err
 		}
 	}
 
-	t.lastProcessedHeight = endHeight
+	t.lastProcessedHeight.Store(endHeight)
 
 	t.logger.Infof("Complete account stats update for the timeframe '%s - %s'.", start.String(), end.String())
 
@@ -799,10 +804,8 @@ func waitUntilReachingHeight(ctx context.Context, parentTasks []task, targetHeig
 				break
 			}
 
-			select {
-			case <-waitCtx.Done():
+			if !waitFor(waitCtx, WaitPeriod) {
 				return errors.Wrapf(waitCtx.Err(), "waitUntilReachingHeight: parent task did not reach target height %d; current height=%d timeout=%s", targetHeight, currentHeight, timeout)
-			case <-time.After(WaitPeriod):
 			}
 		}
 	}

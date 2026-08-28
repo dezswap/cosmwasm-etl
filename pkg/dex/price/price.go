@@ -1,12 +1,13 @@
 package price
 
 import (
-	"cosmossdk.io/math"
-	"github.com/pkg/errors"
+	"context"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
+
+	"cosmossdk.io/math"
+	"github.com/pkg/errors"
 
 	"github.com/dezswap/cosmwasm-etl/pkg/db/schemas"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
@@ -14,9 +15,9 @@ import (
 )
 
 type Price interface {
-	CurrHeight() (int64, error)
-	NextHeight(minHeight uint64) (int64, error)
-	Run(height uint64) error
+	CurrHeight(context.Context) (int64, error)
+	NextHeight(context.Context, uint64) (int64, error)
+	Run(context.Context, uint64) error
 }
 
 var _ Price = &priceImpl{}
@@ -25,16 +26,15 @@ type priceImpl struct {
 	repo       SrcRepo
 	priceToken string
 	logger     logging.Logger
-	mutex      *sync.Mutex
 
 	tokenDecimals               map[string]int64
 	priceRoutes                 map[string][][]string
 	latestRouteUpdatedTimestamp time.Time
 }
 
-func New(repo SrcRepo, priceToken string, logger logging.Logger) (Price, error) {
+func New(ctx context.Context, repo SrcRepo, priceToken string, logger logging.Logger) (Price, error) {
 	tokenDecimals := make(map[string]int64)
-	priceTokenDecimal, err := repo.Decimals(priceToken)
+	priceTokenDecimal, err := repo.Decimals(ctx, priceToken)
 	if err != nil {
 		return nil, err
 	}
@@ -44,15 +44,14 @@ func New(repo SrcRepo, priceToken string, logger logging.Logger) (Price, error) 
 		logger:        logger,
 		priceToken:    priceToken,
 		repo:          repo,
-		mutex:         &sync.Mutex{},
 		tokenDecimals: tokenDecimals,
 	}
 
 	return p, nil
 }
 
-func (p *priceImpl) CurrHeight() (int64, error) {
-	height, err := p.repo.CurrHeight()
+func (p *priceImpl) CurrHeight(ctx context.Context) (int64, error) {
+	height, err := p.repo.CurrHeight(ctx)
 	if err != nil {
 		return NaValue, err
 	}
@@ -60,15 +59,15 @@ func (p *priceImpl) CurrHeight() (int64, error) {
 	return height, nil
 }
 
-func (p *priceImpl) NextHeight(minHeight uint64) (int64, error) {
+func (p *priceImpl) NextHeight(ctx context.Context, minHeight uint64) (int64, error) {
 	if minHeight == 0 {
-		if firstHeight, err := p.repo.FirstHeight(p.priceToken); err != nil {
+		if firstHeight, err := p.repo.FirstHeight(ctx, p.priceToken); err != nil {
 			return NaValue, err
 		} else if firstHeight > 0 {
 			minHeight = uint64(firstHeight) - 1
 		}
 	}
-	height, err := p.repo.NextHeight(minHeight)
+	height, err := p.repo.NextHeight(ctx, minHeight)
 	if err != nil {
 		return NaValue, err
 	}
@@ -76,12 +75,21 @@ func (p *priceImpl) NextHeight(minHeight uint64) (int64, error) {
 	return height, nil
 }
 
-func (p *priceImpl) Run(height uint64) error {
-	if err := p.updatePriceRoute(); err != nil {
+// Run calculates one height inside a single transaction, so a failed or canceled
+// height is retried as a whole. The tx-scoped repository is passed down explicitly
+// to keep cached routes and decimals on p across heights.
+func (p *priceImpl) Run(ctx context.Context, height uint64) error {
+	return p.repo.WithinTx(ctx, func(txRepo SrcRepo) error {
+		return p.run(ctx, txRepo, height)
+	})
+}
+
+func (p *priceImpl) run(ctx context.Context, repo SrcRepo, height uint64) error {
+	if err := p.updatePriceRoute(ctx, repo); err != nil {
 		return err
 	}
 
-	txs, err := p.repo.Txs(height)
+	txs, err := repo.Txs(ctx, height)
 	if err != nil {
 		return err
 	}
@@ -92,11 +100,11 @@ func (p *priceImpl) Run(height uint64) error {
 		}
 
 		if t.Asset0 == p.priceToken || t.Asset1 == p.priceToken {
-			if err := p.updateDirectSwapPrice(t); err != nil {
+			if err := p.updateDirectSwapPrice(ctx, repo, t); err != nil {
 				return err
 			}
 		} else {
-			if err := p.updateIndirectSwapPrice(t); err != nil {
+			if err := p.updateIndirectSwapPrice(ctx, repo, t); err != nil {
 				return err
 			}
 		}
@@ -105,14 +113,16 @@ func (p *priceImpl) Run(height uint64) error {
 	return nil
 }
 
-func (p *priceImpl) updatePriceRoute() error {
-	ts, err := p.repo.LatestRouteUpdateTimestamp()
+// updatePriceRoute reloads the route table only when the router has published a
+// newer one.
+func (p *priceImpl) updatePriceRoute(ctx context.Context, repo SrcRepo) error {
+	ts, err := repo.LatestRouteUpdateTimestamp(ctx)
 	if err != nil {
 		return err
 	}
 	lruts := util.ToTime(ts)
 	if lruts.After(p.latestRouteUpdatedTimestamp) {
-		p.priceRoutes, err = p.repo.Route(p.priceToken)
+		p.priceRoutes, err = repo.Route(ctx, p.priceToken)
 		if err != nil {
 			return err
 		}
@@ -122,7 +132,7 @@ func (p *priceImpl) updatePriceRoute() error {
 	return nil
 }
 
-func (p *priceImpl) updateDirectSwapPrice(tx schemas.ParsedTx) error {
+func (p *priceImpl) updateDirectSwapPrice(ctx context.Context, repo SrcRepo, tx schemas.ParsedTx) error {
 	isReverse := tx.Asset0 == p.priceToken
 
 	var targetToken string
@@ -132,13 +142,13 @@ func (p *priceImpl) updateDirectSwapPrice(tx schemas.ParsedTx) error {
 	if isReverse {
 		targetToken = tx.Asset1
 		decimals0 = p.tokenDecimals[p.priceToken]
-		decimals1, err = p.decimals(tx.Asset1)
+		decimals1, err = p.decimals(ctx, repo, tx.Asset1)
 		if err != nil {
 			return err
 		}
 	} else {
 		targetToken = tx.Asset0
-		decimals0, err = p.decimals(tx.Asset0)
+		decimals0, err = p.decimals(ctx, repo, tx.Asset0)
 		if err != nil {
 			return err
 		}
@@ -151,7 +161,7 @@ func (p *priceImpl) updateDirectSwapPrice(tx schemas.ParsedTx) error {
 			"priceImpl.updateDirectSwapPrice: (Tx Hash: ", tx.Hash, ")"}, ""))
 	}
 
-	if err := p.repo.UpdateDirectPrice(tx.Height, tx.Id, targetToken, price.String(), p.priceToken, isReverse); err != nil {
+	if err := repo.UpdateDirectPrice(ctx, tx.Height, tx.Id, targetToken, price.String(), p.priceToken, isReverse); err != nil {
 		return err
 	}
 
@@ -174,14 +184,14 @@ func (p *priceImpl) calculatePrice(asset0Amount string, asset0Decimals int64, as
 	return asset1AmountD.Quo(asset0AmountD).Abs(), nil
 }
 
-func (p *priceImpl) decimals(token string) (int64, error) {
+func (p *priceImpl) decimals(ctx context.Context, repo SrcRepo, token string) (int64, error) {
 	var decimals int64
 	var err error
 
 	if d, ok := p.tokenDecimals[token]; ok {
 		decimals = d
 	} else {
-		decimals, err = p.repo.Decimals(token)
+		decimals, err = repo.Decimals(ctx, token)
 		if err != nil {
 			return NaValue, err
 		}
@@ -191,24 +201,24 @@ func (p *priceImpl) decimals(token string) (int64, error) {
 	return decimals, nil
 }
 
-func (p *priceImpl) updateIndirectSwapPrice(tx schemas.ParsedTx) error {
-	decimals0, err := p.decimals(tx.Asset0)
+func (p *priceImpl) updateIndirectSwapPrice(ctx context.Context, repo SrcRepo, tx schemas.ParsedTx) error {
+	decimals0, err := p.decimals(ctx, repo, tx.Asset0)
 	if err != nil {
 		return errors.Wrap(err,
 			strings.Join([]string{"priceImpl.updateIndirectSwapPrice: (Tx hash:", tx.Hash, ")"}, ""))
 	}
-	decimals1, err := p.decimals(tx.Asset1)
+	decimals1, err := p.decimals(ctx, repo, tx.Asset1)
 	if err != nil {
 		return errors.Wrap(err,
 			strings.Join([]string{"priceImpl.updateIndirectSwapPrice: (Tx hash:", tx.Hash, ")"}, ""))
 	}
 
-	route0, price0, liquidity0, err := p.optimalRoutePrice(tx.Height, tx.Asset0, decimals0)
+	route0, price0, liquidity0, err := p.optimalRoutePrice(ctx, repo, tx.Height, tx.Asset0, decimals0)
 	if err != nil {
 		return errors.Wrap(err,
 			strings.Join([]string{"priceImpl.updateIndirectSwapPrice: (Tx hash:", tx.Hash, ")"}, ""))
 	}
-	route1, price1, liquidity1, err := p.optimalRoutePrice(tx.Height, tx.Asset1, decimals1)
+	route1, price1, liquidity1, err := p.optimalRoutePrice(ctx, repo, tx.Height, tx.Asset1, decimals1)
 	if err != nil {
 		return errors.Wrap(err,
 			strings.Join([]string{"priceImpl.updateIndirectSwapPrice: (Tx hash:", tx.Hash, ")"}, ""))
@@ -282,18 +292,18 @@ func (p *priceImpl) updateIndirectSwapPrice(tx schemas.ParsedTx) error {
 		}
 	}
 
-	if err := p.repo.UpdateRoutePrice(tx.Height, tx.Id, tx.Asset0, price0.Abs().String(), p.priceToken, route0); err != nil {
+	if err := repo.UpdateRoutePrice(ctx, tx.Height, tx.Id, tx.Asset0, price0.Abs().String(), p.priceToken, route0); err != nil {
 		return err
 	}
 
-	if err := p.repo.UpdateRoutePrice(tx.Height, tx.Id, tx.Asset1, price1.Abs().String(), p.priceToken, route1); err != nil {
+	if err := repo.UpdateRoutePrice(ctx, tx.Height, tx.Id, tx.Asset1, price1.Abs().String(), p.priceToken, route1); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (p *priceImpl) optimalRoutePrice(height uint64, token string, decimals int64) ([]string, math.LegacyDec, math.LegacyDec, error) {
+func (p *priceImpl) optimalRoutePrice(ctx context.Context, repo SrcRepo, height uint64, token string, decimals int64) ([]string, math.LegacyDec, math.LegacyDec, error) {
 	var optimalRoute []string
 	optimalPrice := math.LegacyZeroDec()
 	optimalRouteLiquidity := math.LegacyZeroDec()
@@ -306,7 +316,7 @@ func (p *priceImpl) optimalRoutePrice(height uint64, token string, decimals int6
 	}
 
 	for _, route := range routes {
-		price, liquidities, err := p.calculateRoutePrice(height, route, token, decimals)
+		price, liquidities, err := p.calculateRoutePrice(ctx, repo, height, route, token, decimals)
 		if err != nil {
 			return nil, math.LegacyDec{}, math.LegacyDec{}, err
 		}
@@ -355,7 +365,7 @@ func (p *priceImpl) optimalRoutePrice(height uint64, token string, decimals int6
 	return optimalRoute, optimalPrice, optimalRouteLiquidity, nil
 }
 
-func (p *priceImpl) calculateRoutePrice(height uint64, route []string, token string, decimals int64) (math.LegacyDec, []math.LegacyDec, error) {
+func (p *priceImpl) calculateRoutePrice(ctx context.Context, repo SrcRepo, height uint64, route []string, token string, decimals int64) (math.LegacyDec, []math.LegacyDec, error) {
 	liquiditiesInPriceToken := make([]math.LegacyDec, 0)
 	price := math.LegacyOneDec()
 
@@ -370,14 +380,14 @@ func (p *priceImpl) calculateRoutePrice(height uint64, route []string, token str
 		if i > 0 {
 			asset0 = route[i-1]
 			var err error
-			decimals0, err = p.decimals(asset0)
+			decimals0, err = p.decimals(ctx, repo, asset0)
 			if err != nil {
 				return math.LegacyDec{}, nil, errors.Wrap(err, strings.Join([]string{
 					"priceImpl.calculateRoutePrice: (Height: ", strconv.FormatUint(height, 10), ")"}, ""))
 			}
 		}
 
-		liquidity0, liquidity1, err := p.repo.Liquidity(height, asset0, asset1)
+		liquidity0, liquidity1, err := repo.Liquidity(ctx, height, asset0, asset1)
 		if err != nil {
 			return math.LegacyDec{}, nil, errors.Wrap(err, strings.Join([]string{
 				"priceImpl.calculateRoutePrice: (Height: ", strconv.FormatUint(height, 10), ")"}, ""))
