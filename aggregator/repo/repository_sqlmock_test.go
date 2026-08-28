@@ -15,6 +15,7 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	rootdb "github.com/dezswap/cosmwasm-etl/pkg/db"
 	"github.com/dezswap/cosmwasm-etl/pkg/db/schemas"
+	"github.com/dezswap/cosmwasm-etl/pkg/util"
 	"github.com/stretchr/testify/require"
 )
 
@@ -117,6 +118,29 @@ func TestCreateAccountsJoinsEnclosingTransaction(t *testing.T) {
 	})
 
 	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// pair_stats_recent is shared by every chain pointing at the database, so the prune
+// has to be scoped to this repository's chain. Without the chain_id predicate the
+// statement below deletes the other chains' rows too.
+func TestDeletePairStatsRecentScopesToChain(t *testing.T) {
+	sqlDB, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer sqlDB.Close()
+
+	gormDB, err := rootdb.OpenGormPostgresWithConn(sqlDB)
+	require.NoError(t, err)
+	repository := &repoImpl{db: gormDB, chainId: "test-chain"}
+
+	deleteBefore := time.Unix(1700000000, 0).UTC()
+	mock.ExpectBegin()
+	mock.ExpectExec(`DELETE FROM "pair_stats_recent" WHERE timestamp < \$1 and chain_id = \$2`).
+		WithArgs(util.ToEpoch(deleteBefore), "test-chain").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	require.NoError(t, repository.DeletePairStatsRecent(context.Background(), deleteBefore))
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
