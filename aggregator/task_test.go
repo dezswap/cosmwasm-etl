@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/dezswap/cosmwasm-etl/aggregator/repo"
+	"github.com/dezswap/cosmwasm-etl/pkg/dex/price"
 	"github.com/dezswap/cosmwasm-etl/pkg/dex/router"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 
@@ -73,6 +74,88 @@ func TestWaitUntilReachingHeightTimeout(t *testing.T) {
 
 	assert.ErrorIs(err, context.DeadlineExceeded)
 	assert.ErrorContains(err, "timeout=1ms")
+}
+
+// stubPrice keeps srcHeight independent of the candidates it prices: the input reaches
+// further than the last price row whenever the newest transactions are not swaps.
+type stubPrice struct {
+	srcHeight  int64
+	candidates []int64
+	priced     []uint64
+}
+
+func (p *stubPrice) SrcHeight(context.Context) (int64, error) { return p.srcHeight, nil }
+
+func (p *stubPrice) NextHeight(_ context.Context, minHeight uint64) (int64, error) {
+	for _, candidate := range p.candidates {
+		// the real query excludes heights already priced, so a rerun resumes
+		if candidate > int64(minHeight) && !slices.Contains(p.priced, uint64(candidate)) {
+			return candidate, nil
+		}
+	}
+
+	return price.NaValue, nil
+}
+
+func (p *stubPrice) Run(_ context.Context, height uint64) error {
+	p.priced = append(p.priced, height)
+
+	return nil
+}
+
+func newPriceTaskForTest(tracker price.Price) *priceTask {
+	return &priceTask{
+		taskImpl:     taskImpl{chainId: "cube_47-5", logger: logging.Discard},
+		priceTracker: tracker,
+	}
+}
+
+// Children gate on the source height, so reporting the last written price height
+// leaves them waiting for a height this task never claims.
+func TestPriceTaskReportsSourceTipRatherThanLastPricedHeight(t *testing.T) {
+	tracker := &stubPrice{srcHeight: 100, candidates: []int64{10, 20}}
+	task := newPriceTaskForTest(tracker)
+
+	require.NoError(t, task.Execute(context.Background(), time.Time{}, time.Time{}))
+
+	require.Equal(t, []uint64{10, 20}, tracker.priced)
+	require.Equal(t, uint64(100), task.LastProcessedHeight())
+}
+
+// The tip is read before the loop, so heights arriving while it runs belong to the
+// next round rather than being vouched for unexamined.
+func TestPriceTaskStopsAtTheTipItStartedWith(t *testing.T) {
+	tracker := &stubPrice{srcHeight: 15, candidates: []int64{10, 20}}
+	task := newPriceTaskForTest(tracker)
+
+	require.NoError(t, task.Execute(context.Background(), time.Time{}, time.Time{}))
+
+	require.Equal(t, []uint64{10}, tracker.priced)
+	require.Equal(t, uint64(15), task.LastProcessedHeight())
+}
+
+// A round whose last heights produced no price row used to publish max(price.height),
+// dropping below what the same round had already reached.
+func TestPriceTaskNeverMovesHeightBackward(t *testing.T) {
+	tracker := &stubPrice{srcHeight: 30, candidates: []int64{10, 20, 30}}
+	task := newPriceTaskForTest(tracker)
+
+	require.NoError(t, task.Execute(context.Background(), time.Time{}, time.Time{}))
+	require.Equal(t, uint64(30), task.LastProcessedHeight())
+
+	tracker.srcHeight = 25
+	require.NoError(t, task.Execute(context.Background(), time.Time{}, time.Time{}))
+	require.Equal(t, uint64(30), task.LastProcessedHeight())
+	require.Equal(t, []uint64{10, 20, 30}, tracker.priced, "a rerun must not reprice a height that already has a price row")
+}
+
+func TestAdvanceHeightIgnoresLowerValues(t *testing.T) {
+	impl := taskImpl{}
+
+	impl.advanceHeight(10)
+	impl.advanceHeight(4)
+
+	require.Equal(t, uint64(10), impl.LastProcessedHeight())
 }
 
 func TestLpHistoryTaskExecute(t *testing.T) {
@@ -434,6 +517,7 @@ func TestPairStatsRecentUpdateTaskReadsInHeightSpans(t *testing.T) {
 		require.Equal(t, "test-chain", s.ChainId)
 		require.Equal(t, "test-price-token", s.PriceToken)
 	}
+
 }
 
 // endHeight drops when source transactions are pruned. Following it down would re-read

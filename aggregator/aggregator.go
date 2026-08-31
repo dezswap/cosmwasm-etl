@@ -96,8 +96,8 @@ func New(ctx context.Context, c configs.Config, logger logging.Logger) (Aggregat
 	}, nil
 }
 
-// initTaskSchedulers wires tasks in processing order: liquidity feeds price, and
-// price gates the downstream statistics tasks.
+// initTaskSchedulers wires tasks in processing order: liquidity feeds price, and each
+// statistics task waits on whatever its own queries read.
 func initTaskSchedulers(ctx context.Context, config configs.AggregatorConfig, srcRepo parser.ReadRepository, destRepo repo.Repo, priceRepo price.SrcRepo, routerRepo router.SrcRepo, logger logging.Logger) ([]scheduler, error) {
 	lht := newLpHistoryTask(config, srcRepo, destRepo, logger)
 	pt, err := newPriceTask(ctx, config, destRepo, priceRepo, logger, []task{lht})
@@ -109,8 +109,8 @@ func initTaskSchedulers(ctx context.Context, config configs.AggregatorConfig, sr
 		newIntervalScheduler(newRouterTask(config, routerRepo, logger), logger),
 		newIntervalScheduler(lht, logger),
 		newIntervalScheduler(pt, logger),
-		newIntervalScheduler(newPairStatsRecentUpdateTask(config, srcRepo, destRepo, logger, []task{pt}), logger),
-		newPredeterminedTimeScheduler(newPairStatsUpdateTask(config, srcRepo, destRepo, logger, []task{pt}), config.StartTs, logger),
+		newIntervalScheduler(newPairStatsRecentUpdateTask(config, srcRepo, destRepo, logger, []task{lht, pt}), logger),
+		newPredeterminedTimeScheduler(newPairStatsUpdateTask(config, srcRepo, destRepo, logger, []task{lht, pt}), config.StartTs, logger),
 		newPredeterminedTimeScheduler(newAccountStatsUpdateTask(config, srcRepo, destRepo, logger, []task{pt}), config.StartTs, logger),
 	}, nil
 }

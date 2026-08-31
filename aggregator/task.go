@@ -54,6 +54,17 @@ func (t *taskImpl) LastProcessedHeight() uint64 {
 	return t.lastProcessedHeight.Load()
 }
 
+// advanceHeight publishes progress and never moves it backwards: child tasks gate on
+// this value, and a lower reading would re-block work whose inputs are already complete.
+func (t *taskImpl) advanceHeight(height uint64) {
+	for {
+		curr := t.lastProcessedHeight.Load()
+		if height <= curr || t.lastProcessedHeight.CompareAndSwap(curr, height) {
+			return
+		}
+	}
+}
+
 type lpHistoryTask struct {
 	taskImpl
 
@@ -124,9 +135,7 @@ func (t *lpHistoryTask) Execute(ctx context.Context, _ time.Time, _ time.Time) e
 	latestLpMap := make(map[uint64][]string)
 	for _, h := range lastHistories {
 		latestLpMap[h.PairId] = []string{h.Liquidity0, h.Liquidity1}
-		if h.Height > t.lastProcessedHeight.Load() {
-			t.lastProcessedHeight.Store(h.Height)
-		}
+		t.advanceHeight(h.Height)
 	}
 
 	for {
@@ -146,7 +155,7 @@ func (t *lpHistoryTask) Execute(ctx context.Context, _ time.Time, _ time.Time) e
 		if err != nil {
 			return err
 		}
-		t.lastProcessedHeight.Store(history[len(history)-1].Height)
+		t.advanceHeight(history[len(history)-1].Height)
 	}
 
 	t.logger.Infof("Complete lp history update.")
@@ -279,22 +288,26 @@ func newPriceTask(ctx context.Context, config configs.AggregatorConfig, destRepo
 	}, nil
 }
 
+// Execute prices every candidate height up to the source tip, then reports the tip
+// rather than the last height it wrote. Prices only exist for swaps and first
+// provisions, so the last price row lags the source; children gate on the source
+// height and would wait for a height this task never claims.
+//
+// The tip is read before the loop, so heights arriving while it runs are not claimed.
 func (t *priceTask) Execute(ctx context.Context, _ time.Time, _ time.Time) error {
-	height := uint64(0)
+	tip, err := t.priceTracker.SrcHeight(ctx)
+	if err != nil {
+		return err
+	}
 
+	height := uint64(0)
 	for {
 		nextHeight, err := t.priceTracker.NextHeight(ctx, height)
 		if err != nil {
 			return err
 		}
-		if nextHeight == price.NaValue {
-			currHeight, err := t.priceTracker.CurrHeight(ctx)
-			if err != nil {
-				return err
-			}
-			t.lastProcessedHeight.Store(uint64(currHeight)) // update the current height for the child tasks
-
-			return nil
+		if nextHeight == price.NaValue || nextHeight > tip {
+			break
 		}
 
 		height = uint64(nextHeight)
@@ -302,12 +315,19 @@ func (t *priceTask) Execute(ctx context.Context, _ time.Time, _ time.Time) error
 			return err
 		}
 
-		err = t.priceTracker.Run(ctx, height)
-		if err != nil {
+		if err := t.priceTracker.Run(ctx, height); err != nil {
 			return err
 		}
-		t.lastProcessedHeight.Store(height)
+		t.advanceHeight(height)
 	}
+
+	// everything at or below the tip has been considered, priced or not. A non-positive
+	// tip would convert to MaxUint64 and open every child's gate forever.
+	if tip > 0 {
+		t.advanceHeight(uint64(tip))
+	}
+
+	return nil
 }
 
 func newPairStatsRecentUpdateTask(config configs.AggregatorConfig, srcRepo parser.ReadRepository, destRepo repo.Repo, logger logging.Logger, parentTasks []task) task {
@@ -332,7 +352,7 @@ func (t *pairStatsRecentUpdateTask) Execute(ctx context.Context, _ time.Time, en
 		if err != nil {
 			return err
 		}
-		t.lastProcessedHeight.Store(loadedHeight)
+		t.advanceHeight(loadedHeight)
 		lastProcessedHeight = loadedHeight
 	}
 	startTs := end.Add(-1 * t.timeRange)
@@ -379,7 +399,7 @@ func (t *pairStatsRecentUpdateTask) Execute(ctx context.Context, _ time.Time, en
 		return err
 	}
 
-	t.lastProcessedHeight.Store(endHeight)
+	t.advanceHeight(endHeight)
 
 	t.logger.Infof("Complete pair stats recent update.")
 
@@ -713,7 +733,7 @@ func (t *pairStatsUpdateTask) Execute(ctx context.Context, start time.Time, end 
 			return err
 		}
 	}
-	t.lastProcessedHeight.Store(lastHeight)
+	t.advanceHeight(lastHeight)
 
 	t.logger.Infof("Complete pair stats update for the timeframe '%s - %s'.", start.String(), end.String())
 
@@ -807,7 +827,7 @@ func (t *accountStatsUpdateTask) Execute(ctx context.Context, start time.Time, e
 		}
 	}
 
-	t.lastProcessedHeight.Store(endHeight)
+	t.advanceHeight(endHeight)
 
 	t.logger.Infof("Complete account stats update for the timeframe '%s - %s'.", start.String(), end.String())
 
