@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
+	"github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus/hooks/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -413,6 +415,88 @@ func TestPredeterminedTimeScheduleRetriesSameWindowWhenParentIsBehind(t *testing
 	require.GreaterOrEqual(t, len(windows), 3)
 	require.Equal(t, windows[0], windows[1], "the window the parent was behind on must be retried, not skipped")
 	require.NotEqual(t, windows[1], windows[2], "the window must advance once it succeeded")
+}
+
+// The Sentry hook reports warn and above, so a cold start's rounds stay at info. The
+// threshold is wall clock because the round rate follows the configurable taskWaitTimeout.
+func TestParentBehindTrackerEscalatesOnlyOnceTheStreakOutlastsTheThreshold(t *testing.T) {
+	behind := errors.New("parent is behind")
+	logger, hook := test.NewNullLogger()
+
+	tracker := parentBehindTracker{}
+	tracker.report(logger, "task(window) skipped", behind)
+	require.Equal(t, logrus.InfoLevel, hook.LastEntry().Level, "a streak that just started is a routine cold start")
+
+	// many rounds, but not long enough yet: a short taskWaitTimeout must not page
+	for range 100 {
+		tracker.report(logger, "task(window) skipped", behind)
+	}
+	require.Equal(t, logrus.InfoLevel, hook.LastEntry().Level, "the round count alone must not escalate")
+	require.Equal(t, 101, tracker.streak)
+
+	tracker.since = time.Now().Add(-parentBehindEscalation)
+	tracker.report(logger, "task(window) skipped", behind)
+	require.Equal(t, logrus.ErrorLevel, hook.LastEntry().Level, "a streak that outlasts the threshold must surface on its own")
+	require.Contains(t, hook.LastEntry().Message, "102 in a row")
+}
+
+// Past the threshold every round would page, so the escalation repeats per interval.
+func TestParentBehindTrackerRepeatsEscalationOnlyOncePerInterval(t *testing.T) {
+	behind := errors.New("parent is behind")
+	logger, hook := test.NewNullLogger()
+
+	tracker := parentBehindTracker{since: time.Now().Add(-parentBehindEscalation)}
+	tracker.report(logger, "task(window) skipped", behind)
+	require.Equal(t, logrus.ErrorLevel, hook.LastEntry().Level)
+
+	for range 10 {
+		tracker.report(logger, "task(window) skipped", behind)
+		require.Equal(t, logrus.InfoLevel, hook.LastEntry().Level, "the rounds after an escalation must not page again")
+	}
+
+	tracker.reportedAt = time.Now().Add(-parentBehindEscalation)
+	tracker.report(logger, "task(window) skipped", behind)
+	require.Equal(t, logrus.ErrorLevel, hook.LastEntry().Level, "a streak still stuck an interval later has to surface again")
+}
+
+// Restamping the streak start each round would keep the report at info forever.
+func TestPredeterminedTimeExecuteKeepsTheStreakStartUntilTheWindowLands(t *testing.T) {
+	logger, hook := test.NewNullLogger()
+	startedAt := time.Now().Add(-parentBehindEscalation)
+	scheduler := predeterminedTimeScheduler{
+		predeterminedTimeTask: &parentBehindTask{failures: 1},
+		retryWait:             time.Millisecond,
+		parentBehind:          parentBehindTracker{streak: 7, since: startedAt},
+		logger:                logger,
+	}
+
+	retry, err := scheduler.execute(context.Background(), time.Time{}, time.Time{})
+	require.NoError(t, err)
+	require.True(t, retry)
+	require.Equal(t, startedAt, scheduler.parentBehind.since, "the streak start must not be restamped")
+	require.Equal(t, 8, scheduler.parentBehind.streak)
+	require.Equal(t, logrus.ErrorLevel, hook.LastEntry().Level)
+}
+
+// A window that lands clears the streak; otherwise skips accumulate over a long run
+// and escalate on an ordinary hiccup.
+func TestPredeterminedTimeExecuteClearsStreakOnceTheWindowLands(t *testing.T) {
+	scheduler := predeterminedTimeScheduler{
+		predeterminedTimeTask: &parentBehindTask{failures: 1},
+		retryWait:             time.Millisecond,
+		logger:                logging.Discard,
+	}
+
+	retry, err := scheduler.execute(context.Background(), time.Time{}, time.Time{})
+	require.NoError(t, err)
+	require.True(t, retry)
+	require.Equal(t, 1, scheduler.parentBehind.streak)
+	require.False(t, scheduler.parentBehind.since.IsZero(), "the first round given up starts the streak")
+
+	retry, err = scheduler.execute(context.Background(), time.Time{}, time.Time{})
+	require.NoError(t, err)
+	require.False(t, retry)
+	require.Equal(t, parentBehindTracker{}, scheduler.parentBehind, "a landed window clears the whole streak")
 }
 
 func TestTimeframe_0_30(t *testing.T) {
