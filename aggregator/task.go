@@ -366,11 +366,14 @@ func (t *pairStatsRecentUpdateTask) Execute(ctx context.Context, _ time.Time, en
 		return err
 	}
 
-	// Rows fall out of the trailing window, so the prune runs either way.
+	// Rows fall out of the trailing window regardless of upstream, so the prune runs
+	// before anything that can bail out; a round given up on a parent would otherwise
+	// leave them for a whole cold start. The prune in the transaction below has its own job.
+	if err := t.destDb.DeletePairStatsRecent(ctx, startTs); err != nil {
+		return err
+	}
+
 	if endHeight <= lastProcessedHeight {
-		if err := t.destDb.DeletePairStatsRecent(ctx, startTs); err != nil {
-			return err
-		}
 		t.logger.Infof("Complete pair stats recent update.")
 
 		return nil
@@ -876,7 +879,11 @@ func waitUntilReachingHeight(ctx context.Context, parentTasks []task, targetHeig
 			}
 
 			if !waitFor(waitCtx, WaitPeriod) {
-				return errors.Wrapf(waitCtx.Err(), "waitUntilReachingHeight: parent task did not reach target height %d; current height=%d timeout=%s", targetHeight, currentHeight, timeout)
+				if isShutdown(ctx) {
+					return errors.Wrapf(ctx.Err(), "waitUntilReachingHeight: shutting down while waiting for task %s to reach target height %d; current height=%d", parent.Name(), targetHeight, currentHeight)
+				}
+
+				return errors.Wrapf(ErrParentBehind, "waitUntilReachingHeight: parent task %s did not reach target height %d; current height=%d timeout=%s", parent.Name(), targetHeight, currentHeight, timeout)
 			}
 		}
 	}

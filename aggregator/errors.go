@@ -33,6 +33,15 @@ const (
 	EventTaskFailed           = "aggregator.task_failed"
 )
 
+// ErrParentBehind reports that a parent task had not reached the height a round
+// needed. It is a "not yet", not a failure: schedulers retry the round instead of
+// failing the whole run, since cold starts make this the normal state for a while and
+// treating it as fatal turns them into a restart loop.
+//
+// A task may only report it if it waits on its parents before its first write that a
+// rerun could not repeat safely
+var ErrParentBehind = errors.New("parent task has not reached the target height")
+
 // RuntimeError describes where an aggregator lifecycle or task failure occurred.
 type RuntimeError struct {
 	Operation   string

@@ -3,6 +3,8 @@ package aggregator
 import (
 	"context"
 	"errors"
+	"fmt"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -305,6 +307,112 @@ func TestPredeterminedTimeScheduleReportsInitializeScheduleOnStartTimestampFailu
 	require.Equal(t, OpInitializeSchedule, runtimeErr.Operation)
 	require.Equal(t, task.Name(), runtimeErr.Task)
 	require.Equal(t, EventTaskFailed, ErrorEvent(err))
+}
+
+// parentBehindTask reports ErrParentBehind for its first failures rounds, then
+// succeeds, recording the window it was handed each time.
+type parentBehindTask struct {
+	mutex    sync.Mutex
+	windows  [][2]time.Time
+	failures int
+	invoked  chan struct{}
+}
+
+func (*parentBehindTask) Name() string                { return "parent_behind" }
+func (*parentBehindTask) LastProcessedHeight() uint64 { return 0 }
+
+func (t *parentBehindTask) StartTimestamp(_ context.Context, startTs time.Time) (time.Time, error) {
+	return startTs, nil
+}
+
+func (t *parentBehindTask) Execute(_ context.Context, start, end time.Time) error {
+	t.mutex.Lock()
+	t.windows = append(t.windows, [2]time.Time{start, end})
+	behind := t.failures > 0
+	if behind {
+		t.failures--
+	}
+	t.mutex.Unlock()
+
+	if t.invoked != nil {
+		select {
+		case t.invoked <- struct{}{}:
+		default:
+		}
+	}
+	if behind {
+		return fmt.Errorf("price: %w", ErrParentBehind)
+	}
+
+	return nil
+}
+
+func (t *parentBehindTask) recordedWindows() [][2]time.Time {
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+
+	return append([][2]time.Time(nil), t.windows...)
+}
+
+// An upstream task that has not caught up is a normal cold-start state, not a failure:
+// returning it would take every other task down through the errgroup.
+func TestIntervalScheduleSkipsRoundWhenParentIsBehind(t *testing.T) {
+	task := &parentBehindTask{failures: 1000, invoked: make(chan struct{}, 10)}
+	scheduler := intervalScheduler{task: task, interval: 5 * time.Millisecond, logger: logging.Discard}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func(s intervalScheduler) { done <- s.Schedule(ctx) }(scheduler)
+
+	for range 3 {
+		select {
+		case <-task.invoked:
+		case <-time.After(time.Second):
+			t.Fatal("scheduler stopped scheduling after the parent fell behind")
+		}
+	}
+	cancel()
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("scheduler did not stop after cancellation")
+	}
+}
+
+// A fixed window has nothing that recomputes it later, so falling behind must retry
+// the same window. Advancing past it would leave a permanent hole in the stats.
+func TestPredeterminedTimeScheduleRetriesSameWindowWhenParentIsBehind(t *testing.T) {
+	task := &parentBehindTask{failures: 1, invoked: make(chan struct{}, 10)}
+	scheduler := predeterminedTimeScheduler{
+		predeterminedTimeTask: task,
+		interval:              time.Hour,
+		startTs:               time.Now().Add(-3 * time.Hour),
+		retryWait:             time.Millisecond,
+		logger:                logging.Discard,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func(s predeterminedTimeScheduler) { done <- s.Schedule(ctx) }(scheduler)
+
+	for range 3 {
+		select {
+		case <-task.invoked:
+		case <-time.After(time.Second):
+			t.Fatal("scheduler did not keep working through the retry")
+		}
+	}
+	cancel()
+	require.NoError(t, <-done)
+
+	windows := task.recordedWindows()
+	require.GreaterOrEqual(t, len(windows), 3)
+	require.Equal(t, windows[0], windows[1], "the window the parent was behind on must be retried, not skipped")
+	require.NotEqual(t, windows[1], windows[2], "the window must advance once it succeeded")
 }
 
 func TestTimeframe_0_30(t *testing.T) {
