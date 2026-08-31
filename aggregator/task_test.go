@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/dezswap/cosmwasm-etl/aggregator/repo"
+	"github.com/dezswap/cosmwasm-etl/pkg/dex/price"
 	"github.com/dezswap/cosmwasm-etl/pkg/dex/router"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 
@@ -60,10 +61,15 @@ func TestWaitUntilReachingHeightContextCanceled(t *testing.T) {
 	err := waitUntilReachingHeight(ctx, []task{parent}, 10, time.Minute)
 
 	assert.ErrorIs(err, context.Canceled)
+	// shutdown is not a retryable "parent is behind"; conflating them keeps schedulers
+	// retrying instead of stopping
+	assert.NotErrorIs(err, ErrParentBehind)
 	assert.ErrorContains(err, "target height 10")
 	assert.ErrorContains(err, "current height=0")
 }
 
+// Running out of the wait timeout means the parent is merely behind, not broken;
+// reporting it as a plain timeout failed the run and took every other task with it.
 func TestWaitUntilReachingHeightTimeout(t *testing.T) {
 	assert := assert.New(t)
 
@@ -71,8 +77,92 @@ func TestWaitUntilReachingHeightTimeout(t *testing.T) {
 
 	err := waitUntilReachingHeight(context.Background(), []task{parent}, 10, time.Millisecond)
 
-	assert.ErrorIs(err, context.DeadlineExceeded)
+	assert.ErrorIs(err, ErrParentBehind)
+	assert.NotErrorIs(err, context.Canceled)
+	assert.ErrorContains(err, "target height 10")
 	assert.ErrorContains(err, "timeout=1ms")
+}
+
+// stubPrice keeps srcHeight independent of the candidates it prices: the input reaches
+// further than the last price row whenever the newest transactions are not swaps.
+type stubPrice struct {
+	srcHeight  int64
+	candidates []int64
+	priced     []uint64
+}
+
+func (p *stubPrice) SrcHeight(context.Context) (int64, error) { return p.srcHeight, nil }
+
+func (p *stubPrice) NextHeight(_ context.Context, minHeight uint64) (int64, error) {
+	for _, candidate := range p.candidates {
+		// the real query excludes heights already priced, so a rerun resumes
+		if candidate > int64(minHeight) && !slices.Contains(p.priced, uint64(candidate)) {
+			return candidate, nil
+		}
+	}
+
+	return price.NaValue, nil
+}
+
+func (p *stubPrice) Run(_ context.Context, height uint64) error {
+	p.priced = append(p.priced, height)
+
+	return nil
+}
+
+func newPriceTaskForTest(tracker price.Price) *priceTask {
+	return &priceTask{
+		taskImpl:     taskImpl{chainId: "cube_47-5", logger: logging.Discard},
+		priceTracker: tracker,
+	}
+}
+
+// Children gate on the source height, so reporting the last written price height
+// leaves them waiting for a height this task never claims.
+func TestPriceTaskReportsSourceTipRatherThanLastPricedHeight(t *testing.T) {
+	tracker := &stubPrice{srcHeight: 100, candidates: []int64{10, 20}}
+	task := newPriceTaskForTest(tracker)
+
+	require.NoError(t, task.Execute(context.Background(), time.Time{}, time.Time{}))
+
+	require.Equal(t, []uint64{10, 20}, tracker.priced)
+	require.Equal(t, uint64(100), task.LastProcessedHeight())
+}
+
+// The tip is read before the loop, so heights arriving while it runs belong to the
+// next round rather than being vouched for unexamined.
+func TestPriceTaskStopsAtTheTipItStartedWith(t *testing.T) {
+	tracker := &stubPrice{srcHeight: 15, candidates: []int64{10, 20}}
+	task := newPriceTaskForTest(tracker)
+
+	require.NoError(t, task.Execute(context.Background(), time.Time{}, time.Time{}))
+
+	require.Equal(t, []uint64{10}, tracker.priced)
+	require.Equal(t, uint64(15), task.LastProcessedHeight())
+}
+
+// A round whose last heights produced no price row used to publish max(price.height),
+// dropping below what the same round had already reached.
+func TestPriceTaskNeverMovesHeightBackward(t *testing.T) {
+	tracker := &stubPrice{srcHeight: 30, candidates: []int64{10, 20, 30}}
+	task := newPriceTaskForTest(tracker)
+
+	require.NoError(t, task.Execute(context.Background(), time.Time{}, time.Time{}))
+	require.Equal(t, uint64(30), task.LastProcessedHeight())
+
+	tracker.srcHeight = 25
+	require.NoError(t, task.Execute(context.Background(), time.Time{}, time.Time{}))
+	require.Equal(t, uint64(30), task.LastProcessedHeight())
+	require.Equal(t, []uint64{10, 20, 30}, tracker.priced, "a rerun must not reprice a height that already has a price row")
+}
+
+func TestAdvanceHeightIgnoresLowerValues(t *testing.T) {
+	impl := taskImpl{}
+
+	impl.advanceHeight(10)
+	impl.advanceHeight(4)
+
+	require.Equal(t, uint64(10), impl.LastProcessedHeight())
 }
 
 func TestLpHistoryTaskExecute(t *testing.T) {
@@ -257,6 +347,9 @@ type spanRecordingRepo struct {
 	readSpans [][2]uint64
 	written   []schemas.PairStatsRecent
 	pruneCnt  int
+	// calls records prunes and writes in order; the task prunes twice for two different
+	// reasons and only the order tells them apart.
+	calls []string
 }
 
 // spanTestWindowEnd is the end the span tests hand to Execute. The task derives the
@@ -326,11 +419,15 @@ func (r *spanRecordingRepo) WithinTx(_ context.Context, fn func(repo.Repo) error
 
 func (r *spanRecordingRepo) UpdatePairStatsRecent(_ context.Context, stats []schemas.PairStatsRecent) error {
 	r.written = append(r.written, stats...)
+	r.calls = append(r.calls, "write")
+
 	return nil
 }
 
 func (r *spanRecordingRepo) DeletePairStatsRecent(_ context.Context, _ time.Time) error {
 	r.pruneCnt++
+	r.calls = append(r.calls, "prune")
+
 	return nil
 }
 
@@ -434,6 +531,13 @@ func TestPairStatsRecentUpdateTaskReadsInHeightSpans(t *testing.T) {
 		require.Equal(t, "test-chain", s.ChainId)
 		require.Equal(t, "test-price-token", s.PriceToken)
 	}
+
+	// Two prunes, each with its own job: one before the round can give up on a parent,
+	// one with the spans just written. Neither is redundant, so both are pinned here.
+	require.Equal(t, 2, rp.pruneCnt)
+	require.Equal(t, "prune", rp.calls[0], "the trailing window must be pruned before anything that can bail out")
+	require.Equal(t, "prune", rp.calls[len(rp.calls)-1], "the spans just written must be pruned in the same transaction")
+	require.Contains(t, rp.calls[1:len(rp.calls)-1], "write", "the second prune must come after the spans, not before")
 }
 
 // endHeight drops when source transactions are pruned. Following it down would re-read
@@ -456,6 +560,30 @@ func TestPairStatsRecentUpdateTaskNeverMovesHeightBackward(t *testing.T) {
 	// Rows keep falling out of the trailing window while the source stands still, so
 	// skipping the round entirely would leave pair_stats_recent holding stale rows.
 	require.Equal(t, 1, rp.pruneCnt, "the prune must run even with nothing new to derive")
+}
+
+// A round given up on a parent still has to prune: the trailing window keeps sliding
+// through a long cold start, and nothing else cleans up.
+func TestPairStatsRecentUpdateTaskPrunesWhenParentIsBehind(t *testing.T) {
+	rp := newSpanRecordingRepo(1, 500, nil)
+	parent := &completedTask{}
+	task := pairStatsRecentUpdateTask{
+		taskImpl: taskImpl{
+			destDb:          rp,
+			parentTasks:     []task{parent},
+			taskWaitTimeout: time.Millisecond,
+			logger:          logging.Discard,
+		},
+		srcDb:     rp,
+		timeRange: PairStatsRecentTimeRange,
+	}
+
+	err := task.Execute(context.Background(), time.Time{}, spanTestWindowEnd)
+
+	require.ErrorIs(t, err, ErrParentBehind)
+	require.Equal(t, 1, rp.pruneCnt, "the trailing window must be pruned before the round gives up")
+	require.Empty(t, rp.readSpans, "nothing may be derived while the parent is behind")
+	require.Zero(t, task.LastProcessedHeight())
 }
 
 // A failed span must abort the round, not commit a window with a hole and advance past it.
@@ -934,7 +1062,8 @@ func TestExecuteAccountStatsUpdateTaskParentWaitTimeout(t *testing.T) {
 
 	err := task.Execute(context.Background(), time.Time{}, end)
 
-	assert.ErrorIs(err, context.DeadlineExceeded)
+	assert.ErrorIs(err, ErrParentBehind)
+	// the scheduler's retry is safe only because the round bailed out before writing
 	assert.Empty(rp.updatedAccountStats)
 	assert.Equal(uint64(0), task.LastProcessedHeight())
 	rp.AssertNotCalled(t, "AccountStats", mock.Anything, mock.Anything, mock.Anything)

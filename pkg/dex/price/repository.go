@@ -2,6 +2,7 @@ package price
 
 import (
 	"context"
+
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/pkg/db"
 	"github.com/dezswap/cosmwasm-etl/pkg/db/schemas"
@@ -15,7 +16,7 @@ import (
 // SrcRepo bound to one transaction.
 type SrcRepo interface {
 	FirstHeight(ctx context.Context, priceToken string) (int64, error)
-	CurrHeight(ctx context.Context) (int64, error)
+	SrcHeight(ctx context.Context) (int64, error)
 	NextHeight(ctx context.Context, minHeight uint64) (int64, error)
 	Txs(ctx context.Context, height uint64) ([]schemas.ParsedTx, error)
 	Decimals(ctx context.Context, asset string) (int64, error)
@@ -79,14 +80,13 @@ func (r *srcRepoImpl) FirstHeight(ctx context.Context, priceToken string) (int64
 	return height, nil
 }
 
-func (r *srcRepoImpl) CurrHeight(ctx context.Context) (int64, error) {
+func (r *srcRepoImpl) SrcHeight(ctx context.Context) (int64, error) {
 	query := `
-select coalesce(max(height), 0) from price where chain_id = ?
+select coalesce(max(height), 0) from parsed_tx where chain_id = ?
 `
-	height := NaValue
-	tx := r.conn(ctx).Raw(query, r.chainId).Find(&height)
-	if tx.Error != nil {
-		return 0, errors.Wrap(tx.Error, "srcRepoImpl.CurrHeight")
+	height := int64(0)
+	if tx := r.conn(ctx).Raw(query, r.chainId).Find(&height); tx.Error != nil {
+		return 0, errors.Wrap(tx.Error, "srcRepoImpl.SrcHeight")
 	}
 
 	return height, nil

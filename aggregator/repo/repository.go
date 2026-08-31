@@ -185,9 +185,10 @@ func (r *repoImpl) UpdateLpHistory(ctx context.Context, history []schemas.LpHist
 	return nil
 }
 
+// DeletePairStatsRecent prunes rows that fell out of the trailing window.
 func (r *repoImpl) DeletePairStatsRecent(ctx context.Context, deleteBefore time.Time) error {
 	tx := r.conn(ctx).Where(
-		"timestamp < ?", deleteBefore.Unix()).Delete(
+		"timestamp < ? and chain_id = ?", util.ToEpoch(deleteBefore), r.chainId).Delete(
 		&schemas.PairStatsRecent{})
 	if tx.Error != nil {
 		return errors.Wrap(tx.Error, "repo.DeletePairStatsRecent")

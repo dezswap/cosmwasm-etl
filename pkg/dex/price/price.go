@@ -15,7 +15,7 @@ import (
 )
 
 type Price interface {
-	CurrHeight(context.Context) (int64, error)
+	SrcHeight(context.Context) (int64, error)
 	NextHeight(context.Context, uint64) (int64, error)
 	Run(context.Context, uint64) error
 }
@@ -50,8 +50,8 @@ func New(ctx context.Context, repo SrcRepo, priceToken string, logger logging.Lo
 	return p, nil
 }
 
-func (p *priceImpl) CurrHeight(ctx context.Context) (int64, error) {
-	height, err := p.repo.CurrHeight(ctx)
+func (p *priceImpl) SrcHeight(ctx context.Context) (int64, error) {
+	height, err := p.repo.SrcHeight(ctx)
 	if err != nil {
 		return NaValue, err
 	}
