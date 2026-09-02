@@ -728,7 +728,7 @@ func (t *pairStatsUpdateTask) Execute(ctx context.Context, start time.Time, end 
 			// a pair with transactions in the window has an lp history too, so a gap
 			// means the lp history task left one. the liquidity is unknown, not drained:
 			// carry the last known one over instead of reporting the pair as empty
-			last, carried, err := t.lastKnownLiquidity(ctx, s.PairId)
+			last, carried, err := t.lastKnownLiquidity(ctx, s.PairId, endTs)
 			if err != nil {
 				return err
 			}
@@ -767,18 +767,22 @@ func (t *pairStatsUpdateTask) Execute(ctx context.Context, start time.Time, end 
 	return nil
 }
 
-// lastKnownLiquidity answers what a pair held before this window: the stats of the
-// previous one, else the newest row already written. It reports whether it found any;
-// a pair with no history at all still needs zeros, since the numeric columns of
-// pair_stats_30m reject the empty string.
-func (t *pairStatsUpdateTask) lastKnownLiquidity(ctx context.Context, pairId uint64) (schemas.PairStats30m, bool, error) {
-	if prev, ok := t.prevStatMap[pairId]; ok {
+// lastKnownLiquidity answers what a pair held before the window ending at endTs: the
+// stats of the previous window, else the newest row already written before it. It
+// reports whether it found any; a pair with no history at all still needs zeros, since
+// the numeric columns of pair_stats_30m reject the empty string.
+//
+// Both sources stay behind endTs. A rerun of an older window runs with later windows
+// already written, and copying one of those back would date future liquidity to a
+// historical row.
+func (t *pairStatsUpdateTask) lastKnownLiquidity(ctx context.Context, pairId uint64, endTs float64) (schemas.PairStats30m, bool, error) {
+	if prev, ok := t.prevStatMap[pairId]; ok && prev.Timestamp < endTs {
 		return prev, true, nil
 	}
 
 	// prevStatMap only remembers the windows this process aggregated, so a restart has
 	// to read the previous one back from the database
-	prev, ok, err := t.destDb.LatestPairStat(ctx, pairId)
+	prev, ok, err := t.destDb.LatestPairStat(ctx, pairId, endTs)
 	if err != nil {
 		return schemas.PairStats30m{}, false, err
 	}

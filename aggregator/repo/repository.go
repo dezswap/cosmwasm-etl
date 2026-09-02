@@ -34,11 +34,13 @@ type Repo interface {
 	DeletePairStatsRecent(ctx context.Context, deleteBefore time.Time) error
 
 	DeleteDuplicates(ctx context.Context, end time.Time) error
-	// LatestPairStat returns the newest row written for a pair on this chain. The bool
-	// reports whether such a row exists at all; on false the row is a zero value whose
-	// amounts are empty strings, which the numeric columns reject, so the caller has to
-	// supply its own defaults rather than pass the row on.
-	LatestPairStat(ctx context.Context, pairId uint64) (schemas.PairStats30m, bool, error)
+	// LatestPairStat returns the newest row written for a pair on this chain strictly
+	// before the given timestamp. The bound keeps a rerun of an older window from
+	// reading back a row that belongs to a later one. The bool reports whether such a
+	// row exists at all; on false the row is a zero value whose amounts are empty
+	// strings, which the numeric columns reject, so the caller has to supply its own
+	// defaults rather than pass the row on.
+	LatestPairStat(ctx context.Context, pairId uint64, before float64) (schemas.PairStats30m, bool, error)
 	UpdatePairStats(ctx context.Context, stats []schemas.PairStats30m) error
 	UpdateAccountStats(ctx context.Context, stats []schemas.AccountStats30m) error
 	CreateAccounts(ctx context.Context, addresses []string) error
@@ -204,12 +206,13 @@ func (r *repoImpl) DeleteDuplicates(ctx context.Context, ts time.Time) error {
 	})
 }
 
-func (r *repoImpl) LatestPairStat(ctx context.Context, pairId uint64) (schemas.PairStats30m, bool, error) {
+func (r *repoImpl) LatestPairStat(ctx context.Context, pairId uint64, before float64) (schemas.PairStats30m, bool, error) {
 	stat := schemas.PairStats30m{}
 	// reruns can leave more than one row on a timestamp, and only the id tells the
 	// newest of them apart
 	tx := r.conn(ctx).Model(schemas.PairStats30m{}).Where(
-		"chain_id = ? and pair_id = ?", r.chainId, pairId).Order("timestamp desc, id desc").Limit(1).Find(&stat)
+		"chain_id = ? and pair_id = ? and timestamp < ?", r.chainId, pairId, before).Order(
+		"timestamp desc, id desc").Limit(1).Find(&stat)
 	if tx.Error != nil {
 		return schemas.PairStats30m{}, false, errors.Wrap(tx.Error, "repo.LatestPairStat")
 	}

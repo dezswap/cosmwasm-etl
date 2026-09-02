@@ -208,14 +208,19 @@ func (r *repoMock) DeleteDuplicates(_ context.Context, _ time.Time) error {
 	return r.deleteDuplicatesErr
 }
 
-// an unset latestPairStats stands for a chain whose pairs have no stats written yet
-func (r *repoMock) LatestPairStat(_ context.Context, pairId uint64) (schemas.PairStats30m, bool, error) {
+// an unset latestPairStats stands for a chain whose pairs have no stats written yet.
+// The timestamp bound is honoured so a test can leave a row of a later window behind.
+func (r *repoMock) LatestPairStat(_ context.Context, pairId uint64, before float64) (schemas.PairStats30m, bool, error) {
 	if r.latestPairStatErr != nil {
 		return schemas.PairStats30m{}, false, r.latestPairStatErr
 	}
 
 	stat, ok := r.latestPairStats[pairId]
-	return stat, ok, nil
+	if !ok || stat.Timestamp >= before {
+		return schemas.PairStats30m{}, false, nil
+	}
+
+	return stat, true, nil
 }
 
 func (r *repoMock) UpdatePairStats(_ context.Context, stats []schemas.PairStats30m) error {

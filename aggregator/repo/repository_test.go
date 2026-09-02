@@ -197,8 +197,10 @@ func TestLatestPairStat(t *testing.T) {
 
 	// execute
 	repo := mustNewRepo(t, testConfig.Aggregator.DestDb)
-	latest, found, err := repo.LatestPairStat(ctx, pairId)
-	_, missing, missingErr := repo.LatestPairStat(ctx, otherPairId)
+	latest, found, err := repo.LatestPairStat(ctx, pairId, 1665633600)
+	// a rerun of the 02:00 window sees the rows of every later window already written
+	rerun, rerunFound, rerunErr := repo.LatestPairStat(ctx, pairId, 1665626400)
+	_, missing, missingErr := repo.LatestPairStat(ctx, otherPairId, 1665633600)
 
 	// verify
 	assert.NoError(err)
@@ -206,6 +208,10 @@ func TestLatestPairStat(t *testing.T) {
 	// the newest row of this chain, whatever order they were written in
 	assert.Equal(float64(1665630000), latest.Timestamp)
 	assert.Equal("301", latest.Liquidity0)
+
+	assert.NoError(rerunErr)
+	assert.False(rerunFound, "a window with nothing before it must not read a later row back")
+	assert.Equal(schemas.PairStats30m{}, rerun)
 
 	assert.NoError(missingErr)
 	assert.False(missing, "a pair without stats must be reported as missing, not as a zero row")

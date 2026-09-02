@@ -840,6 +840,18 @@ func TestPairStatsUpdateTaskCarriesLiquidityWithoutLpHistory(t *testing.T) {
 			liquidity: "7000000.000000000000000000", liquidityInPr: "14.000000000000000000",
 		},
 		{
+			// a rerun of an older window runs with later windows already written, and
+			// dating their liquidity back to this row would be wrong
+			name:     "ignores a row of a later window",
+			prevStat: map[uint64]schemas.PairStats30m{},
+			written: map[uint64]schemas.PairStats30m{pairId: func() schemas.PairStats30m {
+				later := carried
+				later.Timestamp = float64(end.Add(30 * time.Minute).Unix())
+				return later
+			}()},
+			liquidity: "0", liquidityInPr: "0",
+		},
+		{
 			// nothing to carry over, and the numeric columns reject an empty string
 			name:      "zeroes a pair seen for the first time",
 			prevStat:  map[uint64]schemas.PairStats30m{},

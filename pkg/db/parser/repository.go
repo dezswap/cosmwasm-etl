@@ -409,10 +409,10 @@ group by pair_id
 
 			var lastSwapPrice string
 			if lastVolume0.IsZero() || lastVolume1.IsZero() {
-				if p, ok := prevStatsMap[asset0.PairId]; ok {
+				if p, ok := prevStatsMap[asset0.PairId]; ok && p.Timestamp < endTs {
 					lastSwapPrice = p.LastSwapPrice
 				} else {
-					lps, found, err := r.latestPairStat(ctx, asset0.PairId)
+					lps, found, err := r.latestPairStat(ctx, asset0.PairId, endTs)
 					if err != nil {
 						return nil, errors.Wrap(err, "readRepoImpl.PairStats")
 					}
@@ -452,19 +452,21 @@ group by pair_id
 	return
 }
 
-// latestPairStat returns the newest stats row of the pair on this chain. The bool
-// reports whether such a row exists at all: a pair that was never aggregated returns
-// (zero value, false, nil), and its zero value is an empty string in every amount,
-// which the numeric columns of pair_stats_30m reject. Callers have to answer for that
-// case themselves rather than pass the returned row on.
+// latestPairStat returns the newest stats row of the pair on this chain strictly before
+// the given timestamp. The bound keeps a rerun of an older window from reading back a
+// row that belongs to a later one. The bool reports whether such a row exists at all: a
+// pair that was never aggregated returns (zero value, false, nil), and its zero value is
+// an empty string in every amount, which the numeric columns of pair_stats_30m reject.
+// Callers have to answer for that case themselves rather than pass the returned row on.
 //
 // Reruns can leave more than one row on a timestamp, so the id breaks the tie and keeps
 // the answer the same across calls.
-func (r *readRepoImpl) latestPairStat(ctx context.Context, pairId uint64) (schemas.PairStats30m, bool, error) {
+func (r *readRepoImpl) latestPairStat(ctx context.Context, pairId uint64, before float64) (schemas.PairStats30m, bool, error) {
 	var stat schemas.PairStats30m
 
 	tx := r.conn(ctx).Model(schemas.PairStats30m{}).Where(
-		"chain_id = ? and pair_id = ?", r.chainId, pairId).Order("timestamp desc, id desc").Limit(1).Find(&stat)
+		"chain_id = ? and pair_id = ? and timestamp < ?", r.chainId, pairId, before).Order(
+		"timestamp desc, id desc").Limit(1).Find(&stat)
 	if tx.Error != nil {
 		return schemas.PairStats30m{}, false, errors.Wrap(tx.Error, "readRepoImpl.latestPairStat")
 	}

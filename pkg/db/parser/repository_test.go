@@ -1014,24 +1014,25 @@ func TestLatestPairStatUsesDeterministicOrderAndReportsPresence(t *testing.T) {
 	gormDB, err := pkgdb.OpenGormPostgresWithConn(sqlDB)
 	require.NoError(t, err)
 	repository := &readRepoImpl{db: gormDB, chainId: "local"}
-	query := `^SELECT \* FROM "pair_stats_30m" WHERE chain_id = \$1 and pair_id = \$2 ORDER BY timestamp desc, id desc LIMIT \$3$`
+	// the window bound keeps a rerun of an older window off the rows of later ones
+	query := `^SELECT \* FROM "pair_stats_30m" WHERE chain_id = \$1 and pair_id = \$2 and timestamp < \$3 ORDER BY timestamp desc, id desc LIMIT \$4$`
 
 	mock.ExpectQuery(query).
-		WithArgs("local", uint64(7), 1).
+		WithArgs("local", uint64(7), float64(2000), 1).
 		WillReturnRows(sqlmock.NewRows([]string{"pair_id", "chain_id", "last_swap_price", "timestamp"}).
 			AddRow(7, "local", "1.25", 1234))
 
-	stat, found, err := repository.latestPairStat(context.Background(), 7)
+	stat, found, err := repository.latestPairStat(context.Background(), 7, 2000)
 
 	require.NoError(t, err)
 	require.True(t, found)
 	require.Equal(t, "1.25", stat.LastSwapPrice)
 
 	mock.ExpectQuery(query).
-		WithArgs("local", uint64(8), 1).
+		WithArgs("local", uint64(8), float64(2000), 1).
 		WillReturnRows(sqlmock.NewRows([]string{"pair_id", "chain_id", "last_swap_price", "timestamp"}))
 
-	stat, found, err = repository.latestPairStat(context.Background(), 8)
+	stat, found, err = repository.latestPairStat(context.Background(), 8, 2000)
 
 	require.NoError(t, err)
 	require.False(t, found)
