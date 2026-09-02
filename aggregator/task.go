@@ -719,16 +719,40 @@ func (t *pairStatsUpdateTask) Execute(ctx context.Context, start time.Time, end 
 		return err
 	}
 
+	// one gap usually spans every pair of the window, so the pairs are collected and
+	// reported once instead of a warning per pair
+	carriedPairs, zeroedPairs := []uint64{}, []uint64{}
 	for i, s := range stats {
-		if lp, ok := lpMap[s.PairId]; ok {
-			s.Liquidity0 = lp.Liquidity0
-			s.Liquidity0InPrice = lp.Liquidity0InPrice
-			s.Liquidity1 = lp.Liquidity1
-			s.Liquidity1InPrice = lp.Liquidity1InPrice
-			stats[i] = s
+		lp, ok := lpMap[s.PairId]
+		if !ok {
+			// a pair with transactions in the window has an lp history too, so a gap
+			// means the lp history task left one. the liquidity is unknown, not drained:
+			// carry the last known one over instead of reporting the pair as empty
+			last, carried, err := t.lastKnownLiquidity(ctx, s.PairId)
+			if err != nil {
+				return err
+			}
+			if carried {
+				carriedPairs = append(carriedPairs, s.PairId)
+			} else {
+				zeroedPairs = append(zeroedPairs, s.PairId)
+			}
+			lp = last
 		}
 
+		s.Liquidity0 = lp.Liquidity0
+		s.Liquidity0InPrice = lp.Liquidity0InPrice
+		s.Liquidity1 = lp.Liquidity1
+		s.Liquidity1InPrice = lp.Liquidity1InPrice
+		stats[i] = s
+
 		t.prevStatMap[s.PairId] = s
+	}
+
+	if len(carriedPairs) > 0 || len(zeroedPairs) > 0 {
+		t.logger.Warnf(
+			"No lp history in the timeframe '%s - %s': carried the previous liquidity over for pairs %v, zeroed pairs %v with none.",
+			start.String(), end.String(), carriedPairs, zeroedPairs)
 	}
 
 	if len(stats) > 0 {
@@ -741,6 +765,33 @@ func (t *pairStatsUpdateTask) Execute(ctx context.Context, start time.Time, end 
 	t.logger.Infof("Complete pair stats update for the timeframe '%s - %s'.", start.String(), end.String())
 
 	return nil
+}
+
+// lastKnownLiquidity answers what a pair held before this window: the stats of the
+// previous one, else the newest row already written. It reports whether it found any;
+// a pair with no history at all still needs zeros, since the numeric columns of
+// pair_stats_30m reject the empty string.
+func (t *pairStatsUpdateTask) lastKnownLiquidity(ctx context.Context, pairId uint64) (schemas.PairStats30m, bool, error) {
+	if prev, ok := t.prevStatMap[pairId]; ok {
+		return prev, true, nil
+	}
+
+	// prevStatMap only remembers the windows this process aggregated, so a restart has
+	// to read the previous one back from the database
+	prev, ok, err := t.destDb.LatestPairStat(ctx, pairId)
+	if err != nil {
+		return schemas.PairStats30m{}, false, err
+	}
+	if ok {
+		return prev, true, nil
+	}
+
+	return schemas.PairStats30m{
+		Liquidity0:        "0",
+		Liquidity1:        "0",
+		Liquidity0InPrice: "0",
+		Liquidity1InPrice: "0",
+	}, false, nil
 }
 
 func newAccountStatsUpdateTask(config configs.AggregatorConfig, srcRepo parser.ReadRepository, destRepo repo.Repo, logger logging.Logger, parentTasks []task) predeterminedTimeTask {

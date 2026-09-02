@@ -299,9 +299,9 @@ select -- asset0's stats by pairs
     pair_id,
     coalesce(sum(volume) filter (where type = 'swap'),0) as volume0,
     (coalesce(sum(volume_in_price) filter (where type = 'swap'),0))::numeric as volume0_in_price,
-    (avg(last_volume))::numeric as last_swap_price,
-    sum(commission) as commission0,
-    sum(commission_in_price) as commission0_in_price,
+    coalesce((avg(last_volume))::numeric, 0) as last_swap_price,
+    coalesce(sum(commission),0) as commission0,
+    coalesce(sum(commission_in_price),0) as commission0_in_price,
     count(distinct hash) as tx_cnt,
     count(distinct sender) filter (where type = 'provide') as provider_cnt
 from (select distinct -- processed asset0 values
@@ -350,9 +350,9 @@ select -- asset1's stats by pairs
     pair_id,
     coalesce(sum(volume) filter (where type = 'swap'),0) as volume1,
     (coalesce(sum(volume_in_price) filter (where type = 'swap'),0))::numeric as volume1_in_price,
-    (avg(last_volume))::numeric as last_swap_price,
-    sum(commission) commission1,
-    sum(commission_in_price) commission1_in_price
+    coalesce((avg(last_volume))::numeric, 0) as last_swap_price,
+    coalesce(sum(commission),0) commission1,
+    coalesce(sum(commission_in_price),0) commission1_in_price
 from (select distinct -- processed asset1 values
           height,
           pair_id,
@@ -412,62 +412,64 @@ group by pair_id
 				if p, ok := prevStatsMap[asset0.PairId]; ok {
 					lastSwapPrice = p.LastSwapPrice
 				} else {
-					lps, err := r.latestPairStat(ctx, asset0.PairId)
+					lps, found, err := r.latestPairStat(ctx, asset0.PairId)
 					if err != nil {
 						return nil, errors.Wrap(err, "readRepoImpl.PairStats")
 					}
-					lastSwapPrice = lps.LastSwapPrice
+					if found {
+						lastSwapPrice = lps.LastSwapPrice
+					}
+				}
+				if strings.TrimSpace(lastSwapPrice) == "" {
+					// no stats to carry the price over from: the pair has never been
+					// aggregated before. leave it at zero rather than an empty string,
+					// which the numeric column of pair_stats_30m rejects.
+					lastSwapPrice = "0"
 				}
 			} else {
 				lastSwapPrice = lastVolume1.Quo(lastVolume0).Abs().String()
 			}
 
-			ts := util.ToTime(endTs)
-			stats = append(stats, schemas.PairStats30m{
-				YearUtc:        ts.Year(),
-				MonthUtc:       int(ts.Month()),
-				DayUtc:         ts.Day(),
-				HourUtc:        ts.Hour(),
-				MinuteUtc:      ts.Minute(),
-				PairId:         asset0.PairId,
-				ChainId:        r.chainId,
-				Volume0:        asset0.Volume0,
-				Volume1:        asset1.Volume1,
-				Volume0InPrice: asset0.Volume0InPrice,
-				Volume1InPrice: asset1.Volume1InPrice,
-				LastSwapPrice:  lastSwapPrice,
-				// read below fields separately by `LiquiditiesOfPairStats`
-				// Liquidity0         string  `json:"liquidity0"`
-				// Liquidity1         string  `json:"liquidity1"`
-				// Liquidity0InPrice  string  `json:"liquidity0_in_price"`
-				// Liquidity1InPrice  string  `json:"liquidity1_in_price"`
-				Commission0:        asset0.Commission0,
-				Commission1:        asset1.Commission1,
-				Commission0InPrice: asset0.Commission0InPrice,
-				Commission1InPrice: asset1.Commission1InPrice,
-				PriceToken:         priceToken,
-				TxCnt:              asset0.TxCnt,
-				ProviderCnt:        asset0.ProviderCnt,
-				Timestamp:          endTs,
-			})
+			// the constructor zeroes every amount, which leaves the liquidity fields
+			// `LiquiditiesOfPairStats` fills in separately writable on their own
+			stat := schemas.NewPairStat30min(r.chainId, priceToken, util.ToTime(endTs), asset0.PairId)
+			stat.Volume0 = asset0.Volume0
+			stat.Volume1 = asset1.Volume1
+			stat.Volume0InPrice = asset0.Volume0InPrice
+			stat.Volume1InPrice = asset1.Volume1InPrice
+			stat.LastSwapPrice = lastSwapPrice
+			stat.Commission0 = asset0.Commission0
+			stat.Commission1 = asset1.Commission1
+			stat.Commission0InPrice = asset0.Commission0InPrice
+			stat.Commission1InPrice = asset1.Commission1InPrice
+			stat.TxCnt = asset0.TxCnt
+			stat.ProviderCnt = asset0.ProviderCnt
+
+			stats = append(stats, stat)
 		}
 	}
 
 	return
 }
 
-func (r *readRepoImpl) latestPairStat(ctx context.Context, pairId uint64) (schemas.PairStats30m, error) {
+// latestPairStat returns the newest stats row of the pair on this chain. The bool
+// reports whether such a row exists at all: a pair that was never aggregated returns
+// (zero value, false, nil), and its zero value is an empty string in every amount,
+// which the numeric columns of pair_stats_30m reject. Callers have to answer for that
+// case themselves rather than pass the returned row on.
+//
+// Reruns can leave more than one row on a timestamp, so the id breaks the tie and keeps
+// the answer the same across calls.
+func (r *readRepoImpl) latestPairStat(ctx context.Context, pairId uint64) (schemas.PairStats30m, bool, error) {
 	var stat schemas.PairStats30m
 
-	if tx := r.conn(ctx).Model(schemas.PairStats30m{}).Where("chain_id = ? and pair_id = ?", r.chainId, pairId).Order(
-		"timestamp desc").Limit(1).Find(&stat); tx.Error != nil {
-		if errors.Is(tx.Error, sql.ErrNoRows) {
-			return schemas.PairStats30m{}, nil
-		}
-		return schemas.PairStats30m{}, tx.Error
+	tx := r.conn(ctx).Model(schemas.PairStats30m{}).Where(
+		"chain_id = ? and pair_id = ?", r.chainId, pairId).Order("timestamp desc, id desc").Limit(1).Find(&stat)
+	if tx.Error != nil {
+		return schemas.PairStats30m{}, false, errors.Wrap(tx.Error, "readRepoImpl.latestPairStat")
 	}
 
-	return stat, nil
+	return stat, tx.RowsAffected > 0, nil
 }
 
 func (r *readRepoImpl) AccountStats(ctx context.Context, startTs float64, endTs float64, priceToken string) ([]schemas.AccountStats30m, error) {
@@ -596,8 +598,13 @@ token_price_by_height AS (
 SELECT lh.pair_id,
        lh.liquidity0,
        lh.liquidity1,
-       lh.liquidity0 * COALESCE(t0.price, 0) / POWER(10, t0.token_decimals) as liquidity0_in_price,
-       lh.liquidity1 * COALESCE(t1.price, 0) / POWER(10, t1.token_decimals) as liquidity1_in_price
+       -- an unknown token (no tokens row joined, or no decimals recorded) leaves the
+       -- value unpriced; report 0 instead of NULL, which the caller reads as an empty
+       -- string and the numeric column of pair_stats_30m rejects
+       CASE WHEN t0.token_decimals IS NULL THEN 0
+            ELSE lh.liquidity0 * COALESCE(t0.price, 0) / POWER(10, t0.token_decimals) END as liquidity0_in_price,
+       CASE WHEN t1.token_decimals IS NULL THEN 0
+            ELSE lh.liquidity1 * COALESCE(t1.price, 0) / POWER(10, t1.token_decimals) END as liquidity1_in_price
 FROM lp_history lh
     JOIN latest_lp ll ON lh.pair_id = ll.pair_id AND lh.height = ll.height
     JOIN pair p ON lh.pair_id = p.id

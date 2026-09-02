@@ -116,13 +116,58 @@ func mustNewRepo(t *testing.T, config configs.RdbConfig) Repo {
 	return repository
 }
 
+// The 30 minute tables are purged by the bucket the timestamp falls in, not by the
+// timestamp itself, so a rerun starting mid bucket cannot leave half of one behind.
 func TestDeleteDuplicates(t *testing.T) {
 	requireDb(t)
 	ctx := context.Background()
 
 	assert := assert.New(t)
 
-	expectedPairStatsCnt, expectedAccountStatsCnt := 1, 0
+	// 02:00, 02:30 and 03:00 UTC. Deleting from 02:30 clears the bucket ending at 03:00,
+	// which is the last row alone.
+	timestamps := []float64{1665626400, 1665628200, 1665630000}
+	deleteFrom := util.ToTime(1665628200)
+	// asserting which rows survive, not how many: a purge of the wrong end of the range
+	// leaves the same count behind
+	expectedRemaining := []float64{1665626400, 1665628200}
+
+	db, gormDb, err := initDb(testConfig.Aggregator.DestDb)
+	assert.NoError(err)
+	defer db.Close()
+
+	// prepare: rows go in through the models, so a schema change fails the insert here
+	// instead of silently leaving the tables empty
+	gormDb.Exec(`TRUNCATE TABLE pair_stats_30m, account_stats_30m`)
+	for _, ts := range timestamps {
+		pairStat := schemas.NewPairStat30min(chainName, "axpla", util.ToTime(ts), 3)
+		require.NoError(t, gormDb.Create(&pairStat).Error)
+
+		accountStat := schemas.NewAccountStat30min(chainName, util.ToTime(ts), 3, 1, "terra0wal1let2")
+		require.NoError(t, gormDb.Create(&accountStat).Error)
+	}
+
+	// execute
+	repo := mustNewRepo(t, testConfig.Aggregator.DestDb)
+	err = repo.DeleteDuplicates(ctx, deleteFrom)
+	assert.NoError(err)
+
+	// verify
+	var pairStatsTimestamps, accountStatsTimestamps []float64
+	gormDb.Raw("SELECT timestamp FROM pair_stats_30m ORDER BY timestamp").Scan(&pairStatsTimestamps)
+	gormDb.Raw("SELECT timestamp FROM account_stats_30m ORDER BY timestamp").Scan(&accountStatsTimestamps)
+
+	assert.Equal(expectedRemaining, pairStatsTimestamps)
+	assert.Equal(expectedRemaining, accountStatsTimestamps)
+}
+
+func TestLatestPairStat(t *testing.T) {
+	requireDb(t)
+	ctx := context.Background()
+
+	assert := assert.New(t)
+
+	pairId, otherPairId := uint64(3), uint64(4)
 
 	db, gormDb, err := initDb(testConfig.Aggregator.DestDb)
 	assert.NoError(err)
@@ -130,40 +175,40 @@ func TestDeleteDuplicates(t *testing.T) {
 
 	// prepare
 	gormDb.Exec(`TRUNCATE TABLE pair_stats_30m`)
-	gormDb.Exec(`
-INSERT INTO pair_stats_30m (year_utc, month_utc, day_utc, hour_utc, minute_utc, timestamp, chain_id, pair_id, tx_cnt, provider_cnt, asset0_volume, asset1_volume, asset0_liquidity, asset1_liquidity, commission0, commission1)
-VALUES (2022, 10, 13, 2, 0, 1665626400, 'columbus-5', 3, 24, 0, '2788291', '1005263', '10000000', '10000000', '9250379', '18874')`)
-	gormDb.Exec(`
-INSERT INTO pair_stats_30m (year_utc, month_utc, day_utc, hour_utc, minute_utc, timestamp, chain_id, pair_id, tx_cnt, provider_cnt, asset0_volume, asset1_volume, asset0_liquidity, asset1_liquidity, commission0, commission1)
-VALUES (2022, 10, 13, 2, 30, 1665628200, 'columbus-5', 3, 7, 0, '5169822', '-380047', '10000000', '10000000', '89759', '5504')`)
-	gormDb.Exec(`
-INSERT INTO pair_stats_30m (year_utc, month_utc, day_utc, hour_utc, minute_utc, timestamp, chain_id, pair_id, tx_cnt, provider_cnt, asset0_volume, asset1_volume, asset0_liquidity, asset1_liquidity, commission0, commission1)
-VALUES (2022, 10, 13, 3, 0, 1665630000, 'columbus-5', 3, 4, 0, '3195129', '-265058', '10000000', '10000000', '14457', '1546')`)
-
-	/*
-			gormDb.Exec(`TRUNCATE TABLE h_account_stats_30m`)
-			gormDb.Exec(`
-		INSERT INTO public.h_account_stats_30m (year_utc, month_utc, day_utc, hour_utc, minute_utc, ts, chain_id, account_id, pair_id, tx_cnt, asset0_amount, asset1_amount, total_lp_amount)
-		VALUES (2022, 10, 13, 5, 0, 1665637200, 'columbus-5', 1, 3, 1, 13517017, 909068, 447645)
-		`)
-			gormDb.Exec(`
-		INSERT INTO public.h_account_stats_30m (year_utc, month_utc, day_utc, hour_utc, minute_utc, ts, chain_id, account_id, pair_id, tx_cnt, asset0_amount, asset1_amount, total_lp_amount)
-		VALUES (2022, 10, 13, 5, 0, 1665637200, 'columbus-5', 1, 4, 1, 25000000, 489782, 3180318)
-		`)
-	*/
+	// written out of order, so a query relying on insertion order picks the wrong row
+	for _, row := range []struct {
+		ts         float64
+		liquidity0 string
+	}{
+		{1665626400, "100"},
+		{1665630000, "300"},
+		{1665628200, "200"},
+		// a rerun leaves a second row on the newest timestamp: nothing but the id tells
+		// the two apart, and the later one is the one to carry over
+		{1665630000, "301"},
+	} {
+		stat := schemas.NewPairStat30min(chainName, "axpla", util.ToTime(row.ts), pairId)
+		stat.Liquidity0 = row.liquidity0
+		require.NoError(t, gormDb.Create(&stat).Error)
+	}
+	// a newer row of another chain sharing the pair id must not win
+	otherChainStat := schemas.NewPairStat30min("other-chain", "axpla", util.ToTime(1665633600), pairId)
+	require.NoError(t, gormDb.Create(&otherChainStat).Error)
 
 	// execute
 	repo := mustNewRepo(t, testConfig.Aggregator.DestDb)
-	err = repo.DeleteDuplicates(ctx, util.ToTime(1665628200))
+	latest, found, err := repo.LatestPairStat(ctx, pairId)
+	_, missing, missingErr := repo.LatestPairStat(ctx, otherPairId)
 
 	// verify
-	var pairStatsCnt, accountStatsCnt int
-	gormDb.Raw("SELECT COUNT(*) FROM pair_stats_30m").Scan(&pairStatsCnt)
-	// gormDb.Raw("SELECT COUNT(*) FROM h_account_stats_30m").Scan(&accountStatsCnt)
-
 	assert.NoError(err)
-	assert.Equal(expectedPairStatsCnt, pairStatsCnt)
-	assert.Equal(expectedAccountStatsCnt, accountStatsCnt)
+	assert.True(found)
+	// the newest row of this chain, whatever order they were written in
+	assert.Equal(float64(1665630000), latest.Timestamp)
+	assert.Equal("301", latest.Liquidity0)
+
+	assert.NoError(missingErr)
+	assert.False(missing, "a pair without stats must be reported as missing, not as a zero row")
 }
 
 func TestUpdatePairStats(t *testing.T) {

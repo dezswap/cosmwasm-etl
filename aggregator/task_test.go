@@ -789,6 +789,120 @@ func TestPairStatsUpdateTaskExecute(t *testing.T) {
 	assert.Equal(expected, rp.updatedPairStats[0])
 }
 
+// A pair transacting in the window has an lp history too, so a gap is the parent task
+// lagging. The liquidity is unknown then, not zero, and reporting the pair as drained
+// would dent the liquidity series for that window.
+func TestPairStatsUpdateTaskCarriesLiquidityWithoutLpHistory(t *testing.T) {
+	end := time.Unix(1666765800, 0).UTC() // 2022-10-26 06:30:00 UTC
+	pairId := uint64(1)
+
+	stats := []schemas.PairStats30m{
+		{
+			PairId:             pairId,
+			Volume0:            "6000000.000000000000000000",
+			Volume1:            "7000000.000000000000000000",
+			Volume0InPrice:     "9.000000000000000000",
+			Volume1InPrice:     "11.000000000000000000",
+			LastSwapPrice:      "0.750000000000000000",
+			Commission0:        "2000000.000000000000000000",
+			Commission1:        "3000000.000000000000000000",
+			Commission0InPrice: "3.000000000000000000",
+			Commission1InPrice: "5.000000000000000000",
+			Timestamp:          float64(end.Unix()),
+		},
+	}
+
+	carried := schemas.PairStats30m{
+		PairId:            pairId,
+		Liquidity0:        "7000000.000000000000000000",
+		Liquidity1:        "8000000.000000000000000000",
+		Liquidity0InPrice: "14.000000000000000000",
+		Liquidity1InPrice: "16.000000000000000000",
+	}
+
+	for _, tc := range []struct {
+		name                     string
+		prevStat                 map[uint64]schemas.PairStats30m
+		written                  map[uint64]schemas.PairStats30m
+		liquidity, liquidityInPr string
+	}{
+		{
+			name:      "carries the previous window over",
+			prevStat:  map[uint64]schemas.PairStats30m{pairId: carried},
+			liquidity: "7000000.000000000000000000", liquidityInPr: "14.000000000000000000",
+		},
+		{
+			// prevStatMap is empty until this process aggregates a window, so a restart
+			// has to fall back to the newest row in the database
+			name:      "reads the previous window back after a restart",
+			prevStat:  map[uint64]schemas.PairStats30m{},
+			written:   map[uint64]schemas.PairStats30m{pairId: carried},
+			liquidity: "7000000.000000000000000000", liquidityInPr: "14.000000000000000000",
+		},
+		{
+			// nothing to carry over, and the numeric columns reject an empty string
+			name:      "zeroes a pair seen for the first time",
+			prevStat:  map[uint64]schemas.PairStats30m{},
+			liquidity: "0", liquidityInPr: "0",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assert := assert.New(t)
+
+			rp := repoMock{latestPairStats: tc.written}
+			rp.On("HeightOnTimestamp").Return(uint64(0), nil)
+			rp.On("LastHeightOfPrice").Return(uint64(0), nil)
+			rp.On("PairStats", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(stats, nil)
+			rp.On("LiquiditiesOfPairStats", mock.Anything, mock.Anything, mock.Anything).Return(
+				map[uint64]schemas.PairStats30m{}, nil)
+
+			task := pairStatsUpdateTask{
+				taskImpl: taskImpl{
+					chainId: "",
+					destDb:  &rp,
+					logger:  logging.Discard,
+				},
+				srcDb:       &rp,
+				prevStatMap: tc.prevStat,
+			}
+			err := task.Execute(context.Background(), time.Time{}, end)
+
+			assert.NoError(err)
+			actual := rp.updatedPairStats[0]
+			assert.Equal(tc.liquidity, actual.Liquidity0)
+			assert.Equal(tc.liquidityInPr, actual.Liquidity0InPrice)
+		})
+	}
+}
+
+// Reading the previous window back can fail like any other query, and a window written
+// with the liquidity of a failed read would be wrong rather than merely late.
+func TestPairStatsUpdateTaskFailsOnUnreadablePreviousLiquidity(t *testing.T) {
+	end := time.Unix(1666765800, 0).UTC() // 2022-10-26 06:30:00 UTC
+	expectedErr := errors.New("read failed")
+
+	rp := repoMock{latestPairStatErr: expectedErr}
+	rp.On("HeightOnTimestamp").Return(uint64(0), nil)
+	rp.On("LastHeightOfPrice").Return(uint64(0), nil)
+	rp.On("PairStats", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
+		[]schemas.PairStats30m{{PairId: 1, Timestamp: float64(end.Unix())}}, nil)
+	rp.On("LiquiditiesOfPairStats", mock.Anything, mock.Anything, mock.Anything).Return(
+		map[uint64]schemas.PairStats30m{}, nil)
+
+	task := pairStatsUpdateTask{
+		taskImpl: taskImpl{
+			destDb: &rp,
+			logger: logging.Discard,
+		},
+		srcDb:       &rp,
+		prevStatMap: make(map[uint64]schemas.PairStats30m),
+	}
+	err := task.Execute(context.Background(), time.Time{}, end)
+
+	require.ErrorIs(t, err, expectedErr)
+	require.Nil(t, rp.updatedPairStats, "a window must not be written from liquidity that could not be read")
+}
+
 func TestExecuteAccountStatsUpdateTask(t *testing.T) {
 	assert := assert.New(t)
 
