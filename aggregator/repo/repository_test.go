@@ -197,7 +197,7 @@ func TestLatestPairStat(t *testing.T) {
 
 	// execute
 	repo := mustNewRepo(t, testConfig.Aggregator.DestDb)
-	latest, found, err := repo.LatestPairStat(ctx, pairId, 1665633600)
+	latest, found, err := repo.LatestPairStat(ctx, pairId, 1665637200)
 	// a rerun of the 02:00 window sees the rows of every later window already written
 	rerun, rerunFound, rerunErr := repo.LatestPairStat(ctx, pairId, 1665626400)
 	_, missing, missingErr := repo.LatestPairStat(ctx, otherPairId, 1665633600)
