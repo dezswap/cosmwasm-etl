@@ -208,8 +208,8 @@ func (r *repoImpl) DeleteDuplicates(ctx context.Context, ts time.Time) error {
 
 func (r *repoImpl) LatestPairStat(ctx context.Context, pairId uint64, before float64) (schemas.PairStats30m, bool, error) {
 	stat := schemas.PairStats30m{}
-	// reruns can leave more than one row on a timestamp, and only the id tells the
-	// newest of them apart
+	// a window now holds at most one row per pair, but rows written before the unique
+	// index existed may still be doubled up, and only the id tells the newest apart
 	tx := r.conn(ctx).Model(schemas.PairStats30m{}).Where(
 		"chain_id = ? and pair_id = ? and timestamp < ?", r.chainId, pairId, before).Order(
 		"timestamp desc, id desc").Limit(1).Find(&stat)
@@ -229,7 +229,38 @@ func (r *repoImpl) UpdatePairStats(ctx context.Context, stats []schemas.PairStat
 		return err
 	}
 
-	if tx := r.conn(ctx).Omit("Id", "CreatedAt").CreateInBatches(&stats, InsertBatchSize); tx.Error != nil {
+	tx := r.conn(ctx).Clauses(clause.OnConflict{
+		Columns: []clause.Column{
+			{Name: "chain_id"},
+			{Name: "timestamp"},
+			{Name: "pair_id"},
+		},
+		DoUpdates: clause.Assignments(map[string]interface{}{
+			"year_utc":             gorm.Expr("excluded.year_utc"),
+			"month_utc":            gorm.Expr("excluded.month_utc"),
+			"day_utc":              gorm.Expr("excluded.day_utc"),
+			"hour_utc":             gorm.Expr("excluded.hour_utc"),
+			"minute_utc":           gorm.Expr("excluded.minute_utc"),
+			"volume0":              gorm.Expr("excluded.volume0"),
+			"volume1":              gorm.Expr("excluded.volume1"),
+			"volume0_in_price":     gorm.Expr("excluded.volume0_in_price"),
+			"volume1_in_price":     gorm.Expr("excluded.volume1_in_price"),
+			"last_swap_price":      gorm.Expr("excluded.last_swap_price"),
+			"liquidity0":           gorm.Expr("excluded.liquidity0"),
+			"liquidity1":           gorm.Expr("excluded.liquidity1"),
+			"liquidity0_in_price":  gorm.Expr("excluded.liquidity0_in_price"),
+			"liquidity1_in_price":  gorm.Expr("excluded.liquidity1_in_price"),
+			"commission0":          gorm.Expr("excluded.commission0"),
+			"commission1":          gorm.Expr("excluded.commission1"),
+			"commission0_in_price": gorm.Expr("excluded.commission0_in_price"),
+			"commission1_in_price": gorm.Expr("excluded.commission1_in_price"),
+			"price_token":          gorm.Expr("excluded.price_token"),
+			"tx_cnt":               gorm.Expr("excluded.tx_cnt"),
+			"provider_cnt":         gorm.Expr("excluded.provider_cnt"),
+			"modified_at":          gorm.Expr("date_part('epoch'::text, now())"),
+		}),
+	}).CreateInBatches(&stats, InsertBatchSize)
+	if tx.Error != nil {
 		return tx.Error
 	}
 
@@ -257,19 +288,43 @@ var pairStatAmounts = []struct {
 	{"commission1_in_price", func(s *schemas.PairStats30m) string { return s.Commission1InPrice }},
 }
 
-// validatePairStats rejects empty amounts before they reach the numeric columns of
-// pair_stats_30m, which fail with a driver level syntax error naming neither the pair
-// nor the column that was left unset.
+// pairStatWindow keys a row the way pair_stats_30m's unique index does.
+type pairStatWindow struct {
+	pairId    uint64
+	timestamp float64
+}
+
+// validatePairStats rejects rows the writer must not send. The insert files a row under
+// the chain id the row carries, not the one this repo is scoped to, so a foreign chain
+// id would land as a perfectly valid row under the wrong key and postgres would never
+// complain. An empty amount and a repeated window it does reject, but without naming the
+// pair or the column.
 func (r *repoImpl) validatePairStats(stats []schemas.PairStats30m) error {
+	seen := make(map[pairStatWindow]struct{}, len(stats))
+
 	for i := range stats {
 		stat := &stats[i]
+		if stat.ChainId != r.chainId {
+			return errors.Errorf(
+				"repo.UpdatePairStats: pair %d on timestamp %.0f belongs to %s, not %s",
+				stat.PairId, stat.Timestamp, stat.ChainId, r.chainId)
+		}
+
 		for _, amount := range pairStatAmounts {
 			if strings.TrimSpace(amount.of(stat)) == "" {
 				return errors.Errorf(
 					"repo.UpdatePairStats: empty %s for pair %d of %s on timestamp %.0f",
-					amount.column, stat.PairId, r.chainId, stat.Timestamp)
+					amount.column, stat.PairId, stat.ChainId, stat.Timestamp)
 			}
 		}
+
+		window := pairStatWindow{stat.PairId, stat.Timestamp}
+		if _, duplicated := seen[window]; duplicated {
+			return errors.Errorf(
+				"repo.UpdatePairStats: duplicate row for pair %d of %s on timestamp %.0f",
+				stat.PairId, stat.ChainId, stat.Timestamp)
+		}
+		seen[window] = struct{}{}
 	}
 
 	return nil
@@ -280,7 +335,7 @@ func (r *repoImpl) UpdateAccountStats(ctx context.Context, stats []schemas.Accou
 		return nil
 	}
 
-	tx := r.conn(ctx).Omit("Id", "CreatedAt").Clauses(clause.OnConflict{
+	tx := r.conn(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{
 			{Name: "chain_id"},
 			{Name: "timestamp"},

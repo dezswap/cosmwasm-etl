@@ -326,6 +326,115 @@ func TestUpdatePairStatsRejectsEmptyAmounts(t *testing.T) {
 	require.ErrorContains(t, err, "test-chain")
 }
 
+// A row carrying another chain's id would be written under that id, keyed correctly for
+// a chain this repo does not serve, and postgres would take it without complaint.
+func TestUpdatePairStatsRejectsForeignChain(t *testing.T) {
+	sqlDB, _, err := sqlmock.New()
+	require.NoError(t, err)
+	defer sqlDB.Close()
+
+	gormDB, err := rootdb.OpenGormPostgresWithConn(sqlDB)
+	require.NoError(t, err)
+	repository := &repoImpl{db: gormDB, chainId: "test-chain"}
+
+	stats := zeroAmountPairStats(1)
+	stats[0].PairId = 713
+	stats[0].ChainId = "other-chain"
+
+	err = repository.UpdatePairStats(context.Background(), stats)
+
+	require.ErrorContains(t, err, "713")
+	require.ErrorContains(t, err, "other-chain")
+	require.ErrorContains(t, err, "test-chain")
+}
+
+// Two rows on one window collide inside the upsert, which postgres reports without
+// naming either row, so the writer rejects them first.
+func TestUpdatePairStatsRejectsDuplicateWindows(t *testing.T) {
+	sqlDB, _, err := sqlmock.New()
+	require.NoError(t, err)
+	defer sqlDB.Close()
+
+	gormDB, err := rootdb.OpenGormPostgresWithConn(sqlDB)
+	require.NoError(t, err)
+	repository := &repoImpl{db: gormDB, chainId: "test-chain"}
+
+	stats := zeroAmountPairStats(2)
+	stats[1].PairId = stats[0].PairId
+	stats[1].Timestamp = stats[0].Timestamp
+
+	err = repository.UpdatePairStats(context.Background(), stats)
+
+	require.ErrorContains(t, err, "duplicate")
+	require.ErrorContains(t, err, "test-chain")
+}
+
+// A normal run writes one pair across windows and one window across pairs. Neither may
+// be mistaken for the collision above.
+func TestUpdatePairStatsAcceptsDistinctWindows(t *testing.T) {
+	sqlDB, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer sqlDB.Close()
+
+	gormDB, err := rootdb.OpenGormPostgresWithConn(sqlDB)
+	require.NoError(t, err)
+	repository := &repoImpl{db: gormDB, chainId: "test-chain"}
+
+	// zeroAmountPairStats numbers the pairs apart on one timestamp, so only the repeated
+	// pair needs a window of its own
+	stats := zeroAmountPairStats(3)
+	stats[2] = schemas.NewPairStat30min("test-chain", "uusd", time.Unix(1800, 0).UTC(), stats[0].PairId)
+
+	mock.ExpectBegin()
+	mock.ExpectExec(`INSERT INTO "pair_stats_30m"`).WillReturnResult(sqlmock.NewResult(0, 3))
+	mock.ExpectCommit()
+
+	require.NoError(t, repository.UpdatePairStats(context.Background(), stats))
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// The refreshed columns are read off the model, so a column added to PairStats30m and
+// left out of the upsert would keep its first written value on every rerun.
+func TestUpdatePairStatsUpsertsEveryColumnOnWindowKey(t *testing.T) {
+	// the matcher accepts anything, it is only here to capture the statement gorm built
+	var executed string
+	sqlDB, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(
+		sqlmock.QueryMatcherFunc(func(_, actualSQL string) error {
+			executed = actualSQL
+			return nil
+		})))
+	require.NoError(t, err)
+	defer sqlDB.Close()
+
+	gormDB, err := rootdb.OpenGormPostgresWithConn(sqlDB)
+	require.NoError(t, err)
+	repository := &repoImpl{db: gormDB, chainId: "test-chain"}
+
+	mock.ExpectBegin()
+	mock.ExpectExec("").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	require.NoError(t, repository.UpdatePairStats(context.Background(), zeroAmountPairStats(1)))
+	require.NoError(t, mock.ExpectationsWereMet())
+
+	require.Contains(t, executed, `ON CONFLICT ("chain_id","timestamp","pair_id") DO UPDATE SET`)
+
+	naming := gormschema.NamingStrategy{}
+	model := reflect.TypeOf(schemas.PairStats30m{})
+	for i := 0; i < model.NumField(); i++ {
+		column := naming.ColumnName("", model.Field(i).Name)
+		if column == "chain_id" || column == "timestamp" || column == "pair_id" {
+			// the conflict target identifies the row, rewriting it would be a no-op
+			continue
+		}
+		require.Contains(t, executed, `"`+column+`"=excluded.`+column,
+			"a rerun has to refresh %s", column)
+	}
+
+	// not a model field, so the loop above cannot cover it
+	require.Contains(t, executed, `"modified_at"=date_part('epoch'::text, now())`)
+}
+
 // The validation list is intentionally explicit so it can name the empty column and
 // read its value without reflection on every row. Keep that list tied to the model so
 // a newly added numeric string cannot silently bypass validation.
