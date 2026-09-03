@@ -154,10 +154,17 @@ func TestRunPropagatesUnexpectedDecimalsFailure(t *testing.T) {
 
 type routePriceRepo struct {
 	SrcRepo
+	decimalsErr   map[string]error
+	updateErr     error
 	updatedTokens []string
 }
 
-func (r *routePriceRepo) Decimals(context.Context, string) (int64, error) { return 6, nil }
+func (r *routePriceRepo) Decimals(_ context.Context, token string) (int64, error) {
+	if err, ok := r.decimalsErr[token]; ok {
+		return 0, err
+	}
+	return 6, nil
+}
 
 func (r *routePriceRepo) Liquidity(context.Context, uint64, string, string) (string, string, error) {
 	return "100000000", "100000000", nil
@@ -166,6 +173,9 @@ func (r *routePriceRepo) Liquidity(context.Context, uint64, string, string) (str
 func (r *routePriceRepo) UpdateRoutePrice(_ context.Context, _ uint64, _ uint64, token string, _ string, _ string, route []string) error {
 	if len(route) == 0 {
 		return ErrRouteNotFound
+	}
+	if r.updateErr != nil {
+		return r.updateErr
 	}
 	r.updatedTokens = append(r.updatedTokens, token)
 	return nil
@@ -191,6 +201,60 @@ func TestUpdateIndirectSwapPriceSkipsAssetWithoutRoute(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, []string{"A"}, repo.updatedTokens, "an asset without a route must not be written as a price row")
+}
+
+func TestUpdateIndirectSwapPricePricesIndependentCounterpartWithMissingDecimals(t *testing.T) {
+	tests := []struct {
+		name         string
+		asset0       string
+		asset1       string
+		missingToken string
+		pricedToken  string
+	}{
+		{name: "asset0 decimals missing", asset0: "A", asset1: "B", missingToken: "A", pricedToken: "B"},
+		{name: "asset1 decimals missing", asset0: "A", asset1: "B", missingToken: "B", pricedToken: "A"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &routePriceRepo{decimalsErr: map[string]error{
+				tt.missingToken: fmt.Errorf("lookup: %w", ErrTokenNotFound),
+			}}
+			tracker := newSkipTracker(repo)
+			tracker.priceRoutes = map[string][][]string{
+				tt.pricedToken: {{tracker.priceToken}},
+			}
+
+			err := tracker.updateIndirectSwapPrice(context.Background(), repo, schemas.ParsedTx{
+				Height: 10, Id: 1, Hash: "hash", Asset0: tt.asset0, Asset1: tt.asset1,
+				Asset0Amount: "1000000", Asset1Amount: "2000000",
+			})
+
+			require.NoError(t, err)
+			require.Equal(t, []string{tt.pricedToken}, repo.updatedTokens)
+			require.Len(t, tracker.skips, 1)
+			require.Contains(t, tracker.skips, tt.missingToken)
+			require.Equal(t, uint64(1), tracker.skips[tt.missingToken].count)
+		})
+	}
+}
+
+func TestUpdateIndirectSwapPriceDoesNotRecordMissingDecimalsWhenCounterpartWriteFails(t *testing.T) {
+	expectedErr := errors.New("write failed")
+	repo := &routePriceRepo{
+		decimalsErr: map[string]error{"A": fmt.Errorf("lookup: %w", ErrTokenNotFound)},
+		updateErr:   expectedErr,
+	}
+	tracker := newSkipTracker(repo)
+	tracker.priceRoutes = map[string][][]string{"B": {{tracker.priceToken}}}
+
+	err := tracker.updateIndirectSwapPrice(context.Background(), repo, schemas.ParsedTx{
+		Height: 10, Id: 1, Hash: "hash", Asset0: "A", Asset1: "B",
+		Asset0Amount: "1000000", Asset1Amount: "2000000",
+	})
+
+	require.ErrorIs(t, err, expectedErr)
+	require.Empty(t, tracker.skips, "a failed height must not update the non-transactional skip ledger")
 }
 
 func TestCalculatePrice(t *testing.T) {

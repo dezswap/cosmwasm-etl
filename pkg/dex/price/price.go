@@ -278,36 +278,62 @@ func (p *priceImpl) noteBlocker(token string, height uint64, err error) {
 }
 
 func (p *priceImpl) updateIndirectSwapPrice(ctx context.Context, repo SrcRepo, tx schemas.ParsedTx) error {
-	decimals0, err := p.decimals(ctx, repo, tx.Asset0)
-	if err != nil {
-		if !skippable(err) {
-			return errors.Wrap(err,
-				strings.Join([]string{"priceImpl.updateIndirectSwapPrice: (Tx hash:", tx.Hash, ")"}, ""))
-		}
-		// the counterpart price is derived from this one below, so neither asset of
-		// the swap can be priced without it
-		p.recordSkip(tx.Asset0, tx.Height, err)
-		return nil
+	decimals0, decimals0Err := p.decimals(ctx, repo, tx.Asset0)
+	if decimals0Err != nil && !skippable(decimals0Err) {
+		return errors.Wrap(decimals0Err,
+			strings.Join([]string{"priceImpl.updateIndirectSwapPrice: (Tx hash:", tx.Hash, ")"}, ""))
 	}
-	decimals1, err := p.decimals(ctx, repo, tx.Asset1)
-	if err != nil {
-		if !skippable(err) {
-			return errors.Wrap(err,
-				strings.Join([]string{"priceImpl.updateIndirectSwapPrice: (Tx hash:", tx.Hash, ")"}, ""))
-		}
-		p.recordSkip(tx.Asset1, tx.Height, err)
-		return nil
+	decimals1, decimals1Err := p.decimals(ctx, repo, tx.Asset1)
+	if decimals1Err != nil && !skippable(decimals1Err) {
+		return errors.Wrap(decimals1Err,
+			strings.Join([]string{"priceImpl.updateIndirectSwapPrice: (Tx hash:", tx.Hash, ")"}, ""))
 	}
 
-	route0, price0, liquidity0, err := p.optimalRoutePrice(ctx, repo, tx.Height, tx.Asset0, decimals0)
-	if err != nil {
-		return errors.Wrap(err,
-			strings.Join([]string{"priceImpl.updateIndirectSwapPrice: (Tx hash:", tx.Hash, ")"}, ""))
+	var route0, route1 []string
+	price0, price1 := math.LegacyZeroDec(), math.LegacyZeroDec()
+	liquidity0, liquidity1 := math.LegacyZeroDec(), math.LegacyZeroDec()
+
+	if decimals0Err == nil {
+		var err error
+		route0, price0, liquidity0, err = p.optimalRoutePrice(ctx, repo, tx.Height, tx.Asset0, decimals0)
+		if err != nil {
+			return errors.Wrap(err,
+				strings.Join([]string{"priceImpl.updateIndirectSwapPrice: (Tx hash:", tx.Hash, ")"}, ""))
+		}
 	}
-	route1, price1, liquidity1, err := p.optimalRoutePrice(ctx, repo, tx.Height, tx.Asset1, decimals1)
-	if err != nil {
-		return errors.Wrap(err,
-			strings.Join([]string{"priceImpl.updateIndirectSwapPrice: (Tx hash:", tx.Hash, ")"}, ""))
+	if decimals1Err == nil {
+		var err error
+		route1, price1, liquidity1, err = p.optimalRoutePrice(ctx, repo, tx.Height, tx.Asset1, decimals1)
+		if err != nil {
+			return errors.Wrap(err,
+				strings.Join([]string{"priceImpl.updateIndirectSwapPrice: (Tx hash:", tx.Hash, ")"}, ""))
+		}
+	}
+
+	// Swap-ratio adjustments need both assets' decimals. When only one asset is
+	// registered, its independent route can still be priced and written below.
+	if decimals0Err != nil || decimals1Err != nil {
+		if decimals0Err == nil {
+			if err := p.writeRoutePrice(ctx, repo, tx, tx.Asset0, price0, route0); err != nil {
+				return err
+			}
+		}
+		if decimals1Err == nil {
+			if err := p.writeRoutePrice(ctx, repo, tx, tx.Asset1, price1, route1); err != nil {
+				return err
+			}
+		}
+
+		// The skip ledger is not part of the repository transaction. Update it only
+		// after every usable counterpart has been written successfully, so a failed
+		// height does not leave a skip behind when the database rolls back.
+		if decimals0Err != nil {
+			p.recordSkip(tx.Asset0, tx.Height, decimals0Err)
+		}
+		if decimals1Err != nil {
+			p.recordSkip(tx.Asset1, tx.Height, decimals1Err)
+		}
+		return nil
 	}
 
 	if len(route0) == 0 && len(route1) == 0 {
