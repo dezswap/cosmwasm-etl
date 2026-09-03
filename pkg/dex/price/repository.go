@@ -144,9 +144,11 @@ func (r *srcRepoImpl) Decimals(ctx context.Context, asset string) (int64, error)
 
 func (r *srcRepoImpl) LatestRouteUpdateTimestamp(ctx context.Context) (float64, error) {
 	var ts float64
+	// max, not min: routes are inserted with ON CONFLICT DO NOTHING, so only the
+	// newest row says whether the router has published anything since the last reload
 	if tx := r.conn(ctx).Model(schemas.Route{}).Where(
 		"chain_id = ?", r.chainId).Select(
-		"coalesce(min(created_at), 0)").Find(&ts); tx.Error != nil {
+		"coalesce(max(created_at), 0)").Find(&ts); tx.Error != nil {
 		return 0, errors.Wrap(tx.Error, "srcRepoImpl.LatestRouteUpdateTimestamp")
 	}
 
