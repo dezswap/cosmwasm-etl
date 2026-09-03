@@ -138,6 +138,11 @@ func (r *srcRepoImpl) Decimals(ctx context.Context, asset string) (int64, error)
 	if tx.Error != nil {
 		return 0, errors.Wrap(tx.Error, "srcRepoImpl.Decimals")
 	}
+	// Find reports no error on an empty result, and the zero it leaves behind would
+	// pass for a real decimals of 0
+	if tx.RowsAffected == 0 {
+		return 0, errors.Wrapf(ErrTokenNotFound, "srcRepoImpl.Decimals(%s)", asset)
+	}
 
 	return res, nil
 }
@@ -239,6 +244,11 @@ func (r *srcRepoImpl) UpdateDirectPrice(ctx context.Context, height uint64, txId
 	if tx.Error != nil {
 		return errors.Wrap(tx.Error, "srcRepoImpl.UpdateDirectPrice")
 	}
+	// inserting the zero value would add a row with token_id/price_token_id/route_id
+	// = 0 that still raises max(height), making the task skip real prices above it
+	if tx.RowsAffected == 0 {
+		return errors.Wrapf(ErrRouteNotFound, "srcRepoImpl.UpdateDirectPrice(token: %s, price token: %s)", token, priceToken)
+	}
 
 	tx = r.conn(ctx).Model(schemas.Price{}).Create(
 		&schemas.Price{
@@ -276,6 +286,10 @@ func (r *srcRepoImpl) UpdateRoutePrice(ctx context.Context, height uint64, txId 
 
 	if tx.Error != nil {
 		return errors.Wrap(tx.Error, "srcRepoImpl.UpdateRoutePrice")
+	}
+	// see UpdateDirectPrice: an empty result must not become a zero valued price row.
+	if tx.RowsAffected == 0 {
+		return errors.Wrapf(ErrRouteNotFound, "srcRepoImpl.UpdateRoutePrice(token: %s, price token: %s, route: %v)", token, priceToken, route)
 	}
 
 	tx = r.conn(ctx).Model(schemas.Price{}).Create(
