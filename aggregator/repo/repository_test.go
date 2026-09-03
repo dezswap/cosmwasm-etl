@@ -264,6 +264,55 @@ func TestUpdatePairStats(t *testing.T) {
 	assert.Equal(expected.Timestamp, actual[0].Timestamp)
 }
 
+// A rerun writes the same window twice and has to leave one row with the newer numbers,
+// not two a consumer would sum. Every column it can change carries a second value here.
+// The utc parts are left alone, being derived from the timestamp that keys the row.
+func TestUpdatePairStatsRerunsWindow(t *testing.T) {
+	requireDb(t)
+	ctx := context.Background()
+
+	first := schemas.NewPairStat30min(chainName, "axpla", util.ToTime(1665626400), 3)
+	first.TxCnt, first.ProviderCnt = 24, 2
+	first.Volume0, first.Volume1 = "11", "12"
+	first.Volume0InPrice, first.Volume1InPrice = "13", "14"
+	first.LastSwapPrice = "15"
+	first.Liquidity0, first.Liquidity1 = "16", "17"
+	first.Liquidity0InPrice, first.Liquidity1InPrice = "18", "19"
+	first.Commission0, first.Commission1 = "20", "21"
+	first.Commission0InPrice, first.Commission1InPrice = "22", "23"
+
+	rerun := first
+	rerun.TxCnt, rerun.ProviderCnt = 30, 5
+	rerun.PriceToken = "uusd"
+	rerun.Volume0, rerun.Volume1 = "31", "32"
+	rerun.Volume0InPrice, rerun.Volume1InPrice = "33", "34"
+	rerun.LastSwapPrice = "35"
+	rerun.Liquidity0, rerun.Liquidity1 = "36", "37"
+	rerun.Liquidity0InPrice, rerun.Liquidity1InPrice = "38", "39"
+	rerun.Commission0, rerun.Commission1 = "40", "41"
+	rerun.Commission0InPrice, rerun.Commission1InPrice = "42", "43"
+
+	db, gormDb, err := initDb(testConfig.Aggregator.DestDb)
+	require.NoError(t, err)
+	defer db.Close()
+
+	// prepare
+	gormDb.Exec(`TRUNCATE TABLE pair_stats_30m`)
+
+	// execute
+	repo := mustNewRepo(t, testConfig.Aggregator.DestDb)
+	require.NoError(t, repo.UpdatePairStats(ctx, []schemas.PairStats30m{first}))
+	err = repo.UpdatePairStats(ctx, []schemas.PairStats30m{rerun})
+
+	// verify
+	actual := []schemas.PairStats30m{}
+	gormDb.Find(&actual)
+
+	require.NoError(t, err)
+	require.Len(t, actual, 1, "a re-aggregated window must update its row, not add one")
+	require.Equal(t, rerun, actual[0])
+}
+
 func TestUpdateAccountStats(t *testing.T) {
 	requireDb(t)
 	ctx := context.Background()

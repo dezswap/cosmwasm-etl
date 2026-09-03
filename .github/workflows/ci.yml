@@ -59,6 +59,12 @@ jobs:
       run: |
         make parser-migrate-up
         make parser-migrate-test
+        # aggregator migrations run against the tables parser creates, so they go
+        # between the parser up and down. Their down steps back one migration, and
+        # the second up proves what it left behind can be migrated again.
+        make aggregator-migrate-up
+        make aggregator-migrate-down
+        make aggregator-migrate-up
         make parser-migrate-down
 
   docker-check:
