@@ -896,6 +896,150 @@ func (s *aggregatorReadRepoSuite) Test_PairStats_FiltersByPriceTokenId() {
 	assert.Equal(70.0, volume0InPrice)
 }
 
+func (s *aggregatorReadRepoSuite) Test_PairStats_ZerosNullCommissions() {
+	assert := assert.New(s.T())
+	require := require.New(s.T())
+
+	priceToken := "uusd"
+	asset := "terra0asset"
+	contract := "terra0pairstatsnullcommission"
+	pairId := uint64(303)
+
+	require.NoError(s.DB.Exec(`TRUNCATE TABLE parsed_tx, price, tokens, pair CASCADE`).Error)
+	require.NoError(s.DB.Exec(
+		`INSERT INTO pair(id, chain_id, contract, asset0, asset1, lp) VALUES($1, $2, $3, $4, $5, $6)`,
+		pairId, chainName, contract, asset, priceToken, "terra0lp",
+	).Error)
+	require.NoError(s.DB.Exec(
+		`INSERT INTO tokens(id, chain_id, address, decimals) VALUES
+         (3400, $1, $2, 0),
+         (3401, $1, $3, 0)`,
+		chainName, priceToken, asset,
+	).Error)
+	// rows predating the divided commission columns carry no commission at all
+	require.NoError(s.DB.Exec(
+		`INSERT INTO parsed_tx(chain_id, height, timestamp, hash, type, sender, contract, asset0, asset0_amount, asset1, asset1_amount, lp, lp_amount, commission_amount, commission0_amount, commission1_amount)
+         VALUES ($1, 100, $2, 'pair-stats-null-commission', 'provide', 'terra0wallet', $3, $4, '10', $5, '5', 'terra0lp', '10', NULL, NULL, NULL)`,
+		chainName, start, contract, asset, priceToken,
+	).Error)
+
+	actual, err := s.Repo.PairStats(context.Background(), start, end, priceToken, map[uint64]schemas.PairStats30m{})
+
+	require.NoError(err)
+	require.Len(actual, 1)
+	assert.Equal("0", actual[0].Commission0)
+	assert.Equal("0", actual[0].Commission1)
+	assert.Equal("0", actual[0].Commission0InPrice)
+	assert.Equal("0", actual[0].Commission1InPrice)
+}
+
+// A token without decimals leaves every scaled amount null. Aggregating the whole
+// window used to fail on it, taking the pairs that could be priced down with it.
+func (s *aggregatorReadRepoSuite) Test_PairStats_ZerosAmountsOfTokenWithoutDecimals() {
+	assert := assert.New(s.T())
+	require := require.New(s.T())
+
+	priceToken := "uusd"
+	asset := "terra0asset"
+	contract := "terra0pairstatsnodecimals"
+	pairId := uint64(304)
+
+	require.NoError(s.DB.Exec(`TRUNCATE TABLE parsed_tx, price, tokens, pair CASCADE`).Error)
+	require.NoError(s.DB.Exec(`DELETE FROM pair_stats_30m WHERE pair_id = $1`, pairId).Error)
+	require.NoError(s.DB.Exec(
+		`INSERT INTO pair(id, chain_id, contract, asset0, asset1, lp) VALUES($1, $2, $3, $4, $5, $6)`,
+		pairId, chainName, contract, asset, priceToken, "terra0lp",
+	).Error)
+	require.NoError(s.DB.Exec(
+		`INSERT INTO tokens(id, chain_id, address, decimals) VALUES
+         (3500, $1, $2, 0),
+         (3501, $1, $3, NULL)`,
+		chainName, priceToken, asset,
+	).Error)
+	require.NoError(s.DB.Exec(
+		`INSERT INTO parsed_tx(chain_id, height, timestamp, hash, type, sender, contract, asset0, asset0_amount, asset1, asset1_amount, lp, lp_amount, commission_amount, commission0_amount, commission1_amount)
+         VALUES ($1, 100, $2, 'pair-stats-no-decimals', 'swap', 'terra0wallet', $3, $4, '-10', $5, '5', 'terra0lp', '0', '0', '0', '0')`,
+		chainName, start, contract, asset, priceToken,
+	).Error)
+
+	actual, err := s.Repo.PairStats(context.Background(), start, end, priceToken, map[uint64]schemas.PairStats30m{})
+
+	require.NoError(err)
+	require.Len(actual, 1)
+	assert.Equal("0", actual[0].LastSwapPrice)
+	assert.Equal("0", actual[0].Volume0InPrice)
+}
+
+func (s *aggregatorReadRepoSuite) Test_PairStats_ZerosLastSwapPriceWithoutPreviousStats() {
+	assert := assert.New(s.T())
+	require := require.New(s.T())
+
+	priceToken := "uusd"
+	asset := "terra0asset"
+	contract := "terra0pairstatsnohistory"
+	pairId := uint64(302)
+
+	require.NoError(s.DB.Exec(`TRUNCATE TABLE parsed_tx, price, tokens, pair CASCADE`).Error)
+	require.NoError(s.DB.Exec(`DELETE FROM pair_stats_30m WHERE pair_id = $1`, pairId).Error)
+	require.NoError(s.DB.Exec(
+		`INSERT INTO pair(id, chain_id, contract, asset0, asset1, lp) VALUES($1, $2, $3, $4, $5, $6)`,
+		pairId, chainName, contract, asset, priceToken, "terra0lp",
+	).Error)
+	require.NoError(s.DB.Exec(
+		`INSERT INTO tokens(id, chain_id, address, decimals) VALUES
+         (3300, $1, $2, 0),
+         (3301, $1, $3, 0)`,
+		chainName, priceToken, asset,
+	).Error)
+	// a one sided provide leaves the pair without a swap price to derive, and the pair
+	// has never been aggregated, so there is no previous stat to carry the price over from
+	require.NoError(s.DB.Exec(
+		`INSERT INTO parsed_tx(chain_id, height, timestamp, hash, type, sender, contract, asset0, asset0_amount, asset1, asset1_amount, lp, lp_amount, commission_amount, commission0_amount, commission1_amount)
+         VALUES ($1, 100, $2, 'pair-stats-no-history', 'provide', 'terra0wallet', $3, $4, '10', $5, '0', 'terra0lp', '10', '0', '0', '0')`,
+		chainName, start, contract, asset, priceToken,
+	).Error)
+
+	actual, err := s.Repo.PairStats(context.Background(), start, end, priceToken, map[uint64]schemas.PairStats30m{})
+
+	require.NoError(err)
+	require.Len(actual, 1)
+	assert.Equal("0", actual[0].LastSwapPrice)
+}
+
+func TestLatestPairStatUsesDeterministicOrderAndReportsPresence(t *testing.T) {
+	sqlDB, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer sqlDB.Close()
+
+	gormDB, err := pkgdb.OpenGormPostgresWithConn(sqlDB)
+	require.NoError(t, err)
+	repository := &readRepoImpl{db: gormDB, chainId: "local"}
+	// the window bound keeps a rerun of an older window off the rows of later ones
+	query := `^SELECT \* FROM "pair_stats_30m" WHERE chain_id = \$1 and pair_id = \$2 and timestamp < \$3 ORDER BY timestamp desc, id desc LIMIT \$4$`
+
+	mock.ExpectQuery(query).
+		WithArgs("local", uint64(7), float64(2000), 1).
+		WillReturnRows(sqlmock.NewRows([]string{"pair_id", "chain_id", "last_swap_price", "timestamp"}).
+			AddRow(7, "local", "1.25", 1234))
+
+	stat, found, err := repository.latestPairStat(context.Background(), 7, 2000)
+
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, "1.25", stat.LastSwapPrice)
+
+	mock.ExpectQuery(query).
+		WithArgs("local", uint64(8), float64(2000), 1).
+		WillReturnRows(sqlmock.NewRows([]string{"pair_id", "chain_id", "last_swap_price", "timestamp"}))
+
+	stat, found, err = repository.latestPairStat(context.Background(), 8, 2000)
+
+	require.NoError(t, err)
+	require.False(t, found)
+	require.Equal(t, schemas.PairStats30m{}, stat)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func (s *aggregatorReadRepoSuite) Test_CommissionAmountInPair() {
 	assert := assert.New(s.T())
 
@@ -956,6 +1100,45 @@ func (s *aggregatorReadRepoSuite) Test_LiquiditiesOfPairStats_UsesOneForPriceTok
 	require.NoError(err)
 	assert.Equal(1.0, liquidity0InPrice)
 	assert.Equal(4.0, liquidity1InPrice)
+}
+
+func (s *aggregatorReadRepoSuite) Test_LiquiditiesOfPairStats_ZerosPriceOfTokenWithoutDecimals() {
+	assert := assert.New(s.T())
+	require := require.New(s.T())
+
+	priceToken := "uusd"
+	pairId := uint64(101)
+
+	require.NoError(s.DB.Exec(`TRUNCATE TABLE parsed_tx, lp_history, price, tokens, pair CASCADE`).Error)
+	require.NoError(s.DB.Exec(
+		`INSERT INTO pair(id, chain_id, contract, asset0, asset1, lp) VALUES($1, $2, $3, $4, $5, $6)`,
+		pairId, chainName, "terra0nodecimalspair", "terra0asset", priceToken, "terra0lp",
+	).Error)
+	// a token whose decimals were never resolved cannot be scaled into a price
+	require.NoError(s.DB.Exec(
+		`INSERT INTO tokens(id, chain_id, address, decimals) VALUES($1, $2, $3, NULL), ($4, $5, $6, $7)`,
+		1100, chainName, "terra0asset",
+		1101, chainName, priceToken, 6,
+	).Error)
+	require.NoError(s.DB.Exec(
+		`INSERT INTO price(height, chain_id, token_id, price, price_token_id, route_id) VALUES($1, $2, $3, $4, $5, $6)`,
+		90, chainName, 1100, "2", 1101, 0,
+	).Error)
+	require.NoError(s.DB.Exec(
+		`INSERT INTO lp_history(height, pair_id, chain_id, liquidity0, liquidity1, timestamp) VALUES($1, $2, $3, $4, $5, $6)`,
+		100, pairId, chainName, "1000000", "2000000", start,
+	).Error)
+
+	actual, err := s.Repo.LiquiditiesOfPairStats(context.Background(), start, end, priceToken)
+
+	require.NoError(err)
+	require.Contains(actual, pairId)
+	liquidity0InPrice, err := strconv.ParseFloat(actual[pairId].Liquidity0InPrice, 64)
+	require.NoError(err)
+	liquidity1InPrice, err := strconv.ParseFloat(actual[pairId].Liquidity1InPrice, 64)
+	require.NoError(err)
+	assert.Equal(0.0, liquidity0InPrice)
+	assert.Equal(2.0, liquidity1InPrice)
 }
 
 func createTestPairs(db *gorm.DB) {

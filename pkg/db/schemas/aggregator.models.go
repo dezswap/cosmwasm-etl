@@ -130,17 +130,33 @@ type AccountStats30m struct {
 	Timestamp            float64 `json:"timestamp"`
 }
 
+// NewPairStat30min zeroes every amount: they map to numeric columns that reject the
+// empty string a Go zero value would send, so a caller filling only the fields it knows
+// about still produces a writable row.
 func NewPairStat30min(chainId string, priceToken string, end time.Time, pairId uint64) PairStats30m {
 	return PairStats30m{
-		YearUtc:    end.Year(),
-		MonthUtc:   int(end.Month()),
-		DayUtc:     end.Day(),
-		HourUtc:    end.Hour(),
-		MinuteUtc:  end.Minute(),
-		PairId:     pairId,
-		ChainId:    chainId,
-		PriceToken: priceToken,
-		Timestamp:  util.ToEpoch(end),
+		YearUtc:            end.Year(),
+		MonthUtc:           int(end.Month()),
+		DayUtc:             end.Day(),
+		HourUtc:            end.Hour(),
+		MinuteUtc:          end.Minute(),
+		PairId:             pairId,
+		ChainId:            chainId,
+		PriceToken:         priceToken,
+		Timestamp:          util.ToEpoch(end),
+		Volume0:            "0",
+		Volume1:            "0",
+		Volume0InPrice:     "0",
+		Volume1InPrice:     "0",
+		LastSwapPrice:      "0",
+		Liquidity0:         "0",
+		Liquidity1:         "0",
+		Liquidity0InPrice:  "0",
+		Liquidity1InPrice:  "0",
+		Commission0:        "0",
+		Commission1:        "0",
+		Commission0InPrice: "0",
+		Commission1InPrice: "0",
 	}
 }
 

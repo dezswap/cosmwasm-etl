@@ -17,6 +17,7 @@ import (
 	"github.com/dezswap/cosmwasm-etl/pkg/db/schemas"
 	"github.com/dezswap/cosmwasm-etl/pkg/util"
 	"github.com/stretchr/testify/require"
+	gormschema "gorm.io/gorm/schema"
 )
 
 func TestWithinTxRollsBackCallbackError(t *testing.T) {
@@ -257,7 +258,7 @@ func TestSliceWritersSplitIntoBatches(t *testing.T) {
 			name:      "UpdatePairStats",
 			statement: `INSERT INTO "pair_stats_30m"`,
 			write: func(ctx context.Context, r Repo, rows int) error {
-				return r.UpdatePairStats(ctx, make([]schemas.PairStats30m, rows))
+				return r.UpdatePairStats(ctx, zeroAmountPairStats(rows))
 			},
 		},
 		{
@@ -288,6 +289,65 @@ func TestSliceWritersSplitIntoBatches(t *testing.T) {
 			require.NoError(t, mock.ExpectationsWereMet())
 		})
 	}
+}
+
+// zeroAmountPairStats builds rows the writer accepts: every numeric column carries a
+// value, so a test exercising something else is not tripped by the amount check.
+func zeroAmountPairStats(rows int) []schemas.PairStats30m {
+	stats := make([]schemas.PairStats30m, rows)
+	for i := range stats {
+		stats[i] = schemas.NewPairStat30min("test-chain", "uusd", time.Unix(0, 0).UTC(), uint64(i))
+	}
+
+	return stats
+}
+
+// An unset amount reaches postgres as an empty string and fails the numeric column with
+// a driver error naming neither the pair nor the column, so the writer rejects it first.
+func TestUpdatePairStatsRejectsEmptyAmounts(t *testing.T) {
+	sqlDB, _, err := sqlmock.New()
+	require.NoError(t, err)
+	defer sqlDB.Close()
+
+	gormDB, err := rootdb.OpenGormPostgresWithConn(sqlDB)
+	require.NoError(t, err)
+	repository := &repoImpl{db: gormDB, chainId: "test-chain"}
+
+	stats := zeroAmountPairStats(1)
+	stats[0].PairId = 713
+	stats[0].LastSwapPrice = ""
+
+	err = repository.UpdatePairStats(context.Background(), stats)
+
+	// no statement is expected, so a write would have failed the sqlmock connection and
+	// returned a driver error here instead of the validation message
+	require.ErrorContains(t, err, "last_swap_price")
+	require.ErrorContains(t, err, "713")
+	require.ErrorContains(t, err, "test-chain")
+}
+
+// The validation list is intentionally explicit so it can name the empty column and
+// read its value without reflection on every row. Keep that list tied to the model so
+// a newly added numeric string cannot silently bypass validation.
+func TestPairStatAmountsStayInSyncWithModel(t *testing.T) {
+	covered := make(map[string]struct{}, len(pairStatAmounts))
+	for _, amount := range pairStatAmounts {
+		require.NotContains(t, covered, amount.column, "duplicate pairStatAmounts column")
+		covered[amount.column] = struct{}{}
+	}
+
+	expected := make(map[string]struct{})
+	model := reflect.TypeOf(schemas.PairStats30m{})
+	naming := gormschema.NamingStrategy{}
+	for i := 0; i < model.NumField(); i++ {
+		field := model.Field(i)
+		if field.Type.Kind() != reflect.String || field.Name == "ChainId" || field.Name == "PriceToken" {
+			continue
+		}
+		expected[naming.ColumnName("", field.Name)] = struct{}{}
+	}
+
+	require.Equal(t, expected, covered)
 }
 
 // One batch size serves every writer, so it has to clear the widest model's ceiling.

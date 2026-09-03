@@ -27,6 +27,8 @@ type repoMock struct {
 	updatedPairStats       []schemas.PairStats30m
 	updatedAccountStats    []schemas.AccountStats30m
 	updatedAccounts        []string
+	latestPairStats        map[uint64]schemas.PairStats30m
+	latestPairStatErr      error
 	createAccountsErr      error
 	deleteDuplicatesErr    error
 	closeErr               error
@@ -168,11 +170,6 @@ func (r *repoMock) GetParsedTxsWithLimit(_ context.Context, _ uint64, _ int) ([]
 	return args.Get(0).([]schemas.ParsedTxWithPrice), args.Error(1)
 }
 
-func (r *repoMock) LastLiquidity(_ context.Context, _ uint64, _ float64) ([repo.TupleLength]string, error) {
-	args := r.Mock.MethodCalled("LastLiquidity")
-	return args.Get(0).([repo.TupleLength]string), args.Error(1)
-}
-
 func (r *repoMock) LastLpHistory(_ context.Context, _ uint64) ([]schemas.LpHistory, error) {
 	args := r.Mock.MethodCalled("LastLpHistory")
 	return args.Get(0).([]schemas.LpHistory), args.Error(1)
@@ -209,6 +206,21 @@ func (r *repoMock) DeletePairStatsRecent(_ context.Context, _ time.Time) error {
 
 func (r *repoMock) DeleteDuplicates(_ context.Context, _ time.Time) error {
 	return r.deleteDuplicatesErr
+}
+
+// an unset latestPairStats stands for a chain whose pairs have no stats written yet.
+// The timestamp bound is honoured so a test can leave a row of a later window behind.
+func (r *repoMock) LatestPairStat(_ context.Context, pairId uint64, before float64) (schemas.PairStats30m, bool, error) {
+	if r.latestPairStatErr != nil {
+		return schemas.PairStats30m{}, false, r.latestPairStatErr
+	}
+
+	stat, ok := r.latestPairStats[pairId]
+	if !ok || stat.Timestamp >= before {
+		return schemas.PairStats30m{}, false, nil
+	}
+
+	return stat, true, nil
 }
 
 func (r *repoMock) UpdatePairStats(_ context.Context, stats []schemas.PairStats30m) error {

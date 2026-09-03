@@ -2,6 +2,7 @@ package repo
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -14,12 +15,10 @@ import (
 	"gorm.io/gorm"
 )
 
+// Indices into the liquidity pair the lp history task carries per pair.
 const (
 	Liquidity0 = 0 + iota
 	Liquidity1
-	Liquidity0InPrice
-	Liquidity1InPrice
-	TupleLength
 )
 
 // InsertBatchSize caps every slice INSERT here, keeping one statement under postgres'
@@ -30,12 +29,18 @@ type Repo interface {
 	LatestTimestamp(ctx context.Context, tableName string) (float64, error)
 	LastHeightOfPairStatsRecent(ctx context.Context) (uint64, error)
 	LastLpHistory(ctx context.Context, height uint64) ([]schemas.LpHistory, error)
-	LastLiquidity(ctx context.Context, pairId uint64, timestamp float64) ([TupleLength]string, error)
 	UpdatePairStatsRecent(ctx context.Context, stats []schemas.PairStatsRecent) error
 	UpdateLpHistory(ctx context.Context, history []schemas.LpHistory) error
 	DeletePairStatsRecent(ctx context.Context, deleteBefore time.Time) error
 
 	DeleteDuplicates(ctx context.Context, end time.Time) error
+	// LatestPairStat returns the newest row written for a pair on this chain strictly
+	// before the given timestamp. The bound keeps a rerun of an older window from
+	// reading back a row that belongs to a later one. The bool reports whether such a
+	// row exists at all; on false the row is a zero value whose amounts are empty
+	// strings, which the numeric columns reject, so the caller has to supply its own
+	// defaults rather than pass the row on.
+	LatestPairStat(ctx context.Context, pairId uint64, before float64) (schemas.PairStats30m, bool, error)
 	UpdatePairStats(ctx context.Context, stats []schemas.PairStats30m) error
 	UpdateAccountStats(ctx context.Context, stats []schemas.AccountStats30m) error
 	CreateAccounts(ctx context.Context, addresses []string) error
@@ -136,30 +141,6 @@ order by lh.height asc
 	return history, nil
 }
 
-func (r *repoImpl) LastLiquidity(ctx context.Context, pairId uint64, timestamp float64) ([TupleLength]string, error) {
-	type result struct {
-		Liquidity0 string
-		Liquidity1 string
-	}
-
-	res := result{}
-	if tx := r.conn(ctx).Model(schemas.PairStats30m{}).Where(
-		"pair_id = ? and timestamp = (select max(timestamp) from pair_stats_30m where pair_id = ? and timestamp <= ?)", pairId, pairId, timestamp).Select(
-		"liquidity0, liquidity1, liquidity0_in_price, liquidity1_in_price").Find(&res); tx.Error != nil {
-		return [TupleLength]string{}, errors.Wrap(tx.Error, "LastLiquidity")
-	}
-
-	pairLiquidity := [TupleLength]string{"0", "0", "0", "0"}
-	if len(res.Liquidity0) > 0 {
-		pairLiquidity[Liquidity0] = res.Liquidity0
-	}
-	if len(res.Liquidity1) > 0 {
-		pairLiquidity[Liquidity1] = res.Liquidity1
-	}
-
-	return pairLiquidity, nil
-}
-
 func (r *repoImpl) UpdatePairStatsRecent(ctx context.Context, stats []schemas.PairStatsRecent) error {
 	if len(stats) == 0 {
 		return nil
@@ -225,13 +206,70 @@ func (r *repoImpl) DeleteDuplicates(ctx context.Context, ts time.Time) error {
 	})
 }
 
+func (r *repoImpl) LatestPairStat(ctx context.Context, pairId uint64, before float64) (schemas.PairStats30m, bool, error) {
+	stat := schemas.PairStats30m{}
+	// reruns can leave more than one row on a timestamp, and only the id tells the
+	// newest of them apart
+	tx := r.conn(ctx).Model(schemas.PairStats30m{}).Where(
+		"chain_id = ? and pair_id = ? and timestamp < ?", r.chainId, pairId, before).Order(
+		"timestamp desc, id desc").Limit(1).Find(&stat)
+	if tx.Error != nil {
+		return schemas.PairStats30m{}, false, errors.Wrap(tx.Error, "repo.LatestPairStat")
+	}
+
+	return stat, tx.RowsAffected > 0, nil
+}
+
 func (r *repoImpl) UpdatePairStats(ctx context.Context, stats []schemas.PairStats30m) error {
 	if len(stats) == 0 {
 		return nil
 	}
 
+	if err := r.validatePairStats(stats); err != nil {
+		return err
+	}
+
 	if tx := r.conn(ctx).Omit("Id", "CreatedAt").CreateInBatches(&stats, InsertBatchSize); tx.Error != nil {
 		return tx.Error
+	}
+
+	return nil
+}
+
+// pairStatAmounts pairs every numeric column of pair_stats_30m with the field filling
+// it. Kept package level so the check below allocates nothing per row.
+var pairStatAmounts = []struct {
+	column string
+	of     func(*schemas.PairStats30m) string
+}{
+	{"volume0", func(s *schemas.PairStats30m) string { return s.Volume0 }},
+	{"volume1", func(s *schemas.PairStats30m) string { return s.Volume1 }},
+	{"volume0_in_price", func(s *schemas.PairStats30m) string { return s.Volume0InPrice }},
+	{"volume1_in_price", func(s *schemas.PairStats30m) string { return s.Volume1InPrice }},
+	{"last_swap_price", func(s *schemas.PairStats30m) string { return s.LastSwapPrice }},
+	{"liquidity0", func(s *schemas.PairStats30m) string { return s.Liquidity0 }},
+	{"liquidity1", func(s *schemas.PairStats30m) string { return s.Liquidity1 }},
+	{"liquidity0_in_price", func(s *schemas.PairStats30m) string { return s.Liquidity0InPrice }},
+	{"liquidity1_in_price", func(s *schemas.PairStats30m) string { return s.Liquidity1InPrice }},
+	{"commission0", func(s *schemas.PairStats30m) string { return s.Commission0 }},
+	{"commission1", func(s *schemas.PairStats30m) string { return s.Commission1 }},
+	{"commission0_in_price", func(s *schemas.PairStats30m) string { return s.Commission0InPrice }},
+	{"commission1_in_price", func(s *schemas.PairStats30m) string { return s.Commission1InPrice }},
+}
+
+// validatePairStats rejects empty amounts before they reach the numeric columns of
+// pair_stats_30m, which fail with a driver level syntax error naming neither the pair
+// nor the column that was left unset.
+func (r *repoImpl) validatePairStats(stats []schemas.PairStats30m) error {
+	for i := range stats {
+		stat := &stats[i]
+		for _, amount := range pairStatAmounts {
+			if strings.TrimSpace(amount.of(stat)) == "" {
+				return errors.Errorf(
+					"repo.UpdatePairStats: empty %s for pair %d of %s on timestamp %.0f",
+					amount.column, stat.PairId, r.chainId, stat.Timestamp)
+			}
+		}
 	}
 
 	return nil
