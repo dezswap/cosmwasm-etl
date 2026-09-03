@@ -99,7 +99,7 @@ from parsed_tx pt
 	left join ( -- include first provision
 		select contract, min(height) height
 		from parsed_tx
-		where type = 'provide'
+		where type = 'provide' and chain_id = ?
 		group by contract) t on pt.contract = t.contract and pt.height = t.height
 where pt.chain_id = ?
 	and (pt.type = 'swap' or t.height is not null)
@@ -107,7 +107,7 @@ where pt.chain_id = ?
 	and pt.height > ?
 `
 	height := NaValue
-	tx := r.conn(ctx).Raw(query, NaValue, r.chainId, r.chainId, minHeight).Find(&height)
+	tx := r.conn(ctx).Raw(query, NaValue, r.chainId, r.chainId, r.chainId, minHeight).Find(&height)
 	if tx.Error != nil {
 		return 0, errors.Wrap(tx.Error, "srcRepoImpl.NextHeight")
 	}
@@ -119,8 +119,8 @@ func (r *srcRepoImpl) Txs(ctx context.Context, height uint64) ([]schemas.ParsedT
 	var res []schemas.ParsedTx
 	tx := r.conn(ctx).Model(
 		schemas.ParsedTx{}).Joins(
-		"left join (select contract, min(height) height from parsed_tx where type = 'provide' group by contract) t "+ // include first provision
-			"on parsed_tx.contract = t.contract and parsed_tx.height = t.height and parsed_tx.type = 'provide'").Where(
+		"left join (select contract, min(height) height from parsed_tx where type = 'provide' and chain_id = ? group by contract) t "+ // include first provision
+			"on parsed_tx.contract = t.contract and parsed_tx.height = t.height and parsed_tx.type = 'provide'", r.chainId).Where(
 		"parsed_tx.chain_id = ? and parsed_tx.height = ? and (type = 'swap' or t.height is not null)",
 		r.chainId, height).Order("parsed_tx.id asc").Find(&res)
 	if tx.Error != nil {
