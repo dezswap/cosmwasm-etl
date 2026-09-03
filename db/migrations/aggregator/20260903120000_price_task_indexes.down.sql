@@ -1,0 +1,2 @@
+DROP INDEX CONCURRENTLY IF EXISTS route_chain_id_created_at_idx;
+DROP INDEX CONCURRENTLY IF EXISTS lp_history_chain_id_pair_id_height_idx;
