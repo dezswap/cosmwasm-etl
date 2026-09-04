@@ -181,6 +181,106 @@ func (r *routePriceRepo) UpdateRoutePrice(_ context.Context, _ uint64, _ uint64,
 	return nil
 }
 
+// routeDropRepo prices every hop from a fixed liquidity, overridable per token, so a
+// route can be made illiquid or blocked by an unregistered hop.
+type routeDropRepo struct {
+	SrcRepo
+	decimalsErr map[string]error
+	liquidity   map[string]string
+	written     []string
+}
+
+func (r *routeDropRepo) Decimals(_ context.Context, token string) (int64, error) {
+	if err, ok := r.decimalsErr[token]; ok {
+		return 0, err
+	}
+	return 6, nil
+}
+
+func (r *routeDropRepo) Liquidity(_ context.Context, _ uint64, token string, _ string) (string, string, error) {
+	if l, ok := r.liquidity[token]; ok {
+		return l, l, nil
+	}
+	return "100000000", "100000000", nil
+}
+
+func (r *routeDropRepo) UpdateRoutePrice(_ context.Context, _ uint64, _ uint64, token string, _ string, _ string, _ []string) error {
+	r.written = append(r.written, token)
+	return nil
+}
+
+func indirectSwap() schemas.ParsedTx {
+	return schemas.ParsedTx{
+		Height: 10, Id: 1, Hash: "hash", Asset0: "A", Asset1: "B",
+		Asset0Amount: "1000000", Asset1Amount: "2000000",
+	}
+}
+
+func TestUpdateIndirectSwapPriceSeparatesWhyNoRoutePriced(t *testing.T) {
+	// "1000000" at 6 decimals is 1.0, under liquidityLowerThreshold
+	illiquid := map[string]string{"A": "1000000", "B": "1000000"}
+
+	t.Run("illiquid route is not an unpublished one", func(t *testing.T) {
+		repo := &routeDropRepo{liquidity: illiquid}
+		tracker := newSkipTracker(repo)
+		tracker.priceRoutes = map[string][][]string{"A": {{"uusd"}}, "B": {{"uusd"}}}
+
+		require.NoError(t, tracker.updateIndirectSwapPrice(context.Background(), repo, indirectSwap()))
+
+		require.Empty(t, repo.written)
+		// the route exists, and no backfill will ever price this height differently
+		require.Equal(t, "route liquidity below threshold", tracker.skips["A"].reason)
+		require.Equal(t, "route liquidity below threshold", tracker.skips["B"].reason)
+	})
+
+	t.Run("token without a route definition is unpublished", func(t *testing.T) {
+		repo := &routeDropRepo{}
+		tracker := newSkipTracker(repo)
+		tracker.priceRoutes = map[string][][]string{}
+
+		require.NoError(t, tracker.updateIndirectSwapPrice(context.Background(), repo, indirectSwap()))
+
+		require.Equal(t, "unpublished route", tracker.skips["A"].reason)
+		require.Equal(t, "unpublished route", tracker.skips["B"].reason)
+	})
+
+	t.Run("unregistered hop is blamed on the hop, and still tallied on the token", func(t *testing.T) {
+		// A's only route runs through X, which has no row in tokens. Calling that an
+		// unpublished route points at the wrong thing; recording nothing hides a price
+		// a backfill can still reach.
+		repo := &routeDropRepo{decimalsErr: map[string]error{"X": fmt.Errorf("lookup: %w", ErrTokenNotFound)}}
+		tracker := newSkipTracker(repo)
+		tracker.priceRoutes = map[string][][]string{"A": {{"X", "uusd"}}}
+
+		require.NoError(t, tracker.updateIndirectSwapPrice(context.Background(), repo, indirectSwap()))
+
+		require.Equal(t, "unregistered token", tracker.skips["A"].reason)
+		require.Equal(t, uint64(1), tracker.skips["A"].count)
+		require.Zero(t, tracker.skips["X"].count, "the hop is named, not charged a missed price")
+		require.Equal(t, "unpublished route", tracker.skips["B"].reason)
+	})
+
+	t.Run("unregistered hop outranks an illiquid route", func(t *testing.T) {
+		repo := &routeDropRepo{
+			decimalsErr: map[string]error{"X": fmt.Errorf("lookup: %w", ErrTokenNotFound)},
+			liquidity:   map[string]string{"Y": "1000000"},
+		}
+		tracker := newSkipTracker(repo)
+		tracker.priceRoutes = map[string][][]string{"A": {{"X", "uusd"}, {"Y", "uusd"}}}
+
+		require.NoError(t, tracker.updateIndirectSwapPrice(context.Background(), repo, indirectSwap()))
+
+		// the actionable reason must survive a later route dying for another cause
+		require.Equal(t, "unregistered token", tracker.skips["A"].reason)
+	})
+}
+
+func TestRecoverableSeparatesBackfillableReasons(t *testing.T) {
+	require.True(t, recoverable(ErrTokenNotFound))
+	require.True(t, recoverable(ErrRouteNotFound))
+	require.False(t, recoverable(ErrRouteIlliquid), "liquidity at a height never changes")
+}
+
 func TestUpdateIndirectSwapPriceSkipsAssetWithoutRoute(t *testing.T) {
 	repo := &routePriceRepo{}
 	logger := logrus.New()

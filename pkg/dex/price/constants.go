@@ -16,4 +16,8 @@ var (
 	// ErrRouteNotFound reports that no route row matches the price about to be
 	// written, which would otherwise be stored with zeroed token and route ids.
 	ErrRouteNotFound = errors.New("price route not found")
+	// ErrRouteIlliquid reports that every route of a token holds too little liquidity
+	// to price it. Unlike the two above it never clears, so a backfill cannot recover
+	// the prices missed for it.
+	ErrRouteIlliquid = errors.New("price route liquidity below threshold")
 )
