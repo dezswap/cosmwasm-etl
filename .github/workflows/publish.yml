@@ -7,9 +7,6 @@ on:
 
 env:
   PROJECT_ID: cosmwasm-etl
-  # AWS
-  AWS_REGION: ${{ secrets.AWS_REGION }}
-  # GCP
   GCP_GAR_REPOSITORY: ${{ vars.GCP_GAR_REPOSITORY }}
   GCP_REGION: ${{ vars.GCP_REGION }}
   GCP_SERVICE_ACCOUNT_EMAIL: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
@@ -63,47 +60,6 @@ jobs:
         with:
           name: docker-images
           path: ${{ runner.temp }}/${{ env.PROJECT_ID }}-*.tar
-
-  push_to_ecr:
-    name: Push images to Amazon Elastic Container Registry
-    needs: build
-    runs-on: ubuntu-latest
-    environment: production
-    steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # ratchet:aws-actions/configure-aws-credentials@v6
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          role-session-name: cosmwasm-etl-deploy
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # ratchet:aws-actions/amazon-ecr-login@v2.1.7
-
-      - name: Download artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # ratchet:actions/download-artifact@v8
-        with:
-          name: docker-images
-          path: ${{ runner.temp }}
-
-      - name: Load, tag, and push image to Amazon ECR
-        id: build-image
-        working-directory: .
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        run: |
-          # Load all saved Docker images
-          for tar in ${{ runner.temp }}/${{ env.PROJECT_ID }}-*.tar; do
-            docker load -i "$tar"
-          done
-
-          for image in $(docker images --format "{{.Repository}}:{{.Tag}}" | grep ^${{ env.PROJECT_ID }}); do
-            IFS=':' read -r image_name tag <<< "$image"
-            docker tag $image $ECR_REGISTRY/$image
-            docker tag $image $ECR_REGISTRY/$image_name:latest
-            docker image push -a $ECR_REGISTRY/$image_name
-          done
 
   push_to_gar:
     name: Push images to Google Artifact Registry
