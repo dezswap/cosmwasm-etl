@@ -78,6 +78,8 @@ type routerTask struct {
 	srcDb   parser.ReadRepository
 	db      router.SrcRepo
 	pairCnt int
+
+	reportedMissingRoutes bool
 }
 
 type priceTask struct {
@@ -254,24 +256,46 @@ func newRouterTask(config configs.AggregatorConfig, srcRepo parser.ReadRepositor
 	}
 }
 
+// Execute publishes the height whose pairs the route table covers, which the price task
+// gates on. The height is read before the pair set, or a pair created between the two
+// reads would be claimed as covered. A round that rebuilds nothing still publishes, or
+// the gate never opens again.
 func (t *routerTask) Execute(ctx context.Context, _ time.Time, _ time.Time) error {
 	syncedHeight, err := t.srcDb.GetSyncedHeight(ctx)
 	if err != nil {
 		return err
 	}
 
-	pairs, err := t.db.Pairs(ctx)
+	pairCount, unrouted, err := t.db.PairStatus(ctx)
 	if err != nil {
 		return err
 	}
 
-	if len(pairs) > t.pairCnt {
+	// pairCnt starts at 0, so without this a restart rebuilds a route table that is
+	// already complete. Coverage is the hop_count 0 rows, which a raised max_hop_count
+	// leaves in place: clear the chain's route rows to make that setting take effect.
+	if t.pairCnt == 0 && !unrouted {
+		t.pairCnt = pairCount
+	}
+
+	// Checked before the rebuild below, whose condition this negates: a pair with no
+	// route row and no growth to rebuild for leaves the height claiming coverage the
+	// route table does not have, and price drops those prices for good. Report the edge,
+	// not every round.
+	missingRoutes := unrouted && pairCount <= t.pairCnt
+	if missingRoutes && !t.reportedMissingRoutes {
+		t.logger.Warnf("chain(%s) has a pair with no route row; prices routed through it "+
+			"are dropped until a new pair forces a rebuild", t.chainId)
+	}
+	t.reportedMissingRoutes = missingRoutes
+
+	if pairCount > t.pairCnt {
 		// only remember the new count once the rebuild succeeded, otherwise a failed
 		// update would be skipped on every later run
 		if err := t.router.Update(ctx); err != nil {
 			return err
 		}
-		t.pairCnt = len(pairs)
+		t.pairCnt = pairCount
 	}
 
 	t.advanceHeight(syncedHeight)

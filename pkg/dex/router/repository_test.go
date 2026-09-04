@@ -143,3 +143,49 @@ func TestUpdateRoutes_BatchesLargeDataset(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
+
+// The count and the coverage flag arrive as two columns of one row, so the mapping is
+// worth pinning: a silent scan failure would report zero pairs and no missing routes,
+// which reads exactly like a healthy route table.
+func TestPairStatus(t *testing.T) {
+	tests := []struct {
+		name     string
+		total    int
+		unrouted bool
+	}{
+		{name: "routes cover every pair", total: 3, unrouted: false},
+		{name: "a pair has no route", total: 3, unrouted: true},
+		{name: "no pairs at all", total: 0, unrouted: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gormDB, mock := setupMockDB(t)
+			repo := &srcRepoImpl{db: gormDB, chainId: "test-chain"}
+
+			mock.ExpectQuery(regexp.QuoteMeta(`from pair p`)).
+				WithArgs("test-chain").
+				WillReturnRows(sqlmock.NewRows([]string{"total", "unrouted"}).
+					AddRow(tt.total, tt.unrouted))
+
+			count, unrouted, err := repo.PairStatus(context.Background())
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.total, count)
+			assert.Equal(t, tt.unrouted, unrouted)
+			assert.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
+func TestPairStatus_DBError(t *testing.T) {
+	gormDB, mock := setupMockDB(t)
+	repo := &srcRepoImpl{db: gormDB, chainId: "test-chain"}
+
+	mock.ExpectQuery(regexp.QuoteMeta(`from pair p`)).WillReturnError(errors.New("db error"))
+
+	_, _, err := repo.PairStatus(context.Background())
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "repo.PairStatus")
+}

@@ -15,8 +15,11 @@ import (
 	"github.com/dezswap/cosmwasm-etl/pkg/dex/router"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 
+	dbparser "github.com/dezswap/cosmwasm-etl/pkg/db/parser"
 	"github.com/dezswap/cosmwasm-etl/pkg/db/schemas"
 	"github.com/dezswap/cosmwasm-etl/pkg/util"
+	"github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus/hooks/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -625,11 +628,24 @@ func TestPairStatsRecentUpdateTaskDoesNotAdvanceHeightWhenTransactionFails(t *te
 // routerSrcRepoStub feeds routerTask.Execute a pair set without a database.
 type routerSrcRepoStub struct {
 	pairs []router.Pair
-	err   error
+	// unrouted is what PairStatus reports alongside the count; statusCalls counts the
+	// rounds that got as far as asking
+	unrouted    bool
+	err         error
+	statusCalls int
+}
+
+func (r *routerSrcRepoStub) PairStatus(context.Context) (int, bool, error) {
+	r.statusCalls++
+	if r.err != nil {
+		return 0, false, r.err
+	}
+
+	return len(r.pairs), r.unrouted, nil
 }
 
 func (r *routerSrcRepoStub) Pairs(context.Context) ([]router.Pair, error) {
-	return r.pairs, r.err
+	return r.pairs, nil
 }
 
 func (*routerSrcRepoStub) UpdateRoutes(context.Context, map[int]string, map[int]map[int][][]int) error {
@@ -651,9 +667,14 @@ func (r *routerStub) Update(context.Context) error {
 }
 
 func newRouterTaskForTest(db router.SrcRepo, rt router.Router) *routerTask {
+	return newRouterTaskWithHeightForTest(db, rt, &repoMock{})
+}
+
+func newRouterTaskWithHeightForTest(db router.SrcRepo, rt router.Router, srcDb dbparser.ReadRepository) *routerTask {
 	return &routerTask{
 		taskImpl: taskImpl{logger: logging.Discard},
 		router:   rt,
+		srcDb:    srcDb,
 		db:       db,
 	}
 }
@@ -665,7 +686,7 @@ func TestRouterTaskRetriesUpdateAfterFailure(t *testing.T) {
 	db := &routerSrcRepoStub{pairs: []router.Pair{
 		{Contract: "pair0", AssetInfos: []string{"uusd", "uluna"}},
 		{Contract: "pair1", AssetInfos: []string{"uluna", "ukrw"}},
-	}}
+	}, unrouted: true}
 	rt := &routerStub{err: errors.New("route rebuild failed")}
 	task := newRouterTaskForTest(db, rt)
 
@@ -679,11 +700,139 @@ func TestRouterTaskRetriesUpdateAfterFailure(t *testing.T) {
 	require.Equal(t, len(db.pairs), task.pairCnt)
 }
 
+// A restart reads the whole pair set as new, and rebuilding costs an enumeration of
+// every path between every pair of tokens. When the route table already covers the
+// pairs there is nothing to rebuild, and price is waiting on this task to say so.
+func TestRouterTaskSkipsRestartRebuildWhenRoutesAlreadyCoverPairs(t *testing.T) {
+	db := &routerSrcRepoStub{
+		pairs: []router.Pair{
+			{Contract: "pair0", AssetInfos: []string{"uusd", "uluna"}},
+			{Contract: "pair1", AssetInfos: []string{"uluna", "ukrw"}},
+		},
+		unrouted: false,
+	}
+	rt := &routerStub{}
+	task := newRouterTaskWithHeightForTest(db, rt, &repoMock{syncedHeight: 100})
+
+	require.NoError(t, task.Execute(context.Background(), time.Time{}, time.Time{}))
+
+	require.Zero(t, rt.updates, "a covered route table must not be rebuilt from scratch")
+	require.Equal(t, len(db.pairs), task.pairCnt, "the covered pair set is what the routes were built from")
+	require.Equal(t, uint64(100), task.LastProcessedHeight())
+
+	// nothing changed, so the next round must not rebuild either
+	require.NoError(t, task.Execute(context.Background(), time.Time{}, time.Time{}))
+	require.Zero(t, rt.updates)
+	require.Equal(t, 2, db.statusCalls, "the count and the coverage come from one query per round")
+}
+
+func TestRouterTaskRebuildsWhenAPairHasNoRoute(t *testing.T) {
+	db := &routerSrcRepoStub{
+		pairs:    []router.Pair{{Contract: "pair0", AssetInfos: []string{"uusd", "uluna"}}},
+		unrouted: true,
+	}
+	rt := &routerStub{}
+	task := newRouterTaskWithHeightForTest(db, rt, &repoMock{syncedHeight: 100})
+
+	require.NoError(t, task.Execute(context.Background(), time.Time{}, time.Time{}))
+
+	require.Equal(t, 1, rt.updates)
+	require.Equal(t, len(db.pairs), task.pairCnt)
+}
+
+// Adopting the route table on the first round must not blind the task to a pair added
+// afterwards, which is the growth the counter exists to catch.
+func TestRouterTaskStillRebuildsForAPairAddedAfterAdoption(t *testing.T) {
+	db := &routerSrcRepoStub{
+		pairs:    []router.Pair{{Contract: "pair0", AssetInfos: []string{"uusd", "uluna"}}},
+		unrouted: false,
+	}
+	rt := &routerStub{}
+	task := newRouterTaskWithHeightForTest(db, rt, &repoMock{syncedHeight: 100})
+
+	require.NoError(t, task.Execute(context.Background(), time.Time{}, time.Time{}))
+	require.Zero(t, rt.updates)
+
+	db.pairs = append(db.pairs, router.Pair{Contract: "pair1", AssetInfos: []string{"uluna", "ukrw"}})
+	require.NoError(t, task.Execute(context.Background(), time.Time{}, time.Time{}))
+
+	require.Equal(t, 1, rt.updates, "a new pair must rebuild")
+	require.Equal(t, len(db.pairs), task.pairCnt)
+}
+
+// A pair with no route row and no growth to rebuild for still publishes a height, so
+// price prices that pair without routes and drops those prices for good. Nothing in the
+// task can fix it, so it has to be visible.
+func TestRouterTaskReportsMissingRoutesItCannotRebuildFor(t *testing.T) {
+	db := &routerSrcRepoStub{
+		pairs:    []router.Pair{{Contract: "pair0", AssetInfos: []string{"uusd", "uluna"}}},
+		unrouted: false,
+	}
+	rt := &routerStub{}
+	logger, hook := test.NewNullLogger()
+	task := newRouterTaskWithHeightForTest(db, rt, &repoMock{syncedHeight: 100})
+	task.logger = logger
+
+	// adopt the covered route table, so later rounds have no growth to rebuild for
+	require.NoError(t, task.Execute(context.Background(), time.Time{}, time.Time{}))
+	require.Empty(t, hook.AllEntries())
+
+	db.unrouted = true
+	require.NoError(t, task.Execute(context.Background(), time.Time{}, time.Time{}))
+
+	require.Zero(t, rt.updates, "no growth means no rebuild, which is what makes this worth reporting")
+	require.Len(t, hook.AllEntries(), 1)
+	require.Equal(t, logrus.WarnLevel, hook.LastEntry().Level)
+
+	// the same state every round must not become a log stream
+	require.NoError(t, task.Execute(context.Background(), time.Time{}, time.Time{}))
+	require.Len(t, hook.AllEntries(), 1, "report the edge, not every round")
+
+	// and a later episode must be reported again
+	db.unrouted = false
+	require.NoError(t, task.Execute(context.Background(), time.Time{}, time.Time{}))
+	db.unrouted = true
+	require.NoError(t, task.Execute(context.Background(), time.Time{}, time.Time{}))
+	require.Len(t, hook.AllEntries(), 2)
+}
+
+// Growth rebuilds, so the missing routes are about to be written and there is nothing to
+// report.
+func TestRouterTaskDoesNotReportMissingRoutesItRebuildsFor(t *testing.T) {
+	db := &routerSrcRepoStub{
+		pairs:    []router.Pair{{Contract: "pair0", AssetInfos: []string{"uusd", "uluna"}}},
+		unrouted: true,
+	}
+	rt := &routerStub{}
+	logger, hook := test.NewNullLogger()
+	task := newRouterTaskWithHeightForTest(db, rt, &repoMock{syncedHeight: 100})
+	task.logger = logger
+
+	require.NoError(t, task.Execute(context.Background(), time.Time{}, time.Time{}))
+
+	require.Equal(t, 1, rt.updates)
+	require.Empty(t, hook.AllEntries())
+}
+
+func TestRouterTaskReturnsPairStatusError(t *testing.T) {
+	expectedErr := errors.New("pair status query failed")
+	db := &routerSrcRepoStub{
+		pairs: []router.Pair{{Contract: "pair0", AssetInfos: []string{"uusd", "uluna"}}},
+		err:   expectedErr,
+	}
+	rt := &routerStub{}
+	task := newRouterTaskWithHeightForTest(db, rt, &repoMock{syncedHeight: 100})
+
+	require.ErrorIs(t, task.Execute(context.Background(), time.Time{}, time.Time{}), expectedErr)
+	require.Zero(t, rt.updates)
+	require.Zero(t, task.LastProcessedHeight(), "a round that could not decide covers nothing")
+}
+
 // Once the graph matches the pair set, repeated runs must not rebuild it.
 func TestRouterTaskSkipsUpdateWhenPairCountUnchanged(t *testing.T) {
 	db := &routerSrcRepoStub{pairs: []router.Pair{
 		{Contract: "pair0", AssetInfos: []string{"uusd", "uluna"}},
-	}}
+	}, unrouted: true}
 	rt := &routerStub{}
 	task := newRouterTaskForTest(db, rt)
 
@@ -693,12 +842,51 @@ func TestRouterTaskSkipsUpdateWhenPairCountUnchanged(t *testing.T) {
 	require.Equal(t, 1, rt.updates)
 }
 
-func TestRouterTaskReturnsPairLookupError(t *testing.T) {
-	expectedErr := errors.New("pairs query failed")
+// The price task gates on this height, so a round that rebuilds nothing must still
+// publish it. An unchanged pair set means the routes already cover the newer height,
+// and withholding it would leave the gate shut for good.
+func TestRouterTaskPublishesHeightWithoutRebuilding(t *testing.T) {
+	db := &routerSrcRepoStub{pairs: []router.Pair{
+		{Contract: "pair0", AssetInfos: []string{"uusd", "uluna"}},
+	}}
 	rt := &routerStub{}
-	task := newRouterTaskForTest(&routerSrcRepoStub{err: expectedErr}, rt)
+	task := newRouterTaskWithHeightForTest(db, rt, &repoMock{syncedHeight: 100})
+
+	require.NoError(t, task.Execute(context.Background(), time.Time{}, time.Time{}))
+	require.Equal(t, uint64(100), task.LastProcessedHeight())
+
+	rt.updates = 0
+	task.srcDb = &repoMock{syncedHeight: 200}
+	require.NoError(t, task.Execute(context.Background(), time.Time{}, time.Time{}))
+
+	require.Zero(t, rt.updates, "an unchanged pair set must not rebuild")
+	require.Equal(t, uint64(200), task.LastProcessedHeight())
+}
+
+func TestRouterTaskWithholdsHeightWhenRebuildFails(t *testing.T) {
+	db := &routerSrcRepoStub{pairs: []router.Pair{
+		{Contract: "pair0", AssetInfos: []string{"uusd", "uluna"}},
+	}, unrouted: true}
+	rt := &routerStub{err: errors.New("route rebuild failed")}
+	task := newRouterTaskWithHeightForTest(db, rt, &repoMock{syncedHeight: 100})
+
+	require.Error(t, task.Execute(context.Background(), time.Time{}, time.Time{}))
+	require.Zero(t, task.LastProcessedHeight(),
+		"routes the rebuild never wrote must not be claimed as covering the height")
+}
+
+// Reading the pair set first would let a pair created between the two reads pass as
+// covered by a height taken after it.
+func TestRouterTaskReadsHeightBeforePairStatus(t *testing.T) {
+	expectedErr := errors.New("synced height query failed")
+	db := &routerSrcRepoStub{pairs: []router.Pair{
+		{Contract: "pair0", AssetInfos: []string{"uusd", "uluna"}},
+	}}
+	rt := &routerStub{}
+	task := newRouterTaskWithHeightForTest(db, rt, &repoMock{syncedHeightErr: expectedErr})
 
 	require.ErrorIs(t, task.Execute(context.Background(), time.Time{}, time.Time{}), expectedErr)
+	require.Zero(t, db.statusCalls, "the height must be read before the pair set")
 	require.Zero(t, rt.updates)
 }
 

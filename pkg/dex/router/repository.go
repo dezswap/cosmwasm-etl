@@ -13,6 +13,7 @@ import (
 
 type SrcRepo interface {
 	Pairs(ctx context.Context) ([]Pair, error)
+	PairStatus(ctx context.Context) (count int, unrouted bool, err error)
 	UpdateRoutes(ctx context.Context, indexToAsset map[int]string, routesMap map[int]map[int][][]int) error
 	Close() error
 }
@@ -58,6 +59,39 @@ func (r *srcRepoImpl) Pairs(ctx context.Context) ([]Pair, error) {
 	}
 
 	return newPairs, nil
+}
+
+// PairStatus measures the chain's pair table against its route table:
+//
+//   - count is how many pairs the chain has.
+//   - unrouted is whether any of them is missing from the route table. A rebuild writes
+//     every route in one transaction and always leaves a hop_count 0 row per pair, so
+//     that row marks coverage exactly.
+//
+// Both come from one query, or a pair created between two reads would be counted while
+// its missing routes went unseen.
+func (r *srcRepoImpl) PairStatus(ctx context.Context) (int, bool, error) {
+	query := `
+select count(*) as total,
+	coalesce(bool_or(not exists (
+		select 1
+		from route r
+		where r.chain_id = p.chain_id
+			and r.asset0 = p.asset0
+			and r.asset1 = p.asset1
+			and r.hop_count = 0)), false) as unrouted
+from pair p
+where p.chain_id = ?
+`
+	var res struct {
+		Total    int
+		Unrouted bool
+	}
+	if tx := r.db.WithContext(ctx).Raw(query, r.chainId).Find(&res); tx.Error != nil {
+		return 0, false, errors.Wrap(tx.Error, "repo.PairStatus")
+	}
+
+	return res.Total, res.Unrouted, nil
 }
 
 func (r *srcRepoImpl) UpdateRoutes(ctx context.Context, indexToAsset map[int]string, routesMap map[int]map[int][][]int) error {
