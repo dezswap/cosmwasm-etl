@@ -30,13 +30,36 @@ type priceImpl struct {
 	tokenDecimals               map[string]int64
 	priceRoutes                 map[string][][]string
 	latestRouteUpdatedTimestamp time.Time
+	skips                       map[string]*skipRecord
+}
+
+// skipRecord is what became of one token the task could not price. count holds the
+// prices actually missed, which is not every mention: see noteBlocker.
+type skipRecord struct {
+	reason      string
+	firstHeight uint64
+	count       uint64
 }
 
 func New(ctx context.Context, repo SrcRepo, priceToken string, logger logging.Logger) (Price, error) {
+	// returning the call through would hand back a non nil Price holding a nil
+	// *priceImpl on failure
+	p, err := newPriceImpl(ctx, repo, priceToken, logger)
+	if err != nil {
+		return nil, err
+	}
+
+	return p, nil
+}
+
+// newPriceImpl hands back the concrete tracker, which Backfill needs for its skip
+// ledger.
+func newPriceImpl(ctx context.Context, repo SrcRepo, priceToken string, logger logging.Logger) (*priceImpl, error) {
 	tokenDecimals := make(map[string]int64)
 	priceTokenDecimal, err := repo.Decimals(ctx, priceToken)
 	if err != nil {
-		return nil, err
+		// every price of the chain is denominated in it; there is nothing to skip
+		return nil, errors.Wrapf(err, "price.New: price token(%s) decimals", priceToken)
 	}
 	tokenDecimals[priceToken] = priceTokenDecimal
 
@@ -143,16 +166,17 @@ func (p *priceImpl) updateDirectSwapPrice(ctx context.Context, repo SrcRepo, tx 
 		targetToken = tx.Asset1
 		decimals0 = p.tokenDecimals[p.priceToken]
 		decimals1, err = p.decimals(ctx, repo, tx.Asset1)
-		if err != nil {
-			return err
-		}
 	} else {
 		targetToken = tx.Asset0
 		decimals0, err = p.decimals(ctx, repo, tx.Asset0)
-		if err != nil {
+		decimals1 = p.tokenDecimals[p.priceToken]
+	}
+	if err != nil {
+		if !skippable(err) {
 			return err
 		}
-		decimals1 = p.tokenDecimals[p.priceToken]
+		p.recordSkip(targetToken, tx.Height, err)
+		return nil
 	}
 
 	price, err := p.calculatePrice(tx.Asset0Amount, decimals0, tx.Asset1Amount, decimals1, isReverse)
@@ -162,7 +186,11 @@ func (p *priceImpl) updateDirectSwapPrice(ctx context.Context, repo SrcRepo, tx 
 	}
 
 	if err := repo.UpdateDirectPrice(ctx, tx.Height, tx.Id, targetToken, price.String(), p.priceToken, isReverse); err != nil {
-		return err
+		if !skippable(err) {
+			return err
+		}
+		// a pair that started trading before the router published its route lands here
+		p.recordSkip(targetToken, tx.Height, err)
 	}
 
 	return nil
@@ -201,31 +229,144 @@ func (p *priceImpl) decimals(ctx context.Context, repo SrcRepo, token string) (i
 	return decimals, nil
 }
 
+// skippable reports whether err is a prerequisite that has not landed yet rather than
+// a failure. Both resolve on their own, and the prices passed over meanwhile are
+// recoverable with cmd/aggregator/pricebackfill. Failing instead would end the price
+// scheduler, which cancels the errgroup holding every other task, and the restart would
+// meet the same height again.
+func skippable(err error) bool {
+	return errors.Is(err, ErrTokenNotFound) || errors.Is(err, ErrRouteNotFound)
+}
+
+// routeUnusable reports whether err leaves a route unable to price a token rather than
+// meaning the calculation failed.
+func routeUnusable(err error) bool {
+	return skippable(err) || errors.Is(err, ErrRouteIlliquid)
+}
+
+func skipReason(err error) string {
+	switch {
+	case errors.Is(err, ErrTokenNotFound):
+		return "unregistered token"
+	case errors.Is(err, ErrRouteIlliquid):
+		return "route liquidity below threshold"
+	default:
+		return "unpublished route"
+	}
+}
+
+// recoverable reports whether a backfill can still produce the prices missed for this
+// reason.
+func recoverable(err error) bool {
+	return !errors.Is(err, ErrRouteIlliquid)
+}
+
+// skipEntry returns token's ledger entry, warning the first time the token turns up.
+// One unregistered token can appear in thousands of swaps, so the log names it once.
+func (p *priceImpl) skipEntry(token string, height uint64, err error) *skipRecord {
+	if p.skips == nil {
+		p.skips = make(map[string]*skipRecord)
+	}
+	if record, ok := p.skips[token]; ok {
+		return record
+	}
+
+	reason := skipReason(err)
+	record := &skipRecord{reason: reason, firstHeight: height}
+	p.skips[token] = record
+
+	advice := ""
+	if recoverable(err) {
+		advice = "; backfill it once resolved"
+	}
+	p.logger.Warnf("token(%s) cannot be priced from height %d onwards, %s%s: %s",
+		token, height, reason, advice, err)
+
+	return record
+}
+
+// recordSkip tallies one price that could not be written.
+func (p *priceImpl) recordSkip(token string, height uint64, err error) {
+	p.skipEntry(token, height, err).count++
+}
+
+// noteBlocker reports a token that makes a route unusable without tallying a missed
+// price. A dead route is not a missed price on its own: optimalRoutePrice tries the
+// others, and if none survive, the token being priced is tallied by writeRoutePrice.
+// Tallying here instead would count route attempts, and against the wrong token.
+func (p *priceImpl) noteBlocker(token string, height uint64, err error) {
+	p.skipEntry(token, height, err)
+}
+
 func (p *priceImpl) updateIndirectSwapPrice(ctx context.Context, repo SrcRepo, tx schemas.ParsedTx) error {
-	decimals0, err := p.decimals(ctx, repo, tx.Asset0)
-	if err != nil {
-		return errors.Wrap(err,
+	decimals0, decimals0Err := p.decimals(ctx, repo, tx.Asset0)
+	if decimals0Err != nil && !skippable(decimals0Err) {
+		return errors.Wrap(decimals0Err,
 			strings.Join([]string{"priceImpl.updateIndirectSwapPrice: (Tx hash:", tx.Hash, ")"}, ""))
 	}
-	decimals1, err := p.decimals(ctx, repo, tx.Asset1)
-	if err != nil {
-		return errors.Wrap(err,
+	decimals1, decimals1Err := p.decimals(ctx, repo, tx.Asset1)
+	if decimals1Err != nil && !skippable(decimals1Err) {
+		return errors.Wrap(decimals1Err,
 			strings.Join([]string{"priceImpl.updateIndirectSwapPrice: (Tx hash:", tx.Hash, ")"}, ""))
 	}
 
-	route0, price0, liquidity0, err := p.optimalRoutePrice(ctx, repo, tx.Height, tx.Asset0, decimals0)
-	if err != nil {
-		return errors.Wrap(err,
-			strings.Join([]string{"priceImpl.updateIndirectSwapPrice: (Tx hash:", tx.Hash, ")"}, ""))
+	var route0, route1 []string
+	price0, price1 := math.LegacyZeroDec(), math.LegacyZeroDec()
+	liquidity0, liquidity1 := math.LegacyZeroDec(), math.LegacyZeroDec()
+	var drop0, drop1 error
+
+	if decimals0Err == nil {
+		var err error
+		route0, price0, liquidity0, err = p.optimalRoutePrice(ctx, repo, tx.Height, tx.Asset0, decimals0)
+		if err != nil {
+			if !routeUnusable(err) {
+				return errors.Wrap(err,
+					strings.Join([]string{"priceImpl.updateIndirectSwapPrice: (Tx hash:", tx.Hash, ")"}, ""))
+			}
+			drop0 = err
+		}
 	}
-	route1, price1, liquidity1, err := p.optimalRoutePrice(ctx, repo, tx.Height, tx.Asset1, decimals1)
-	if err != nil {
-		return errors.Wrap(err,
-			strings.Join([]string{"priceImpl.updateIndirectSwapPrice: (Tx hash:", tx.Hash, ")"}, ""))
+	if decimals1Err == nil {
+		var err error
+		route1, price1, liquidity1, err = p.optimalRoutePrice(ctx, repo, tx.Height, tx.Asset1, decimals1)
+		if err != nil {
+			if !routeUnusable(err) {
+				return errors.Wrap(err,
+					strings.Join([]string{"priceImpl.updateIndirectSwapPrice: (Tx hash:", tx.Hash, ")"}, ""))
+			}
+			drop1 = err
+		}
+	}
+
+	// Swap-ratio adjustments need both assets' decimals. When only one asset is
+	// registered, its independent route can still be priced and written below.
+	if decimals0Err != nil || decimals1Err != nil {
+		if decimals0Err == nil {
+			if err := p.writeRoutePrice(ctx, repo, tx, tx.Asset0, price0, route0, drop0); err != nil {
+				return err
+			}
+		}
+		if decimals1Err == nil {
+			if err := p.writeRoutePrice(ctx, repo, tx, tx.Asset1, price1, route1, drop1); err != nil {
+				return err
+			}
+		}
+
+		// The skip ledger is not part of the repository transaction. Update it only
+		// after every usable counterpart has been written successfully, so a failed
+		// height does not leave a skip behind when the database rolls back.
+		if decimals0Err != nil {
+			p.recordSkip(tx.Asset0, tx.Height, decimals0Err)
+		}
+		if decimals1Err != nil {
+			p.recordSkip(tx.Asset1, tx.Height, decimals1Err)
+		}
+		return nil
 	}
 
 	if len(route0) == 0 && len(route1) == 0 {
-		p.logger.Warnf("no price route found for a transaction(hash: %s)", tx.Hash)
+		p.recordSkip(tx.Asset0, tx.Height, drop0)
+		p.recordSkip(tx.Asset1, tx.Height, drop1)
 		return nil
 	}
 
@@ -292,17 +433,36 @@ func (p *priceImpl) updateIndirectSwapPrice(ctx context.Context, repo SrcRepo, t
 		}
 	}
 
-	if err := repo.UpdateRoutePrice(ctx, tx.Height, tx.Id, tx.Asset0, price0.Abs().String(), p.priceToken, route0); err != nil {
+	// an asset can still be left without a route here, e.g. when the counterpart route
+	// already contains it
+	if err := p.writeRoutePrice(ctx, repo, tx, tx.Asset0, price0, route0, drop0); err != nil {
 		return err
 	}
 
-	if err := repo.UpdateRoutePrice(ctx, tx.Height, tx.Id, tx.Asset1, price1.Abs().String(), p.priceToken, route1); err != nil {
-		return err
+	return p.writeRoutePrice(ctx, repo, tx, tx.Asset1, price1, route1, drop1)
+}
+
+// writeRoutePrice stores one asset's routed price. An asset no route could price is
+// recorded under dropped, which optimalRoutePrice sets whenever it returns no route.
+func (p *priceImpl) writeRoutePrice(ctx context.Context, repo SrcRepo, tx schemas.ParsedTx, token string, price math.LegacyDec, route []string, dropped error) error {
+	if len(route) == 0 {
+		p.recordSkip(token, tx.Height, dropped)
+		return nil
+	}
+
+	if err := repo.UpdateRoutePrice(ctx, tx.Height, tx.Id, token, price.Abs().String(), p.priceToken, route); err != nil {
+		if !skippable(err) {
+			return err
+		}
+		p.recordSkip(token, tx.Height, err)
 	}
 
 	return nil
 }
 
+// optimalRoutePrice picks the best priced route for a token. When none can price it,
+// route is empty and the error says why: ErrRouteNotFound, ErrRouteIlliquid or
+// ErrTokenNotFound. routeUnusable tells those apart from a failure.
 func (p *priceImpl) optimalRoutePrice(ctx context.Context, repo SrcRepo, height uint64, token string, decimals int64) ([]string, math.LegacyDec, math.LegacyDec, error) {
 	var optimalRoute []string
 	optimalPrice := math.LegacyZeroDec()
@@ -312,16 +472,20 @@ func (p *priceImpl) optimalRoutePrice(ctx context.Context, repo SrcRepo, height 
 
 	routes, ok := p.priceRoutes[token]
 	if !ok {
-		return optimalRoute, optimalPrice, optimalRouteLiquidity, nil
+		return nil, optimalPrice, optimalRouteLiquidity, ErrRouteNotFound
 	}
 
+	drop := ErrRouteNotFound
 	for _, route := range routes {
 		price, liquidities, err := p.calculateRoutePrice(ctx, repo, height, route, token, decimals)
 		if err != nil {
-			return nil, math.LegacyDec{}, math.LegacyDec{}, err
-		}
-		if price.IsZero() {
-			// pair exists without any liquidities
+			if !routeUnusable(err) {
+				return nil, math.LegacyDec{}, math.LegacyDec{}, err
+			}
+			// an unregistered hop outranks illiquidity: only it is actionable
+			if !errors.Is(drop, ErrTokenNotFound) {
+				drop = err
+			}
 			continue
 		}
 		if len(optimalRoute) == 0 {
@@ -362,9 +526,15 @@ func (p *priceImpl) optimalRoutePrice(ctx context.Context, repo SrcRepo, height 
 		}
 	}
 
+	if len(optimalRoute) == 0 {
+		return nil, optimalPrice, optimalRouteLiquidity, drop
+	}
+
 	return optimalRoute, optimalPrice, optimalRouteLiquidity, nil
 }
 
+// calculateRoutePrice prices one route, reporting ErrTokenNotFound or ErrRouteIlliquid
+// when the route cannot price the token at this height.
 func (p *priceImpl) calculateRoutePrice(ctx context.Context, repo SrcRepo, height uint64, route []string, token string, decimals int64) (math.LegacyDec, []math.LegacyDec, error) {
 	liquiditiesInPriceToken := make([]math.LegacyDec, 0)
 	price := math.LegacyOneDec()
@@ -382,8 +552,12 @@ func (p *priceImpl) calculateRoutePrice(ctx context.Context, repo SrcRepo, heigh
 			var err error
 			decimals0, err = p.decimals(ctx, repo, asset0)
 			if err != nil {
-				return math.LegacyDec{}, nil, errors.Wrap(err, strings.Join([]string{
-					"priceImpl.calculateRoutePrice: (Height: ", strconv.FormatUint(height, 10), ")"}, ""))
+				if !skippable(err) {
+					return math.LegacyDec{}, nil, errors.Wrap(err, strings.Join([]string{
+						"priceImpl.calculateRoutePrice: (Height: ", strconv.FormatUint(height, 10), ")"}, ""))
+				}
+				p.noteBlocker(asset0, height, err)
+				return math.LegacyDec{}, nil, err
 			}
 		}
 
@@ -404,7 +578,7 @@ func (p *priceImpl) calculateRoutePrice(ctx context.Context, repo SrcRepo, heigh
 		}
 
 		if liquidity0D.LT(liquidityLowerThreshold) || liquidity1D.LT(liquidityLowerThreshold) {
-			return math.LegacyZeroDec(), nil, nil
+			return math.LegacyDec{}, nil, ErrRouteIlliquid
 		}
 
 		liquidityInPriceToken := liquidity1D.MulInt64(2).Mul(price)

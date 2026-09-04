@@ -99,7 +99,7 @@ from parsed_tx pt
 	left join ( -- include first provision
 		select contract, min(height) height
 		from parsed_tx
-		where type = 'provide'
+		where type = 'provide' and chain_id = ?
 		group by contract) t on pt.contract = t.contract and pt.height = t.height
 where pt.chain_id = ?
 	and (pt.type = 'swap' or t.height is not null)
@@ -107,7 +107,7 @@ where pt.chain_id = ?
 	and pt.height > ?
 `
 	height := NaValue
-	tx := r.conn(ctx).Raw(query, NaValue, r.chainId, r.chainId, minHeight).Find(&height)
+	tx := r.conn(ctx).Raw(query, NaValue, r.chainId, r.chainId, r.chainId, minHeight).Find(&height)
 	if tx.Error != nil {
 		return 0, errors.Wrap(tx.Error, "srcRepoImpl.NextHeight")
 	}
@@ -119,8 +119,8 @@ func (r *srcRepoImpl) Txs(ctx context.Context, height uint64) ([]schemas.ParsedT
 	var res []schemas.ParsedTx
 	tx := r.conn(ctx).Model(
 		schemas.ParsedTx{}).Joins(
-		"left join (select contract, min(height) height from parsed_tx where type = 'provide' group by contract) t "+ // include first provision
-			"on parsed_tx.contract = t.contract and parsed_tx.height = t.height and parsed_tx.type = 'provide'").Where(
+		"left join (select contract, min(height) height from parsed_tx where type = 'provide' and chain_id = ? group by contract) t "+ // include first provision
+			"on parsed_tx.contract = t.contract and parsed_tx.height = t.height and parsed_tx.type = 'provide'", r.chainId).Where(
 		"parsed_tx.chain_id = ? and parsed_tx.height = ? and (type = 'swap' or t.height is not null)",
 		r.chainId, height).Order("parsed_tx.id asc").Find(&res)
 	if tx.Error != nil {
@@ -138,15 +138,22 @@ func (r *srcRepoImpl) Decimals(ctx context.Context, asset string) (int64, error)
 	if tx.Error != nil {
 		return 0, errors.Wrap(tx.Error, "srcRepoImpl.Decimals")
 	}
+	// Find reports no error on an empty result, and the zero it leaves behind would
+	// pass for a real decimals of 0
+	if tx.RowsAffected == 0 {
+		return 0, errors.Wrapf(ErrTokenNotFound, "srcRepoImpl.Decimals(%s)", asset)
+	}
 
 	return res, nil
 }
 
 func (r *srcRepoImpl) LatestRouteUpdateTimestamp(ctx context.Context) (float64, error) {
 	var ts float64
+	// max, not min: routes are inserted with ON CONFLICT DO NOTHING, so only the
+	// newest row says whether the router has published anything since the last reload
 	if tx := r.conn(ctx).Model(schemas.Route{}).Where(
 		"chain_id = ?", r.chainId).Select(
-		"coalesce(min(created_at), 0)").Find(&ts); tx.Error != nil {
+		"coalesce(max(created_at), 0)").Find(&ts); tx.Error != nil {
 		return 0, errors.Wrap(tx.Error, "srcRepoImpl.LatestRouteUpdateTimestamp")
 	}
 
@@ -237,6 +244,11 @@ func (r *srcRepoImpl) UpdateDirectPrice(ctx context.Context, height uint64, txId
 	if tx.Error != nil {
 		return errors.Wrap(tx.Error, "srcRepoImpl.UpdateDirectPrice")
 	}
+	// inserting the zero value would add a row with token_id/price_token_id/route_id
+	// = 0 that still raises max(height), making the task skip real prices above it
+	if tx.RowsAffected == 0 {
+		return errors.Wrapf(ErrRouteNotFound, "srcRepoImpl.UpdateDirectPrice(token: %s, price token: %s)", token, priceToken)
+	}
 
 	tx = r.conn(ctx).Model(schemas.Price{}).Create(
 		&schemas.Price{
@@ -274,6 +286,10 @@ func (r *srcRepoImpl) UpdateRoutePrice(ctx context.Context, height uint64, txId 
 
 	if tx.Error != nil {
 		return errors.Wrap(tx.Error, "srcRepoImpl.UpdateRoutePrice")
+	}
+	// see UpdateDirectPrice: an empty result must not become a zero valued price row.
+	if tx.RowsAffected == 0 {
+		return errors.Wrapf(ErrRouteNotFound, "srcRepoImpl.UpdateRoutePrice(token: %s, price token: %s, route: %v)", token, priceToken, route)
 	}
 
 	tx = r.conn(ctx).Model(schemas.Price{}).Create(
