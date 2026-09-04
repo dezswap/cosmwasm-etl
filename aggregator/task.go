@@ -75,6 +75,7 @@ type routerTask struct {
 	taskImpl
 
 	router  router.Router
+	srcDb   parser.ReadRepository
 	db      router.SrcRepo
 	pairCnt int
 }
@@ -241,18 +242,24 @@ func (t *lpHistoryTask) generateHistory(latestLpMap map[uint64][]string, txs []s
 	return history, nil
 }
 
-func newRouterTask(config configs.AggregatorConfig, repo router.SrcRepo, logger logging.Logger) task {
+func newRouterTask(config configs.AggregatorConfig, srcRepo parser.ReadRepository, repo router.SrcRepo, logger logging.Logger) task {
 	return &routerTask{
 		taskImpl: taskImpl{
 			chainId: config.ChainId,
 			logger:  logger,
 		},
 		router: router.New(repo, config.Router, logger),
+		srcDb:  srcRepo,
 		db:     repo,
 	}
 }
 
 func (t *routerTask) Execute(ctx context.Context, _ time.Time, _ time.Time) error {
+	syncedHeight, err := t.srcDb.GetSyncedHeight(ctx)
+	if err != nil {
+		return err
+	}
+
 	pairs, err := t.db.Pairs(ctx)
 	if err != nil {
 		return err
@@ -266,6 +273,8 @@ func (t *routerTask) Execute(ctx context.Context, _ time.Time, _ time.Time) erro
 		}
 		t.pairCnt = len(pairs)
 	}
+
+	t.advanceHeight(syncedHeight)
 
 	return nil
 }

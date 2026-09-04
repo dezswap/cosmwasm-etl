@@ -100,13 +100,16 @@ func New(ctx context.Context, c configs.Config, logger logging.Logger) (Aggregat
 // statistics task waits on whatever its own queries read.
 func initTaskSchedulers(ctx context.Context, config configs.AggregatorConfig, srcRepo parser.ReadRepository, destRepo repo.Repo, priceRepo price.SrcRepo, routerRepo router.SrcRepo, logger logging.Logger) ([]scheduler, error) {
 	lht := newLpHistoryTask(config, srcRepo, destRepo, logger)
-	pt, err := newPriceTask(ctx, config, destRepo, priceRepo, logger, []task{lht})
+	// price reads the route rows the router alone writes, so it waits on the router the
+	// same way it waits on lp_history
+	rt := newRouterTask(config, srcRepo, routerRepo, logger)
+	pt, err := newPriceTask(ctx, config, destRepo, priceRepo, logger, []task{lht, rt})
 	if err != nil {
 		return nil, err
 	}
 
 	return []scheduler{
-		newIntervalScheduler(newRouterTask(config, routerRepo, logger), logger),
+		newIntervalScheduler(rt, logger),
 		newIntervalScheduler(lht, logger),
 		newIntervalScheduler(pt, logger),
 		newIntervalScheduler(newPairStatsRecentUpdateTask(config, srcRepo, destRepo, logger, []task{lht, pt}), logger),
