@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "**" ]
+    branches: ["**"]
 
 permissions:
   contents: read
@@ -16,7 +16,7 @@ jobs:
     environment: CI
     services:
       cosmwasm-etl-db:
-        image: postgres
+        image: postgres:16 # ratchet:exclude
         env:
           POSTGRES_USER: app
           POSTGRES_PASSWORD: appPW
@@ -30,51 +30,51 @@ jobs:
           --health-retries 5
 
     steps:
-    - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
 
-    - name: Set up Go
-      uses: actions/setup-go@v6
-      with:
-        go-version-file: 'go.mod'
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # ratchet:actions/setup-go@v7
+        with:
+          go-version-file: 'go.mod'
 
-    - name: Run Golang linter
-      uses: golangci/golangci-lint-action@v8
-    
-    - name: Build all
-      run: make build-all
+      - name: Run Golang linter
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # ratchet:golangci/golangci-lint-action@v9
 
-    - name: Tests
-      shell: bash
-      run: |
-        echo "${{ secrets.CONFIG }}" > config.yaml
-        go test -short -coverprofile=coverage.out -covermode=atomic ./...
+      - name: Build all
+        run: make build-all
 
-    - name: Upload to Codecov
-      uses: codecov/codecov-action@v6
-      with:
-        token: ${{ secrets.CODECOV_TOKEN }}
-        files: ./coverage.out
-    
-    - name: Migration Tests
-      run: |
-        make parser-migrate-up
-        make parser-migrate-test
-        # aggregator migrations run against the tables parser creates, so they go
-        # between the parser up and down. Their down steps back one migration, and
-        # the second up proves what it left behind can be migrated again.
-        make aggregator-migrate-up
-        make aggregator-migrate-down
-        make aggregator-migrate-up
-        make parser-migrate-down
+      - name: Tests
+        shell: bash
+        run: |
+          echo "${{ secrets.CONFIG }}" > config.yaml
+          go test -short -coverprofile=coverage.out -covermode=atomic ./...
+
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # ratchet:codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.out
+
+      - name: Migration Tests
+        run: |
+          make parser-migrate-up
+          make parser-migrate-test
+          # aggregator migrations run against the tables parser creates, so they go
+          # between the parser up and down. Their down steps back one migration, and
+          # the second up proves what it left behind can be migrated again.
+          make aggregator-migrate-up
+          make aggregator-migrate-down
+          make aggregator-migrate-up
+          make parser-migrate-down
 
   docker-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
 
       - name: Get changed files
         id: changed
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # ratchet:dorny/paths-filter@v4
         with:
           filters: |
             docker:
