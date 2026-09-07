@@ -458,22 +458,39 @@ func TestCollectHeightsReturnsSourceUnavailableError(t *testing.T) {
 }
 
 func TestDoCollectReturnsSourceUnavailableError(t *testing.T) {
-	repo := &sourceRepoMock{syncedErr: repo.ErrNotFound}
-	source := &sourceStoreMock{
-		syncedHeight: 1,
-		txsErr:       fmt.Errorf("baseRawDataStoreImpl.GetSourceTxs: %w", rpc.ErrHeightUnavailable),
+	unavailable := func(op string) error {
+		return fmt.Errorf("%s: %w", op, rpc.ErrHeightUnavailable)
 	}
 
-	err := DoCollect(
-		repo,
-		source,
-		configs.CollectorConfig{ChainId: "chain", StartHeight: 1, UntilHeight: 1},
-		logging.Discard,
-	)
+	for _, tc := range []struct {
+		name   string
+		source *sourceStoreMock
+	}{
+		{"txs", &sourceStoreMock{
+			syncedHeight: 1,
+			txsErr:       unavailable("baseRawDataStoreImpl.GetSourceTxs"),
+		}},
+		{"pool infos", &sourceStoreMock{
+			syncedHeight: 1,
+			txs:          map[uint64]parser.RawTxs{1: {{Hash: "tx1"}}},
+			poolInfoErr:  unavailable("baseRawDataStoreImpl.GetPoolInfos"),
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &sourceRepoMock{syncedErr: repo.ErrNotFound}
 
-	require.ErrorIs(t, err, errSourceUnavailable)
-	require.ErrorIs(t, err, rpc.ErrHeightUnavailable)
-	require.Empty(t, repo.saved)
+			err := DoCollect(
+				repo,
+				tc.source,
+				configs.CollectorConfig{ChainId: "chain", StartHeight: 1, UntilHeight: 1, PoolSnapshotInterval: 1},
+				logging.Discard,
+			)
+
+			require.ErrorIs(t, err, errSourceUnavailable)
+			require.ErrorIs(t, err, rpc.ErrHeightUnavailable)
+			require.Empty(t, repo.saved)
+		})
+	}
 }
 
 func TestCollectHeightsResumesAtFailedMidRangeHeight(t *testing.T) {
