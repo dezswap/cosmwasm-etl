@@ -29,6 +29,13 @@ func (r *srcRepoStub) Pairs(context.Context) ([]Pair, error) {
 	return append([]Pair(nil), r.pairs...), nil
 }
 
+func (r *srcRepoStub) PairStatus(context.Context) (int, bool, error) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	return len(r.pairs), true, nil
+}
+
 func (r *srcRepoStub) UpdateRoutes(context.Context, map[int]string, map[int]map[int][][]int) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()

@@ -22,6 +22,9 @@ type repoMock struct {
 
 	calledGetParsedTxsWithLimit bool
 
+	syncedHeight    uint64
+	syncedHeightErr error
+
 	updatedLpHistory       []schemas.LpHistory
 	updatedPairStatsRecent []schemas.PairStatsRecent
 	updatedPairStats       []schemas.PairStats30m
@@ -58,7 +61,7 @@ func (r *repoMock) LatestTimestamp(_ context.Context, _ string) (float64, error)
 }
 
 func (r *repoMock) GetSyncedHeight(_ context.Context) (uint64, error) {
-	return 0, nil
+	return r.syncedHeight, r.syncedHeightErr
 }
 
 func (r *repoMock) GetPairs(_ context.Context) ([]schemas.Pair, error) {
