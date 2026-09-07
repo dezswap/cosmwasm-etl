@@ -2,10 +2,12 @@ package collector
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/dezswap/cosmwasm-etl/collector/repo"
 	"github.com/dezswap/cosmwasm-etl/parser/dex"
+	"github.com/dezswap/cosmwasm-etl/pkg/terra/rpc"
 )
 
 type sourceHeightCollector struct {
@@ -37,7 +39,7 @@ func (c *sourceHeightCollector) SourceHeight() (uint64, error) {
 func (c *sourceHeightCollector) CollectHeight(height uint64) error {
 	txs, err := c.source.GetSourceTxs(height)
 	if err != nil {
-		return err
+		return classifySourceErr(err)
 	}
 
 	blockTime := time.Time{}
@@ -50,9 +52,21 @@ func (c *sourceHeightCollector) CollectHeight(height uint64) error {
 	if savePoolSnapshot {
 		poolInfos, err = c.source.GetPoolInfos(height)
 		if err != nil {
-			return err
+			return classifySourceErr(err)
 		}
 	}
 
-	return c.repo.SaveHeight(c.chainID, height, blockTime, txs, poolInfos, savePoolSnapshot)
+	if err := c.repo.SaveHeight(c.chainID, height, blockTime, txs, poolInfos, savePoolSnapshot); err != nil {
+		return fmt.Errorf("%w: %w", errLocalStore, err)
+	}
+	return nil
+}
+
+// classifySourceErr keeps retrying the default, since only the rpc client carries
+// a verdict: pool queries reach the chain over LCD and arrive unclassified.
+func classifySourceErr(err error) error {
+	if errors.Is(err, rpc.ErrHeightUnavailable) {
+		return fmt.Errorf("%w: %w", errSourceUnavailable, err)
+	}
+	return err
 }

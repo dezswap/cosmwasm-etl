@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -8,6 +9,16 @@ import (
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/parser/dex"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
+)
+
+var (
+	// errLocalStore marks a persistence failure. CollectHeight mixes source reads
+	// with a local write, so implementations wrap the write error to tell the runner
+	// which half failed.
+	errLocalStore = errors.New("local store")
+	// errSourceUnavailable marks a height the source can never serve. Implementations
+	// translate their own verdict into it so the runner stays source agnostic.
+	errSourceUnavailable = errors.New("source cannot serve height")
 )
 
 type heightCollector interface {
@@ -42,9 +53,12 @@ func DoCollect(repo collectorrepo.Repository, source dex.SourceDataStore, collec
 	}, logger)
 }
 
-// collectHeights runs the common contiguous-height collection loop.
-// Implementations own source reads and persistence for a single height, while
-// the runner handles local/source progress, until-height bounds, and polling.
+// collectHeights runs the contiguous-height loop. Implementations own per-height
+// reads and persistence; the runner owns progress, until-height bounds, and polling.
+//
+// Source failures retry indefinitely, leaving the height unconsumed for the next
+// poll. A local store failure or a height the source cannot serve exits instead:
+// neither clears on its own, and retrying would stall on the same height forever.
 func collectHeights(collector heightCollector, config heightCollectorConfig, logger logging.Logger) error {
 	startHeight := config.StartHeight
 	if config.UntilHeight > 0 && config.UntilHeight < startHeight {
@@ -59,17 +73,22 @@ func collectHeights(collector heightCollector, config heightCollectorConfig, log
 			return err
 		}
 
+		// Checked before the source read so a finished backfill exits even when
+		// the node is down.
+		if reachedUntilHeight(localHeight, config.UntilHeight) {
+			logger.Infof("collector reached until height %d", config.UntilHeight)
+			return nil
+		}
+
 		srcHeight, err := collector.SourceHeight()
 		if err != nil {
-			return err
+			logger.Warnf("collector could not read source height, retrying: %s", err)
+			time.Sleep(pollInterval)
+			continue
 		}
 
 		targetHeight := boundedTargetHeight(srcHeight, config.UntilHeight)
 		if localHeight >= targetHeight {
-			if reachedUntilHeight(localHeight, config.UntilHeight) {
-				logger.Infof("collector reached until height %d", config.UntilHeight)
-				return nil
-			}
 			logger.Infof("no new collector source height: local=%d source=%d", localHeight, srcHeight)
 			time.Sleep(pollInterval)
 			continue
@@ -87,7 +106,12 @@ func collectHeights(collector heightCollector, config heightCollectorConfig, log
 
 		for height := nextHeight; height <= targetHeight; height++ {
 			if err := collector.CollectHeight(height); err != nil {
-				return err
+				if errors.Is(err, errLocalStore) || errors.Is(err, errSourceUnavailable) {
+					return err
+				}
+				logger.Warnf("collector could not collect height %d, retrying: %s", height, err)
+				time.Sleep(pollInterval)
+				break
 			}
 			logger.Infof("collected source height %d", height)
 		}
