@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const prunedBody = `{"jsonrpc":"2.0","id":-1,"error":{"code":-32603,"message":"Internal error","data":"height 100 is not available, lowest height is 200"}}`
+const prunedData = "height 100 is not available, lowest height is 200"
 
 func newTestRpc(t *testing.T, handler http.HandlerFunc) Rpc {
 	t.Helper()
@@ -22,11 +22,17 @@ func newTestRpc(t *testing.T, handler http.HandlerFunc) Rpc {
 	return New(server.URL, server.Client())
 }
 
-// A JSON-RPC error arrives with HTTP 200 and no result, which used to decode as
-// an empty successful response.
+// CometBFT's URI handler reports an RPC error as HTTP 500 carrying the error
+// object, see rpc/jsonrpc/server/http_uri_handler.go.
+func writeNodeError(w http.ResponseWriter, data string) {
+	w.WriteHeader(http.StatusInternalServerError)
+	fmt.Fprintf(w, `{"jsonrpc":"2.0","id":-1,"error":{"code":-32603,"message":"Internal error","data":%q}}`, data)
+}
+
+// The response carries no result, which used to decode as an empty success.
 func TestBlockResultsRejectsNodeErrorResponse(t *testing.T) {
 	client := newTestRpc(t, func(w http.ResponseWriter, _ *http.Request) {
-		fmt.Fprint(w, prunedBody)
+		writeNodeError(w, prunedData)
 	})
 
 	res, err := client.BlockResults(100)
@@ -44,7 +50,7 @@ func TestBlockDoesNotRetryUnavailableHeight(t *testing.T) {
 	var calls atomic.Int32
 	client := newTestRpc(t, func(w http.ResponseWriter, _ *http.Request) {
 		calls.Add(1)
-		fmt.Fprint(w, prunedBody)
+		writeNodeError(w, prunedData)
 	})
 
 	_, err := client.Block(100)
@@ -57,7 +63,7 @@ func TestBlockResultsRetriesUntilNodeCatchesUp(t *testing.T) {
 	var calls atomic.Int32
 	client := newTestRpc(t, func(w http.ResponseWriter, _ *http.Request) {
 		if calls.Add(1) < 3 {
-			fmt.Fprint(w, `{"jsonrpc":"2.0","id":-1,"error":{"code":-32603,"message":"Internal error","data":"could not find results for height #100"}}`)
+			writeNodeError(w, "could not find results for height #100")
 			return
 		}
 		fmt.Fprint(w, `{"jsonrpc":"2.0","id":-1,"result":{"height":"100","txs_results":[]}}`)

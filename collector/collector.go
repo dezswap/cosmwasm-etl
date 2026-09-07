@@ -11,10 +11,15 @@ import (
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 )
 
-// errLocalStore marks a persistence failure. CollectHeight mixes source reads
-// with a local write, so implementations wrap the write error to tell the runner
-// which half failed.
-var errLocalStore = errors.New("local store")
+var (
+	// errLocalStore marks a persistence failure. CollectHeight mixes source reads
+	// with a local write, so implementations wrap the write error to tell the runner
+	// which half failed.
+	errLocalStore = errors.New("local store")
+	// errSourceUnavailable marks a height the source can never serve. Implementations
+	// translate their own verdict into it so the runner stays source agnostic.
+	errSourceUnavailable = errors.New("source cannot serve height")
+)
 
 type heightCollector interface {
 	LocalHeight() (uint64, error)
@@ -51,8 +56,9 @@ func DoCollect(repo collectorrepo.Repository, source dex.SourceDataStore, collec
 // collectHeights runs the contiguous-height loop. Implementations own per-height
 // reads and persistence; the runner owns progress, until-height bounds, and polling.
 //
-// A local store failure exits: it means a broken deployment, not a passing outage.
-// Source failures retry indefinitely, leaving the height unconsumed for the next poll.
+// Source failures retry indefinitely, leaving the height unconsumed for the next
+// poll. A local store failure or a height the source cannot serve exits instead:
+// neither clears on its own, and retrying would stall on the same height forever.
 func collectHeights(collector heightCollector, config heightCollectorConfig, logger logging.Logger) error {
 	startHeight := config.StartHeight
 	if config.UntilHeight > 0 && config.UntilHeight < startHeight {
@@ -100,7 +106,7 @@ func collectHeights(collector heightCollector, config heightCollectorConfig, log
 
 		for height := nextHeight; height <= targetHeight; height++ {
 			if err := collector.CollectHeight(height); err != nil {
-				if errors.Is(err, errLocalStore) {
+				if errors.Is(err, errLocalStore) || errors.Is(err, errSourceUnavailable) {
 					return err
 				}
 				logger.Warnf("collector could not collect height %d, retrying: %s", height, err)

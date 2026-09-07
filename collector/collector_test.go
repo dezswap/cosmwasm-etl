@@ -2,6 +2,7 @@ package collector
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/parser/dex"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
+	"github.com/dezswap/cosmwasm-etl/pkg/terra/rpc"
 	"github.com/stretchr/testify/require"
 )
 
@@ -436,6 +438,42 @@ func TestCollectHeightsRetriesFailedHeightWithoutSkipping(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, []uint64{1, 2}, collector.collected)
+}
+
+// A height the source cannot serve never clears, so retrying would stall forever.
+func TestCollectHeightsReturnsSourceUnavailableError(t *testing.T) {
+	expected := fmt.Errorf("%w: %w", errSourceUnavailable, rpc.ErrHeightUnavailable)
+	collector := &heightCollectorMock{
+		localHeight:  0,
+		sourceHeight: 2,
+		collectErr:   expected,
+	}
+
+	err := collectHeights(collector, heightCollectorConfig{
+		UntilHeight: 2,
+	}, logging.Discard)
+
+	require.ErrorIs(t, err, errSourceUnavailable)
+	require.Empty(t, collector.collected)
+}
+
+func TestDoCollectReturnsSourceUnavailableError(t *testing.T) {
+	repo := &sourceRepoMock{syncedErr: repo.ErrNotFound}
+	source := &sourceStoreMock{
+		syncedHeight: 1,
+		txsErr:       fmt.Errorf("baseRawDataStoreImpl.GetSourceTxs: %w", rpc.ErrHeightUnavailable),
+	}
+
+	err := DoCollect(
+		repo,
+		source,
+		configs.CollectorConfig{ChainId: "chain", StartHeight: 1, UntilHeight: 1},
+		logging.Discard,
+	)
+
+	require.ErrorIs(t, err, errSourceUnavailable)
+	require.ErrorIs(t, err, rpc.ErrHeightUnavailable)
+	require.Empty(t, repo.saved)
 }
 
 func TestCollectHeightsResumesAtFailedMidRangeHeight(t *testing.T) {
