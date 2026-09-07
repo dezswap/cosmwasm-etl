@@ -2,6 +2,7 @@ package collector
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/dezswap/cosmwasm-etl/collector/repo"
@@ -54,5 +55,8 @@ func (c *sourceHeightCollector) CollectHeight(height uint64) error {
 		}
 	}
 
-	return c.repo.SaveHeight(c.chainID, height, blockTime, txs, poolInfos, savePoolSnapshot)
+	if err := c.repo.SaveHeight(c.chainID, height, blockTime, txs, poolInfos, savePoolSnapshot); err != nil {
+		return fmt.Errorf("%w: %w", errLocalStore, err)
+	}
+	return nil
 }

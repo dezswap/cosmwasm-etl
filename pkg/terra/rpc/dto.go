@@ -8,9 +8,25 @@ import (
 )
 
 type RpcRes[T any] struct {
-	Jsonrpc string `json:"jsonrpc"`
-	Id      int    `json:"id"`
-	Result  T      `json:"result"`
+	Jsonrpc string    `json:"jsonrpc"`
+	Id      int       `json:"id"`
+	Result  T         `json:"result"`
+	Error   *RpcError `json:"error"`
+}
+
+// RpcError is the JSON-RPC error object. CometBFT returns it with HTTP 200, so
+// callers that only decode Result silently observe an empty successful response.
+type RpcError struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+	Data    string `json:"data"`
+}
+
+func (e *RpcError) Error() string {
+	if e.Data == "" {
+		return e.Message
+	}
+	return e.Message + ": " + e.Data
 }
 
 type RpcBlockRes struct {
