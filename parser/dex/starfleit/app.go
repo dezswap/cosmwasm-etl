@@ -25,8 +25,8 @@ type starfleitApp struct {
 
 var _ dex.TargetApp = &starfleitApp{}
 
-func New(repo dex.PairRepo, logger logging.Logger, c configs.ParserDexConfig, chainId string) (dex.TargetApp, error) {
-	finder, err := sf.CreateCreatePairRuleFinder(c.ChainId)
+func New(repo dex.PairRepo, _ logging.Logger, c configs.ParserDexConfig) (dex.TargetApp, error) {
+	finder, err := sf.CreateCreatePairRuleFinder(c.FactoryAddress)
 	if err != nil {
 		return nil, errors.Wrap(err, "NewApp")
 	}
@@ -49,7 +49,7 @@ func New(repo dex.PairRepo, logger logging.Logger, c configs.ParserDexConfig, ch
 		lpPairAddrs[p.LpAddr] = p.ContractAddr
 	}
 
-	return &starfleitApp{repo, parsers, dex.DexMixin{}, chainId, pairs, lpPairAddrs}, nil
+	return &starfleitApp{repo, parsers, dex.DexMixin{}, c.ChainId, pairs, lpPairAddrs}, nil
 }
 
 func (p *starfleitApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx, error) {
