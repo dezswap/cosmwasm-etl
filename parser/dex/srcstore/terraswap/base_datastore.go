@@ -96,8 +96,8 @@ func (r *baseRawDataStoreImpl) GetSourceTxs(height uint64) (parser.RawTxs, error
 	}
 
 	txResults := rpcResultRes.Result.TxsResults
-	if len(txHashes) != len(txResults) {
-		return nil, errors.New("baseRawDataStoreImpl.GetSourceTxs: txs length mismatch")
+	if err := verifyBlockResponses(height, blockRes.Block.Header.Height, rpcResultRes.Result.Height, len(txHashes), len(txResults)); err != nil {
+		return nil, errors.Wrap(err, "baseRawDataStoreImpl.GetSourceTxs")
 	}
 
 	rawTxs := []parser.RawTx{}
@@ -120,6 +120,25 @@ func (r *baseRawDataStoreImpl) GetSourceTxs(height uint64) (parser.RawTxs, error
 		rawTxs = append(rawTxs, tx)
 	}
 	return rawTxs, nil
+}
+
+// verifyBlockResponses guards against pairing a block with results from another
+// height, which a load balanced or restarting endpoint can return.
+func verifyBlockResponses(requested uint64, blockHeight, resultHeight string, txCount, resultCount int) error {
+	for _, got := range []string{blockHeight, resultHeight} {
+		parsed, err := strconv.ParseUint(got, 10, 64)
+		if err != nil {
+			return errors.Wrapf(err, "unparsable height %q in response for height %d", got, requested)
+		}
+		if parsed != requested {
+			return errors.Errorf("height mismatch: requested %d, node returned %d", requested, parsed)
+		}
+	}
+
+	if txCount != resultCount {
+		return errors.Errorf("txs length mismatch at height %d: block has %d txs, block_results has %d", requested, txCount, resultCount)
+	}
+	return nil
 }
 
 // convertLogToRawTx unmarshal raw log data into a structured RawTx, extracting event attributes and sender.

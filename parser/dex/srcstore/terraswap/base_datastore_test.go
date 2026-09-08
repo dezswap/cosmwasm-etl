@@ -285,3 +285,19 @@ func Test_groupEventsAttrByType_Empty(t *testing.T) {
 	empty := groupEventsAttrByType([]rpc.RpcEventRes{})
 	assert.Empty(t, empty)
 }
+
+func TestVerifyBlockResponsesAcceptsMatchingHeights(t *testing.T) {
+	assert.NoError(t, verifyBlockResponses(100, "100", "100", 2, 2))
+}
+
+func TestVerifyBlockResponsesRejectsHeightFromAnotherBlock(t *testing.T) {
+	err := verifyBlockResponses(100, "100", "99", 2, 2)
+
+	assert.ErrorContains(t, err, "height mismatch: requested 100, node returned 99")
+}
+
+func TestVerifyBlockResponsesReportsLengthsOnMismatch(t *testing.T) {
+	err := verifyBlockResponses(100, "100", "100", 3, 0)
+
+	assert.ErrorContains(t, err, "txs length mismatch at height 100: block has 3 txs, block_results has 0")
+}
