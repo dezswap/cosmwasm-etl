@@ -94,6 +94,29 @@ func Test_HostOf_KeepsOnlyTheAuthority(t *testing.T) {
 	assert.Equal(t, "", HostOf("://not a url"))
 }
 
+// A gRPC target is not a URL: the bare host:port form has no scheme, and the path
+// names the endpoint rather than a resource.
+func Test_RedactedGRPCAddress(t *testing.T) {
+	for name, tc := range map[string]struct{ target, want string }{
+		"bare host and port":        {"grpc-fetchhub.fetch.ai:443", "grpc-fetchhub.fetch.ai:443"},
+		"resolver uri":              {"dns:///grpc-fetchhub.fetch.ai:443", "dns:///grpc-fetchhub.fetch.ai:443"},
+		"unix socket":               {"unix:///var/run/node.sock", "unix:///var/run/node.sock"},
+		"userinfo dropped":          {"dns://user:SECRET@resolver/host:443", "dns://resolver/host:443"},
+		"query dropped":             {"dns:///node.example:443?apikey=SECRET", "dns:///node.example:443"},
+		"bare query dropped":        {"node.example:443?apikey=SECRET", "node.example:443"},
+		"empty query dropped":       {"node.example:443?", "node.example:443"},
+		"fragment dropped":          {"dns:///node.example:443#SECRET", "dns:///node.example:443"},
+		"unparsable yields nothing": {"://not a target", ""},
+		// The path is the endpoint a resolver dials, so dropping it would leave the
+		// error with no node at all.
+		"endpoint path kept": {"dns:///node.example:443", "dns:///node.example:443"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, tc.want, RedactedGRPCAddress(tc.target))
+		})
+	}
+}
+
 // A transport that reports a code already says everything Detail would repeat.
 func Test_Error_CodeSuppressesDetail(t *testing.T) {
 	err := &Error{

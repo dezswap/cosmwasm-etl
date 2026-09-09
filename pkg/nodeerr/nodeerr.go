@@ -190,3 +190,19 @@ func HostOf(rawURL string) string {
 	}
 	return u.Host
 }
+
+// RedactedGRPCAddress rebuilds a gRPC target without its userinfo, query and fragment.
+// The path stays: it is what names the node in unix:///var/run/node.sock. HostOf cannot
+// stand in here, since url.Parse reads a bare host:port as a scheme.
+func RedactedGRPCAddress(target string) string {
+	u, err := url.Parse(target)
+	if err != nil {
+		return ""
+	}
+	u.User = nil
+	u.RawQuery = ""
+	u.ForceQuery = false
+	u.Fragment = ""
+	u.RawFragment = ""
+	return u.String()
+}

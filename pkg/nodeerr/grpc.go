@@ -7,10 +7,12 @@ import (
 
 // FromGRPC turns a gRPC call failure into an *Error so the status code survives as
 // a field instead of only as text inside the wrapped message.
-func FromGRPC(op, host string, err error) error {
+func FromGRPC(op, target string, err error) error {
 	if err == nil {
 		return nil
 	}
+
+	host := RedactedGRPCAddress(target)
 
 	st, ok := status.FromError(err)
 	if !ok {
@@ -18,8 +20,8 @@ func FromGRPC(op, host string, err error) error {
 		return Transient(op, TransportGRPC, host, err)
 	}
 
-	// The status goes in Detail, not Err: Code and Body already carry everything its
-	// "rpc error: code = X desc = Y" text would repeat, and Detail stays unwrappable.
+	// The status goes in Detail, not Err: Code and Body already carry what its
+	// "rpc error: code = X desc = Y" text would repeat.
 	return &Error{
 		Op:        op,
 		Transport: TransportGRPC,
@@ -31,11 +33,9 @@ func FromGRPC(op, host string, err error) error {
 	}
 }
 
-// classFromGRPCCode mirrors the RPC client's verdicts: a code that means "busy or
-// degraded" is retryable, and anything the node decided about the request itself is
-// permanent. Nothing retries grpc calls yet, so this only labels the error for now.
-// NotFound stays permanent but is deliberately not ErrHeightUnavailable, since a tx
-// the node never indexed is not the same as a height it dropped.
+// classFromGRPCCode retries "busy or degraded" and treats anything the node decided
+// about the request as permanent. NotFound is permanent but deliberately not
+// ErrHeightUnavailable: a tx the node never indexed is not a height it dropped.
 func classFromGRPCCode(c codes.Code) error {
 	switch c {
 	case codes.Unavailable, codes.DeadlineExceeded, codes.ResourceExhausted, codes.Aborted, codes.Internal, codes.Unknown:
