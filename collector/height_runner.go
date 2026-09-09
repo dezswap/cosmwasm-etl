@@ -7,7 +7,7 @@ import (
 
 	"github.com/dezswap/cosmwasm-etl/collector/repo"
 	"github.com/dezswap/cosmwasm-etl/parser/dex"
-	"github.com/dezswap/cosmwasm-etl/pkg/terra/rpc"
+	"github.com/dezswap/cosmwasm-etl/pkg/nodeerr"
 )
 
 type sourceHeightCollector struct {
@@ -62,10 +62,11 @@ func (c *sourceHeightCollector) CollectHeight(height uint64) error {
 	return nil
 }
 
-// classifySourceErr keeps retrying the default, since only the rpc client carries
-// a verdict: pool queries reach the chain over LCD and arrive unclassified.
+// classifySourceErr keeps retrying the default. Every client now classifies its
+// failures, but only the rpc client can tell that a height is gone for good: an LCD
+// or grpc 404 means the node did not serve this request, not that it dropped the height.
 func classifySourceErr(err error) error {
-	if errors.Is(err, rpc.ErrHeightUnavailable) {
+	if errors.Is(err, nodeerr.ErrHeightUnavailable) {
 		return fmt.Errorf("%w: %w", errSourceUnavailable, err)
 	}
 	return err

@@ -42,6 +42,7 @@ import (
 
 	"github.com/dezswap/cosmwasm-etl/configs"
 	grpcConn "github.com/dezswap/cosmwasm-etl/pkg/grpc"
+	"github.com/dezswap/cosmwasm-etl/pkg/nodeerr"
 	"github.com/dezswap/cosmwasm-etl/pkg/s3client"
 )
 
@@ -132,7 +133,7 @@ func (store *dataStoreImpl) GetNodeSyncedHeight() (int64, error) {
 	client := tmservice.NewServiceClient(conn)
 	res, err := client.GetLatestBlock(context.Background(), &tmservice.GetLatestBlockRequest{})
 	if err != nil {
-		return 0, errors.Wrap(err, "dataStoreImpl.GetNodeSyncedHeight")
+		return 0, nodeerr.FromGRPC("dataStoreImpl.GetNodeSyncedHeight", conn.Target(), err)
 	}
 
 	if res.SdkBlock == nil {
@@ -188,9 +189,8 @@ func (store *dataStoreImpl) GetBlockByHeight(height int64) (*tendermintType.Bloc
 
 		return block, nil
 	} else if err != nil {
-		err = errors.Wrap(err, "GetBlockByHeight, GetBlockWithTxs")
 		//TODO FAILOVER
-		return nil, err
+		return nil, nodeerr.WithHeight(nodeerr.FromGRPC("dataStoreImpl.GetBlockByHeight", conn.Target(), err), uint64(height))
 	}
 
 	return resp.GetBlock(), nil
@@ -411,12 +411,14 @@ func (store *dataStoreImpl) getTxResultFromTxHash(txHash string) (*txtypes.GetTx
 
 	resp, err := client.GetTx(context.Background(), req)
 	if err != nil {
-		// failover with lcd
-		if store.lcdClient != nil {
-			resp, err = store.lcdClient.GetTx(txHash)
+		grpcErr := nodeerr.FromGRPC("dataStoreImpl.getTxResultFromTxHash", conn.Target(), err)
+		if store.lcdClient == nil {
+			return nil, grpcErr
 		}
+		// failover with lcd; keep the grpc verdict so the log shows why failover ran
+		resp, err = store.lcdClient.GetTx(txHash)
 		if err != nil {
-			return nil, errors.Wrap(err, "getTxResultFromTxHash, GetTx")
+			return nil, fmt.Errorf("%w: lcd failover also failed: %w", grpcErr, err)
 		}
 	}
 
@@ -530,8 +532,7 @@ func (store *dataStoreImpl) contractQuery(conn *grpc.ClientConn, height int64, c
 		// return empty pair list, and will no query to pool info
 		return []byte(`{"pairs":[]}`), nil
 	} else if err != nil {
-		err = errors.Wrap(err, "contractQuery, SmartContractState")
-		return nil, err
+		return nil, nodeerr.FromGRPC("dataStoreImpl.contractQuery", conn.Target(), err)
 	}
 
 	queryByte := queryResp.Data.Bytes()

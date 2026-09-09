@@ -11,7 +11,7 @@ import (
 	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/parser/dex"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
-	"github.com/dezswap/cosmwasm-etl/pkg/terra/rpc"
+	"github.com/dezswap/cosmwasm-etl/pkg/nodeerr"
 	"github.com/stretchr/testify/require"
 )
 
@@ -442,7 +442,7 @@ func TestCollectHeightsRetriesFailedHeightWithoutSkipping(t *testing.T) {
 
 // A height the source cannot serve never clears, so retrying would stall forever.
 func TestCollectHeightsReturnsSourceUnavailableError(t *testing.T) {
-	expected := fmt.Errorf("%w: %w", errSourceUnavailable, rpc.ErrHeightUnavailable)
+	expected := fmt.Errorf("%w: %w", errSourceUnavailable, nodeerr.ErrHeightUnavailable)
 	collector := &heightCollectorMock{
 		localHeight:  0,
 		sourceHeight: 2,
@@ -459,7 +459,7 @@ func TestCollectHeightsReturnsSourceUnavailableError(t *testing.T) {
 
 func TestDoCollectReturnsSourceUnavailableError(t *testing.T) {
 	unavailable := func(op string) error {
-		return fmt.Errorf("%s: %w", op, rpc.ErrHeightUnavailable)
+		return fmt.Errorf("%s: %w", op, nodeerr.ErrHeightUnavailable)
 	}
 
 	for _, tc := range []struct {
@@ -487,7 +487,7 @@ func TestDoCollectReturnsSourceUnavailableError(t *testing.T) {
 			)
 
 			require.ErrorIs(t, err, errSourceUnavailable)
-			require.ErrorIs(t, err, rpc.ErrHeightUnavailable)
+			require.ErrorIs(t, err, nodeerr.ErrHeightUnavailable)
 			require.Empty(t, repo.saved)
 		})
 	}

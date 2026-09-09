@@ -2,11 +2,12 @@ package rpc
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/dezswap/cosmwasm-etl/pkg/nodeerr"
 )
 
 const (
@@ -28,6 +29,7 @@ type Rpc interface {
 
 type rpcImpl struct {
 	baseUrl string
+	host    string
 	client  *http.Client
 }
 
@@ -35,7 +37,7 @@ func New(baseUrl string, client *http.Client) Rpc {
 	if client.Timeout == 0 {
 		client.Timeout = defaultRpcTimeout
 	}
-	return &rpcImpl{baseUrl, client}
+	return &rpcImpl{baseUrl, nodeerr.HostOf(baseUrl), client}
 }
 
 // Block implements Rpc.
@@ -70,7 +72,7 @@ func getWithRetry[T any](r *rpcImpl, op, path string, height ...uint64) (*RpcRes
 		if err == nil {
 			return res, nil
 		}
-		if !errors.Is(err, ErrRetryable) {
+		if !nodeerr.Retryable(err) {
 			return nil, err
 		}
 		lastErr = err
@@ -79,7 +81,17 @@ func getWithRetry[T any](r *rpcImpl, op, path string, height ...uint64) (*RpcRes
 	return nil, fmt.Errorf("giving up after %d attempts: %w", maxAttempts, lastErr)
 }
 
+// get stamps the requested height on the failure. The message would otherwise not
+// name it: the request URL that carries it is dropped to keep provider keys out.
 func get[T any](r *rpcImpl, op, path string, height ...uint64) (*RpcRes[T], error) {
+	res, err := do[T](r, op, path, height...)
+	if err != nil && len(height) > 0 {
+		err = nodeerr.WithHeight(err, height[0])
+	}
+	return res, err
+}
+
+func do[T any](r *rpcImpl, op, path string, height ...uint64) (*RpcRes[T], error) {
 	url := fmt.Sprintf("%s/%s", r.baseUrl, path)
 	if len(height) > 0 {
 		url = fmt.Sprintf("%s?height=%d", url, height[0])
@@ -87,31 +99,41 @@ func get[T any](r *rpcImpl, op, path string, height ...uint64) (*RpcRes[T], erro
 
 	response, err := r.client.Get(url)
 	if err != nil {
-		// Transport failures carry no node verdict, so they stay retryable.
-		return nil, &NodeError{Op: op, Err: err, class: ErrRetryable}
+		return nil, nodeerr.Transient(op, nodeerr.TransportRPC, r.host, err)
 	}
 	defer response.Body.Close()
 
-	data, err := io.ReadAll(response.Body)
+	// CometBFT answers a node error with HTTP 500 carrying the JSON-RPC object, so a
+	// non-200 body still gets decoded. It is bounded because it is an error either
+	// way: a JSON-RPC error object is orders of magnitude below the limit.
+	body := io.Reader(response.Body)
+	if response.StatusCode != http.StatusOK {
+		body = io.LimitReader(body, nodeerr.MaxErrorBodyBytes)
+	}
+
+	data, err := io.ReadAll(body)
 	if err != nil {
-		return nil, &NodeError{Op: op, Status: response.StatusCode, Err: err, class: ErrRetryable}
+		return nil, &nodeerr.Error{Op: op, Transport: nodeerr.TransportRPC, Host: r.host, Status: response.StatusCode, Err: err, Class: nodeerr.ErrRetryable}
 	}
 
 	var res RpcRes[T]
 	if err := json.Unmarshal(data, &res); err != nil {
 		if response.StatusCode != http.StatusOK {
-			return nil, httpStatusError(op, response.StatusCode, data)
+			return nil, nodeerr.HTTPStatus(op, nodeerr.TransportRPC, r.host, response.StatusCode, data)
 		}
 		// An unparseable body behind HTTP 200 is a gateway artifact, not a node
 		// verdict, so it is worth another attempt.
-		return nil, &NodeError{Op: op, Status: response.StatusCode, Body: bodySnippet(data), Err: err, class: ErrRetryable}
+		return nil, &nodeerr.Error{
+			Op: op, Transport: nodeerr.TransportRPC, Host: r.host,
+			Status: response.StatusCode, Body: nodeerr.Snippet(data), Err: err, Class: nodeerr.ErrRetryable,
+		}
 	}
 
 	if res.Error != nil {
-		return nil, classifyRpcError(op, res.Error)
+		return nil, classifyRpcError(op, r.host, res.Error)
 	}
 	if response.StatusCode != http.StatusOK {
-		return nil, httpStatusError(op, response.StatusCode, data)
+		return nil, nodeerr.HTTPStatus(op, nodeerr.TransportRPC, r.host, response.StatusCode, data)
 	}
 
 	return &res, nil
