@@ -3,9 +3,14 @@ package starfleit
 import (
 	"github.com/dezswap/cosmwasm-etl/pkg/dex"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
+	"github.com/pkg/errors"
 )
 
 func CreateCreatePairRuleFinder(factoryAddress string) (eventlog.LogFinder, error) {
+	if factoryAddress == "" {
+		return nil, errors.New("no factory address")
+	}
+
 	rule := createPairRule
 	rule.Items[FactoryAddrIdx].Filter = factoryAddress
 

@@ -7,6 +7,7 @@ import (
 
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func Test_CreateCreateLogFinder(t *testing.T) {
@@ -309,3 +310,58 @@ const WasmTransferRawLogStr = `[
 	{"type":"message","attributes":[{"key":"action","value":"/cosmos.bank.v1beta1.MsgSend"},{"key":"sender","value":"xpla190465x8qz4p7uxylrmwcn8rufkv30j655h6h7q"},{"key":"module","value":"bank"}]},
 	{"type":"transfer","attributes":[{"key":"recipient","value":"xpla1ng9mj65a5cunzvkdqctgsv3pewgrx2hvk9tnrww77v3tk2lp7c9qllk0xh"},{"key":"sender","value":"xpla190465x8qz4p7uxylrmwcn8rufkv30j655h6h7q"},{"key":"amount","value":"1000000axpla"}]}
 	]`
+
+// Since cosmos-sdk v0.50 a tx keeps one wasm event per contract emission, each ending
+// with a msg_index attribute, instead of one merged wasm event per message.
+func Test_CreateCreateLogFinder_Sdk50SplitEvents(t *testing.T) {
+	assert, require := assert.New(t), require.New(t)
+
+	eventLogs := eventlog.LogResults{}
+	require.NoError(json.Unmarshal([]byte(sdk50CreatePairRawLogStr), &eventLogs))
+
+	logFinder, err := CreateCreatePairRuleFinder(FactoryAddress[MainnetPrefix])
+	require.NoError(err)
+
+	matchedResults := logFinder.FindFromLogs(eventLogs)
+	require.Len(matchedResults, 1)
+	require.Len(matchedResults[0], CreatePairMatchedLen)
+	assert.Equal("xpla1ng9mj65a5cunzvkdqctgsv3pewgrx2hvk9tnrww77v3tk2lp7c9qllk0xh", matchedResults[0][FactoryPairAddrIdx].Value)
+	assert.Equal("xpla1aye7rggr2w0dgpwuwul0y6nyxau2k5jjrpmrxtkcvsd7nlx2nz0su357u5", matchedResults[0][FactoryLpAddrIdx].Value)
+}
+
+func Test_CreateCreateLogFinder_EmptyFactoryAddress(t *testing.T) {
+	_, err := CreateCreatePairRuleFinder("")
+	assert.Error(t, err)
+}
+
+// Attributes are grouped per event type by the source stores, so the three wasm
+// events of a create_pair arrive as one attribute sequence.
+const sdk50CreatePairRawLogStr = `[
+	{"type":"execute","attributes":[
+		{"key":"_contract_address","value":"xpla1j33xdql0h4kpgj2mhggy4vutw655u90z7nyj4afhxgj4v5urtadq44e3vd"},
+		{"key":"msg_index","value":"0"}]},
+	{"type":"instantiate","attributes":[
+		{"key":"_contract_address","value":"xpla1ng9mj65a5cunzvkdqctgsv3pewgrx2hvk9tnrww77v3tk2lp7c9qllk0xh"},
+		{"key":"code_id","value":"54"},
+		{"key":"msg_index","value":"0"},
+		{"key":"_contract_address","value":"xpla1aye7rggr2w0dgpwuwul0y6nyxau2k5jjrpmrxtkcvsd7nlx2nz0su357u5"},
+		{"key":"code_id","value":"21"},
+		{"key":"msg_index","value":"0"}]},
+	{"type":"message","attributes":[
+		{"key":"action","value":"/cosmwasm.wasm.v1.MsgExecuteContract"},
+		{"key":"sender","value":"xpla190465x8qz4p7uxylrmwcn8rufkv30j655h6h7q"},
+		{"key":"module","value":"wasm"},
+		{"key":"msg_index","value":"0"}]},
+	{"type":"wasm","attributes":[
+		{"key":"_contract_address","value":"xpla1j33xdql0h4kpgj2mhggy4vutw655u90z7nyj4afhxgj4v5urtadq44e3vd"},
+		{"key":"action","value":"create_pair"},
+		{"key":"pair","value":"axpla-xpla1w6hv0suf8dmpq8kxd8a6yy9fnmntlh7hh9kl37qmax7kyzfd047qnnp0mm"},
+		{"key":"msg_index","value":"0"},
+		{"key":"_contract_address","value":"xpla1ng9mj65a5cunzvkdqctgsv3pewgrx2hvk9tnrww77v3tk2lp7c9qllk0xh"},
+		{"key":"liquidity_token_addr","value":"xpla1aye7rggr2w0dgpwuwul0y6nyxau2k5jjrpmrxtkcvsd7nlx2nz0su357u5"},
+		{"key":"msg_index","value":"0"},
+		{"key":"_contract_address","value":"xpla1j33xdql0h4kpgj2mhggy4vutw655u90z7nyj4afhxgj4v5urtadq44e3vd"},
+		{"key":"pair_contract_addr","value":"xpla1ng9mj65a5cunzvkdqctgsv3pewgrx2hvk9tnrww77v3tk2lp7c9qllk0xh"},
+		{"key":"liquidity_token_addr","value":"xpla1aye7rggr2w0dgpwuwul0y6nyxau2k5jjrpmrxtkcvsd7nlx2nz0su357u5"},
+		{"key":"msg_index","value":"0"}]}
+]`

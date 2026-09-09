@@ -55,8 +55,8 @@ func (r *phoenixSourceDataStore) GetSourceTxs(height uint64) (parser.RawTxs, err
 	}
 
 	txResults := rpcResultRes.Result.TxsResults
-	if len(txHashes) != len(txResults) {
-		return nil, errors.New("phoenixSourceDataStore.GetSourceTxs: txs length mismatch")
+	if err := verifyBlockResponses(height, blockRes.Block.Header.Height, rpcResultRes.Result.Height, len(txHashes), len(txResults)); err != nil {
+		return nil, errors.Wrap(err, "phoenixSourceDataStore.GetSourceTxs")
 	}
 
 	rawTxs := []parser.RawTx{}

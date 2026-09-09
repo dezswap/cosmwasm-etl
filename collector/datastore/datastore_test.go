@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"testing"
@@ -12,7 +13,10 @@ import (
 	grpc1 "github.com/cosmos/gogoproto/grpc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	cryptocodec "github.com/cosmos/cosmos-sdk/crypto/codec"
 	"github.com/cosmos/cosmos-sdk/types"
@@ -23,6 +27,7 @@ import (
 
 	"github.com/dezswap/cosmwasm-etl/configs"
 	grpcConn "github.com/dezswap/cosmwasm-etl/pkg/grpc"
+	"github.com/dezswap/cosmwasm-etl/pkg/nodeerr"
 	"github.com/dezswap/cosmwasm-etl/pkg/s3client"
 )
 
@@ -504,4 +509,85 @@ func makeTxByte() {
 	}
 
 	testRawTxString = `"[{\"events\":[{\"type\":\"coin_received\",\"attributes\":[{\"key\":\"receiver\",\"value\":\"terra1z7705t2p5p6rel93fd7zrsh8a4luxyxz88a4zkmlctwf38yh520qt949n8\"},{\"key\":\"amount\",\"value\":\"100000000uluna\"}]},{\"type\":\"coin_spent\",\"attributes\":[{\"key\":\"spender\",\"value\":\"terra14vj6ed4hgm7dv94dz76964g3lxl5wj95jafpl8\"},{\"key\":\"amount\",\"value\":\"100000000uluna\"}]},{\"type\":\"execute\",\"attributes\":[{\"key\":\"_contract_address\",\"value\":\"terra1z7705t2p5p6rel93fd7zrsh8a4luxyxz88a4zkmlctwf38yh520qt949n8\"},{\"key\":\"_contract_address\",\"value\":\"terra14xsm2wzvu7xaf567r693vgfkhmvfs08l68h4tjj5wjgyn5ky8e2qvzyanh\"}]},{\"type\":\"message\",\"attributes\":[{\"key\":\"action\",\"value\":\"/cosmwasm.wasm.v1.MsgExecuteContract\"},{\"key\":\"module\",\"value\":\"wasm\"},{\"key\":\"sender\",\"value\":\"terra14vj6ed4hgm7dv94dz76964g3lxl5wj95jafpl8\"}]},{\"type\":\"transfer\",\"attributes\":[{\"key\":\"recipient\",\"value\":\"terra1z7705t2p5p6rel93fd7zrsh8a4luxyxz88a4zkmlctwf38yh520qt949n8\"},{\"key\":\"sender\",\"value\":\"terra14vj6ed4hgm7dv94dz76964g3lxl5wj95jafpl8\"},{\"key\":\"amount\",\"value\":\"100000000uluna\"}]},{\"type\":\"wasm\",\"attributes\":[{\"key\":\"_contract_address\",\"value\":\"terra1z7705t2p5p6rel93fd7zrsh8a4luxyxz88a4zkmlctwf38yh520qt949n8\"},{\"key\":\"action\",\"value\":\"swap\"},{\"key\":\"sender\",\"value\":\"terra14vj6ed4hgm7dv94dz76964g3lxl5wj95jafpl8\"},{\"key\":\"receiver\",\"value\":\"terra14vj6ed4hgm7dv94dz76964g3lxl5wj95jafpl8\"},{\"key\":\"offer_asset\",\"value\":\"uluna\"},{\"key\":\"ask_asset\",\"value\":\"terra14xsm2wzvu7xaf567r693vgfkhmvfs08l68h4tjj5wjgyn5ky8e2qvzyanh\"},{\"key\":\"offer_amount\",\"value\":\"100000000\"},{\"key\":\"return_amount\",\"value\":\"99009265\"},{\"key\":\"spread_amount\",\"value\":\"951116\"},{\"key\":\"commission_amount\",\"value\":\"39619\"},{\"key\":\"maker_fee_amount\",\"value\":\"0\"},{\"key\":\"_contract_address\",\"value\":\"terra14xsm2wzvu7xaf567r693vgfkhmvfs08l68h4tjj5wjgyn5ky8e2qvzyanh\"},{\"key\":\"action\",\"value\":\"transfer\"},{\"key\":\"from\",\"value\":\"terra1z7705t2p5p6rel93fd7zrsh8a4luxyxz88a4zkmlctwf38yh520qt949n8\"},{\"key\":\"to\",\"value\":\"terra14vj6ed4hgm7dv94dz76964g3lxl5wj95jafpl8\"},{\"key\":\"amount\",\"value\":\"99009265\"}]}]}]",`
+}
+
+// A grpc failure has to reach the log as a code and a height, not as an opaque
+// "rpc error: ..." string wrapped by whoever happened to catch it.
+func TestGetBlockByHeightReportsTheGrpcStatusAndHeight(t *testing.T) {
+	m := serviceClientMock{}
+	m.On("GetBlockWithTxs", mock.Anything, mock.Anything).
+		Return((*txtypes.GetBlockWithTxsResponse)(nil), status.Error(codes.Unavailable, "node is restarting"))
+	storeimpl.newServiceClientFunc = func(grpc1.ClientConn) txtypes.ServiceClient { return &m }
+	t.Cleanup(func() { storeimpl.newServiceClientFunc = txtypes.NewServiceClient })
+
+	_, err := storeimpl.GetBlockByHeight(28940967)
+
+	var nodeErr *nodeerr.Error
+	require.ErrorAs(t, err, &nodeErr)
+	assert.Equal(t, codes.Unavailable.String(), nodeErr.Code)
+	assert.Equal(t, uint64(28940967), nodeErr.Height)
+	assert.Equal(t, nodeerr.TransportGRPC, nodeErr.Transport)
+	assert.True(t, nodeerr.Retryable(err))
+	assert.Contains(t, err.Error(), "node is restarting")
+	assert.Contains(t, err.Error(), "height=28940967")
+}
+
+// The empty block returned for this message is a cosmos-sdk 0.45 quirk, not a node
+// failure, so it must not turn into a node error.
+func TestGetBlockByHeightKeepsThePaginationWorkaround(t *testing.T) {
+	m := serviceClientMock{}
+	m.On("GetBlockWithTxs", mock.Anything, mock.Anything).
+		Return((*txtypes.GetBlockWithTxsResponse)(nil), errors.New("cannot paginate 0 txs with offset 0 and limit 100"))
+	storeimpl.newServiceClientFunc = func(grpc1.ClientConn) txtypes.ServiceClient { return &m }
+	t.Cleanup(func() { storeimpl.newServiceClientFunc = txtypes.NewServiceClient })
+
+	block, err := storeimpl.GetBlockByHeight(startBlock)
+
+	require.NoError(t, err)
+	require.NotNil(t, block)
+	assert.Empty(t, block.Data.Txs)
+}
+
+func TestGetTxResultFailoverKeepsBothVerdicts(t *testing.T) {
+	grpcFailure := status.Error(codes.NotFound, "tx not found")
+	newStore := func(lcd LcdClient) *dataStoreImpl {
+		m := serviceClientMock{}
+		m.On("GetTx", mock.Anything, mock.Anything).Return((*txtypes.GetTxResponse)(nil), grpcFailure)
+		store := *storeimpl
+		store.newServiceClientFunc = func(grpc1.ClientConn) txtypes.ServiceClient { return &m }
+		store.lcdClient = lcd
+		return &store
+	}
+
+	t.Run("lcd recovers the tx", func(t *testing.T) {
+		lcd := lcdClientMock{}
+		lcd.On("GetTx", "ABCDEF").Return(&txtypes.GetTxResponse{TxResponse: &types.TxResponse{}}, nil)
+
+		resp, err := newStore(&lcd).getTxResultFromTxHash("ABCDEF")
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+	})
+
+	t.Run("lcd fails too", func(t *testing.T) {
+		lcd := lcdClientMock{}
+		lcd.On("GetTx", "ABCDEF").
+			Return((*txtypes.GetTxResponse)(nil), nodeerr.HTTPStatus("lcdClientImpl.GetTx", nodeerr.TransportLCD, "rest.example", 404, []byte("nope")))
+
+		_, err := newStore(&lcd).getTxResultFromTxHash("ABCDEF")
+
+		require.Error(t, err)
+		// Losing the grpc verdict would hide why the failover ran at all.
+		assert.Contains(t, err.Error(), "grpc NotFound")
+		assert.Contains(t, err.Error(), "lcd failover also failed")
+		assert.Contains(t, err.Error(), "node returned http 404")
+	})
+
+	t.Run("no lcd configured", func(t *testing.T) {
+		_, err := newStore(nil).getTxResultFromTxHash("ABCDEF")
+
+		var nodeErr *nodeerr.Error
+		require.ErrorAs(t, err, &nodeErr)
+		assert.Equal(t, codes.NotFound.String(), nodeErr.Code)
+	})
 }

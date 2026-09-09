@@ -3,13 +3,14 @@ package rpc
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/dezswap/cosmwasm-etl/pkg/nodeerr"
 	"github.com/stretchr/testify/require"
 )
 
@@ -55,7 +56,7 @@ func TestBlockDoesNotRetryUnavailableHeight(t *testing.T) {
 
 	_, err := client.Block(100)
 
-	require.ErrorIs(t, err, ErrHeightUnavailable)
+	require.ErrorIs(t, err, nodeerr.ErrHeightUnavailable)
 	require.Equal(t, int32(1), calls.Load())
 }
 
@@ -85,7 +86,7 @@ func TestBlockResultsGivesUpAfterMaxAttempts(t *testing.T) {
 
 	_, err := client.BlockResults(100)
 
-	require.ErrorIs(t, err, ErrRetryable)
+	require.ErrorIs(t, err, nodeerr.ErrRetryable)
 	require.Equal(t, int32(maxAttempts), calls.Load())
 }
 
@@ -112,7 +113,7 @@ func TestStatusDoesNotRetryClientError(t *testing.T) {
 	_, err := client.Status()
 
 	require.ErrorContains(t, err, "node returned http 404")
-	require.False(t, errors.Is(err, ErrRetryable))
+	require.False(t, errors.Is(err, nodeerr.ErrRetryable))
 	require.Equal(t, int32(1), calls.Load())
 }
 
@@ -121,10 +122,21 @@ func TestTransportFailureKeepsCause(t *testing.T) {
 
 	_, err := client.Status()
 
-	require.ErrorIs(t, err, ErrRetryable)
+	require.ErrorIs(t, err, nodeerr.ErrRetryable)
 
-	var urlErr *url.Error
-	require.ErrorAs(t, err, &urlErr)
+	var netErr net.Error
+	require.ErrorAs(t, err, &netErr)
+}
+
+// The request path can carry a provider API key, so it must not survive into the
+// message even though the failing request is the only thing that knows it.
+func TestTransportFailureDoesNotRepeatTheRequestUrl(t *testing.T) {
+	client := New("http://127.0.0.1:1/SECRET_KEY", &http.Client{Timeout: 50 * time.Millisecond})
+
+	_, err := client.Status()
+
+	require.ErrorContains(t, err, "127.0.0.1:1")
+	require.NotContains(t, err.Error(), "SECRET_KEY")
 }
 
 func TestClassifyRpcError(t *testing.T) {
@@ -139,10 +151,43 @@ func TestClassifyRpcError(t *testing.T) {
 		{"unknown failure", "something else went wrong", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			err := classifyRpcError("op", &RpcError{Data: tc.data})
+			err := classifyRpcError("op", "node.example", &RpcError{Data: tc.data})
 
-			require.Equal(t, tc.permanent, errors.Is(err, ErrHeightUnavailable))
-			require.Equal(t, !tc.permanent, errors.Is(err, ErrRetryable))
+			require.Equal(t, tc.permanent, errors.Is(err, nodeerr.ErrHeightUnavailable))
+			require.Equal(t, !tc.permanent, errors.Is(err, nodeerr.ErrRetryable))
 		})
 	}
+}
+
+// The height lives in the request url, which is dropped, so the client has to put
+// it back before getWithRetry renders its own wrapper around the failure.
+func TestFailureNamesTheRequestedHeight(t *testing.T) {
+	t.Run("node answered", func(t *testing.T) {
+		client := newTestRpc(t, func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+		})
+
+		_, err := client.BlockResults(28940967)
+
+		require.ErrorContains(t, err, "height=28940967")
+	})
+
+	t.Run("node unreachable, after every attempt is used up", func(t *testing.T) {
+		client := New("http://127.0.0.1:1", &http.Client{Timeout: 50 * time.Millisecond})
+
+		_, err := client.BlockResults(28940967)
+
+		require.ErrorContains(t, err, "giving up after")
+		require.ErrorContains(t, err, "height=28940967")
+	})
+
+	t.Run("a request without a height says nothing about one", func(t *testing.T) {
+		client := newTestRpc(t, func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+		})
+
+		_, err := client.Status()
+
+		require.NotContains(t, err.Error(), "height=")
+	})
 }

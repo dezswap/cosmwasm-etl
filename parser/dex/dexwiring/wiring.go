@@ -25,9 +25,9 @@ func NewTargetApp(repo p_dex.PairRepo, logger logging.Logger, c configs.ParserDe
 	case dex.Terraswap:
 		return pts.New(repo, logger, c)
 	case dex.Dezswap:
-		return pds.New(repo, logger, c, c.ChainId)
+		return pds.New(repo, logger, c)
 	case dex.Starfleit:
-		return psf.New(repo, logger, c, c.ChainId)
+		return psf.New(repo, logger, c)
 	default:
 		return nil, fmt.Errorf("unknown target app: %s", c.TargetApp)
 	}
