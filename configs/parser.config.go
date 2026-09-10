@@ -6,9 +6,9 @@ import (
 )
 
 const (
-	PARSER_SAME_HEIGHT_TOLERANCE  = 3
-	PARSER_POOL_SNAPSHOT_INTERVAL = 1000
-	PARSER_VALIDATION_INTERVAL    = 1000
+	defaultParserSameHeightTolerance  = 3
+	defaultParserPoolSnapshotInterval = 1000
+	defaultParserValidationInterval   = 1000
 )
 
 type QuarantineRetryMode string

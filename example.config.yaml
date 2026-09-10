@@ -33,7 +33,7 @@ parser:
         backoffdelay: # retry delay e.g.) 3s, 1m
         noTls: # true - direct IP connection / false - tls is enabled that its cert should be set first
       failover_lcd_host:
-    sameHeightTolerance: # uint
+    sameHeightTolerance: # uint identical source heights tolerated before ErrNoNewHeight, default 3
 
 
 aggregator:

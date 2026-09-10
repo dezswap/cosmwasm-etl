@@ -399,6 +399,19 @@ func Test_ParserConfig_QuarantineRetryModeDefault(t *testing.T) {
 	require.Equal(t, QuarantineRetryDisabled, New().Parser.DexConfig.QuarantineRetryMode)
 }
 
+func Test_ParserConfig_Defaults(t *testing.T) {
+	t.Setenv("APP_LOG_ENV", "local")
+	t.Setenv("APP_LOG_CHAINID", "testnet-1")
+
+	tmp := t.TempDir()
+	defer withTestBasepath(t, tmp)()
+
+	p := New().Parser.DexConfig
+	require.Equal(t, uint(defaultParserSameHeightTolerance), p.SameHeightTolerance)
+	require.Equal(t, uint(defaultParserPoolSnapshotInterval), p.PoolSnapshotInterval)
+	require.Equal(t, uint(defaultParserValidationInterval), p.ValidationInterval)
+}
+
 func Test_HttpClientConfig_EnvVars(t *testing.T) {
 	t.Setenv("APP_PARSER_DEX_NODE_HTTP_MAXIDLECONNS", "50")
 	t.Setenv("APP_PARSER_DEX_NODE_HTTP_MAXIDLECONNSPERHOST", "10")
