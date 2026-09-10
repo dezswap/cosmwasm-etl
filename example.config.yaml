@@ -20,7 +20,7 @@ parser:
     factoryAddress: #string
     errTolerance: # uint
     targetApp: # dezswap, terraswap
-    poolSnapshotInterval: # uint save pools' status every interval default 1000
+    poolSnapshotInterval: # uint save pools' status every interval default 1000, 0 to disable
     validationInterval: # uint validate every interval default 1000
     quarantineRetryMode: disabled # disabled, startup, every_run
     node:

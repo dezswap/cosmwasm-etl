@@ -214,7 +214,7 @@ func (app *dexApp) Run() error {
 
 		poolInfos := []PoolInfo{}
 		poolSnapshotSaved := false
-		if (cur % uint64(app.poolSnapshotInterval)) == 0 {
+		if app.poolSnapshotInterval > 0 && cur%uint64(app.poolSnapshotInterval) == 0 {
 			poolInfos, err = app.GetPoolInfos(cur)
 			if err != nil {
 				return fmt.Errorf("app.Run: %w", err)
