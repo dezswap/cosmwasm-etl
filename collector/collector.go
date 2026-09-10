@@ -30,6 +30,7 @@ type heightCollector interface {
 type heightCollectorConfig struct {
 	StartHeight  uint64
 	UntilHeight  uint64
+	TipLagBlocks uint64
 	PollInterval time.Duration
 }
 
@@ -49,6 +50,7 @@ func DoCollect(repo collectorrepo.Repository, source dex.SourceDataStore, collec
 	}, heightCollectorConfig{
 		StartHeight:  collectorConfig.StartHeight,
 		UntilHeight:  collectorConfig.UntilHeight,
+		TipLagBlocks: collectorConfig.TipLagBlocks,
 		PollInterval: time.Duration(collectorConfig.PollIntervalSec) * time.Second,
 	}, logger)
 }
@@ -87,9 +89,11 @@ func collectHeights(collector heightCollector, config heightCollectorConfig, log
 			continue
 		}
 
-		targetHeight := boundedTargetHeight(srcHeight, config.UntilHeight)
+		targetHeight := boundedTargetHeight(srcHeight, config.UntilHeight, config.TipLagBlocks)
 		if localHeight >= targetHeight {
-			logger.Infof("no new collector source height: local=%d source=%d", localHeight, srcHeight)
+			// target trails source by the tip lag, so local can equal target while the
+			// node reports a newer height. Log both or the wait looks like a stall.
+			logger.Infof("no collectible source height: local=%d source=%d target=%d", localHeight, srcHeight, targetHeight)
 			time.Sleep(pollInterval)
 			continue
 		}
@@ -99,7 +103,7 @@ func collectHeights(collector heightCollector, config heightCollectorConfig, log
 			nextHeight = startHeight
 		}
 		if nextHeight > targetHeight {
-			logger.Infof("no collectible height yet: local=%d source=%d start=%d", localHeight, srcHeight, startHeight)
+			logger.Infof("no collectible height yet: local=%d source=%d target=%d start=%d", localHeight, srcHeight, targetHeight, startHeight)
 			time.Sleep(pollInterval)
 			continue
 		}
@@ -118,7 +122,15 @@ func collectHeights(collector heightCollector, config heightCollectorConfig, log
 	}
 }
 
-func boundedTargetHeight(sourceHeight, untilHeight uint64) uint64 {
+// boundedTargetHeight is the newest height safe to collect: tipLag blocks behind the
+// source tip, then clamped to untilHeight. It returns 0 while the chain has not produced
+// enough blocks to clear the lag.
+func boundedTargetHeight(sourceHeight, untilHeight, tipLag uint64) uint64 {
+	if sourceHeight <= tipLag {
+		return 0
+	}
+	sourceHeight -= tipLag
+
 	if untilHeight > 0 && untilHeight < sourceHeight {
 		return untilHeight
 	}

@@ -271,6 +271,18 @@ func Test_CollectorConfig_Defaults(t *testing.T) {
 	require.Equal(t, uint64(defaultCollectorStartHeight), col.StartHeight)
 	require.Equal(t, uint64(defaultCollectorPollInterval), col.PollIntervalSec)
 	require.Equal(t, uint(defaultCollectorPoolSnapshotInterval), col.PoolSnapshotInterval)
+	require.Equal(t, uint64(defaultCollectorTipLagBlocks), col.TipLagBlocks)
+}
+
+func Test_CollectorConfig_TipLagBlocksOptOut(t *testing.T) {
+	t.Setenv("APP_LOG_ENV", "local")
+	t.Setenv("APP_LOG_CHAINID", "testnet-1")
+	t.Setenv("APP_COLLECTOR_TIP_LAG_BLOCKS", "0")
+
+	tmp := t.TempDir()
+	defer withTestBasepath(t, tmp)()
+
+	require.Equal(t, uint64(0), New().Collector.TipLagBlocks)
 }
 
 func Test_CollectorConfig_Validate(t *testing.T) {
