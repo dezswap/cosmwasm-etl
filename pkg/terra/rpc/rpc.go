@@ -35,7 +35,9 @@ type rpcImpl struct {
 
 func New(baseUrl string, client *http.Client) Rpc {
 	if client.Timeout == 0 {
-		client.Timeout = defaultRpcTimeout
+		cp := *client
+		cp.Timeout = defaultRpcTimeout
+		client = &cp
 	}
 	return &rpcImpl{baseUrl, nodeerr.HostOf(baseUrl), client}
 }

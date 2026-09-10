@@ -32,8 +32,18 @@ func TestNewAppliesHTTPClientConfiguration(t *testing.T) {
 func TestNewAllowsOmittedDurations(t *testing.T) {
 	client := New(configs.HttpClientConfig{})
 
-	require.Zero(t, client.Timeout)
 	transport, ok := client.Transport.(*http.Transport)
 	require.True(t, ok)
 	require.Zero(t, transport.IdleConnTimeout)
+}
+
+func TestNewNeverLeavesTheClientWithoutATimeout(t *testing.T) {
+	for name, cfg := range map[string]configs.HttpClientConfig{
+		"omitted":  {},
+		"explicit": {Timeout: &configs.Duration{}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, DefaultTimeout, New(cfg).Timeout)
+		})
+	}
 }
