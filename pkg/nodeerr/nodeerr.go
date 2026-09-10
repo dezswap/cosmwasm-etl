@@ -10,12 +10,6 @@ import (
 
 const maxBodySnippetLen = 256
 
-// MaxErrorBodyBytes bounds a response the client will not decode: enough to keep a
-// grpc-gateway error or a proxy page readable without buffering whatever a broken
-// gateway decides to stream. A response the client does decode is the payload
-// itself, so how large it may be is the node's call, not this package's.
-const MaxErrorBodyBytes = 32 << 10
-
 const (
 	TransportRPC  = "rpc"
 	TransportLCD  = "lcd"

@@ -3,13 +3,15 @@ package datastore
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 
 	tm_types "github.com/cometbft/cometbft/types"
 	cosmos_types "github.com/cosmos/cosmos-sdk/types"
 	txtypes "github.com/cosmos/cosmos-sdk/types/tx"
+
+	// Aliased: the local httpClient interface below differs only by case.
+	httpx "github.com/dezswap/cosmwasm-etl/pkg/httpclient"
 	"github.com/dezswap/cosmwasm-etl/pkg/nodeerr"
 	"github.com/pkg/errors"
 )
@@ -40,10 +42,6 @@ func NewLcdClient(baseUrl string, c httpClient) LcdClient {
 	return &lcdClientImpl{baseUrl, nodeerr.HostOf(baseUrl), c}
 }
 
-// read performs the request and rejects any response the caller cannot decode.
-// Without the status check a gateway's HTML error page or a grpc-gateway 404 body
-// reaches the JSON decoder and surfaces as "invalid character '<'" or a strconv
-// failure, which says nothing about what the node actually answered.
 func (c *lcdClientImpl) read(op, url string) ([]byte, error) {
 	response, err := c.Get(url)
 	if err != nil {
@@ -51,25 +49,7 @@ func (c *lcdClientImpl) read(op, url string) ([]byte, error) {
 	}
 	defer response.Body.Close()
 
-	// A body this client will not decode only has to stay readable in a log line.
-	body := io.Reader(response.Body)
-	if response.StatusCode != http.StatusOK {
-		body = io.LimitReader(body, nodeerr.MaxErrorBodyBytes)
-	}
-
-	data, err := io.ReadAll(body)
-	if err != nil {
-		return nil, &nodeerr.Error{
-			Op: op, Transport: nodeerr.TransportLCD, Host: c.host,
-			Status: response.StatusCode, Err: err, Class: nodeerr.ErrRetryable,
-		}
-	}
-
-	if response.StatusCode != http.StatusOK {
-		return nil, nodeerr.HTTPStatus(op, nodeerr.TransportLCD, c.host, response.StatusCode, data)
-	}
-
-	return data, nil
+	return httpx.ReadResponse(op, nodeerr.TransportLCD, c.host, response)
 }
 
 // GetTx only returns TxResponse
