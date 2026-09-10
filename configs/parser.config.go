@@ -6,9 +6,10 @@ import (
 )
 
 const (
-	PARSER_SAME_HEIGHT_TOLERANCE  = 3
-	PARSER_POOL_SNAPSHOT_INTERVAL = 1000
-	PARSER_VALIDATION_INTERVAL    = 1000
+	defaultParserSameHeightTolerance  = 3
+	defaultParserPoolSnapshotInterval = 1000
+	defaultParserValidationInterval   = 1000
+	defaultParserTipLagBlocks         = 2
 )
 
 type QuarantineRetryMode string
@@ -32,7 +33,11 @@ type ParserDexConfig struct {
 	PoolSnapshotInterval uint                `mapstructure:"poolsnapshotinterval"`
 	ValidationInterval   uint                `mapstructure:"validationinterval"`
 	QuarantineRetryMode  QuarantineRetryMode `mapstructure:"quarantineretrymode"`
-	NodeConfig           NodeConfig          `mapstructure:"node"`
+	// TipLagBlocks keeps the parser this many heights behind the source tip, for the same
+	// reason as CollectorConfig.TipLagBlocks. Set it to 0 when the source store is the
+	// collector DB, which has already applied its own lag.
+	TipLagBlocks uint64     `mapstructure:"tiplagblocks"`
+	NodeConfig   NodeConfig `mapstructure:"node"`
 }
 
 func (c ParserDexConfig) Validate() error {

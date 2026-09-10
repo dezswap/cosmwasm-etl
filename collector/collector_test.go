@@ -261,8 +261,12 @@ func TestDoCollectReturnsSaveHeightError(t *testing.T) {
 }
 
 type heightCollectorMock struct {
-	localHeight   uint64
-	localErr      error
+	localHeight uint64
+	localErr    error
+	// localErrAfter breaks out of the endless poll loop without an until height, which
+	// would otherwise clamp the target and hide what the tip lag did
+	localErrAfter int
+	localCalls    int
 	sourceHeight  uint64
 	sourceHeights []uint64
 	sourceCalls   int
@@ -278,7 +282,11 @@ type heightCollectorMock struct {
 }
 
 func (m *heightCollectorMock) LocalHeight() (uint64, error) {
-	return m.localHeight, m.localErr
+	m.localCalls++
+	if m.localErr != nil && m.localCalls >= m.localErrAfter {
+		return 0, m.localErr
+	}
+	return m.localHeight, nil
 }
 
 func (m *heightCollectorMock) SourceHeight() (uint64, error) {
@@ -511,9 +519,66 @@ func TestCollectHeightsResumesAtFailedMidRangeHeight(t *testing.T) {
 }
 
 func TestBoundedTargetHeight(t *testing.T) {
-	require.Equal(t, uint64(7), boundedTargetHeight(10, 7))
-	require.Equal(t, uint64(10), boundedTargetHeight(10, 0))
-	require.Equal(t, uint64(5), boundedTargetHeight(5, 7))
+	require.Equal(t, uint64(7), boundedTargetHeight(10, 7, 0))
+	require.Equal(t, uint64(10), boundedTargetHeight(10, 0, 0))
+	require.Equal(t, uint64(5), boundedTargetHeight(5, 7, 0))
+}
+
+func TestBoundedTargetHeightWithTipLag(t *testing.T) {
+	require.Equal(t, uint64(98), boundedTargetHeight(100, 0, 2))
+	require.Equal(t, uint64(95), boundedTargetHeight(100, 95, 2))
+	require.Equal(t, uint64(98), boundedTargetHeight(100, 98, 2))
+	require.Equal(t, uint64(1), boundedTargetHeight(3, 0, 2))
+
+	// the lag must not underflow before the chain has produced enough blocks
+	require.Equal(t, uint64(0), boundedTargetHeight(2, 0, 2))
+	require.Equal(t, uint64(0), boundedTargetHeight(1, 0, 2))
+}
+
+func TestCollectHeightsStopsShortOfTipLag(t *testing.T) {
+	stop := errors.New("stop polling")
+	collector := &heightCollectorMock{
+		localHeight:   90,
+		sourceHeight:  100,
+		localErr:      stop,
+		localErrAfter: 2,
+	}
+
+	err := collectHeights(collector, heightCollectorConfig{TipLagBlocks: 2}, logging.Discard)
+
+	require.ErrorIs(t, err, stop)
+	require.Equal(t, []uint64{91, 92, 93, 94, 95, 96, 97, 98}, collector.collected)
+}
+
+func TestCollectHeightsCollectsHeightOnceTipClearsTheLag(t *testing.T) {
+	stop := errors.New("stop polling")
+	collector := &heightCollectorMock{
+		localHeight:   98,
+		sourceHeights: []uint64{100, 101},
+		localErr:      stop,
+		localErrAfter: 3,
+	}
+
+	err := collectHeights(collector, heightCollectorConfig{TipLagBlocks: 2}, logging.Discard)
+
+	// height 99 stays untouched while the tip is 100 and is collected once it reaches 101
+	require.ErrorIs(t, err, stop)
+	require.Equal(t, []uint64{99}, collector.collected)
+}
+
+func TestCollectHeightsNeverCollectsInsideTipLag(t *testing.T) {
+	stop := errors.New("stop polling")
+	collector := &heightCollectorMock{
+		localHeight:   98,
+		sourceHeight:  100,
+		localErr:      stop,
+		localErrAfter: 3,
+	}
+
+	err := collectHeights(collector, heightCollectorConfig{TipLagBlocks: 2}, logging.Discard)
+
+	require.ErrorIs(t, err, stop)
+	require.Empty(t, collector.collected)
 }
 
 func TestReachedUntilHeight(t *testing.T) {

@@ -22,7 +22,11 @@ var defaultConfig = Config{
 	Collector:  defaultCollectorConfig(),
 	Parser: ParserConfig{
 		DexConfig: ParserDexConfig{
-			QuarantineRetryMode: QuarantineRetryDisabled,
+			SameHeightTolerance:  defaultParserSameHeightTolerance,
+			PoolSnapshotInterval: defaultParserPoolSnapshotInterval,
+			ValidationInterval:   defaultParserValidationInterval,
+			TipLagBlocks:         defaultParserTipLagBlocks,
+			QuarantineRetryMode:  QuarantineRetryDisabled,
 			NodeConfig: NodeConfig{
 				HttpClientConfig: defaultHttpClientConfig,
 			},

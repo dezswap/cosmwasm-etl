@@ -271,6 +271,18 @@ func Test_CollectorConfig_Defaults(t *testing.T) {
 	require.Equal(t, uint64(defaultCollectorStartHeight), col.StartHeight)
 	require.Equal(t, uint64(defaultCollectorPollInterval), col.PollIntervalSec)
 	require.Equal(t, uint(defaultCollectorPoolSnapshotInterval), col.PoolSnapshotInterval)
+	require.Equal(t, uint64(defaultCollectorTipLagBlocks), col.TipLagBlocks)
+}
+
+func Test_CollectorConfig_TipLagBlocksOptOut(t *testing.T) {
+	t.Setenv("APP_LOG_ENV", "local")
+	t.Setenv("APP_LOG_CHAINID", "testnet-1")
+	t.Setenv("APP_COLLECTOR_TIP_LAG_BLOCKS", "0")
+
+	tmp := t.TempDir()
+	defer withTestBasepath(t, tmp)()
+
+	require.Equal(t, uint64(0), New().Collector.TipLagBlocks)
 }
 
 func Test_CollectorConfig_Validate(t *testing.T) {
@@ -397,6 +409,31 @@ func Test_ParserConfig_QuarantineRetryModeDefault(t *testing.T) {
 	defer withTestBasepath(t, tmp)()
 
 	require.Equal(t, QuarantineRetryDisabled, New().Parser.DexConfig.QuarantineRetryMode)
+}
+
+func Test_ParserConfig_Defaults(t *testing.T) {
+	t.Setenv("APP_LOG_ENV", "local")
+	t.Setenv("APP_LOG_CHAINID", "testnet-1")
+
+	tmp := t.TempDir()
+	defer withTestBasepath(t, tmp)()
+
+	p := New().Parser.DexConfig
+	require.Equal(t, uint(defaultParserSameHeightTolerance), p.SameHeightTolerance)
+	require.Equal(t, uint(defaultParserPoolSnapshotInterval), p.PoolSnapshotInterval)
+	require.Equal(t, uint(defaultParserValidationInterval), p.ValidationInterval)
+	require.Equal(t, uint64(defaultParserTipLagBlocks), p.TipLagBlocks)
+}
+
+func Test_ParserConfig_TipLagBlocksOptOut(t *testing.T) {
+	t.Setenv("APP_LOG_ENV", "local")
+	t.Setenv("APP_LOG_CHAINID", "testnet-1")
+	t.Setenv("APP_PARSER_DEX_TIPLAGBLOCKS", "0")
+
+	tmp := t.TempDir()
+	defer withTestBasepath(t, tmp)()
+
+	require.Equal(t, uint64(0), New().Parser.DexConfig.TipLagBlocks)
 }
 
 func Test_HttpClientConfig_EnvVars(t *testing.T) {

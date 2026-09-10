@@ -8,6 +8,7 @@ const (
 	defaultCollectorStartHeight          = 1
 	defaultCollectorPollInterval         = 5
 	defaultCollectorPoolSnapshotInterval = 1000
+	defaultCollectorTipLagBlocks         = 2
 )
 
 type CollectorConfig struct {
@@ -18,7 +19,11 @@ type CollectorConfig struct {
 	StartHeight                uint64     `mapstructure:"start_height"`
 	UntilHeight                uint64     `mapstructure:"until_height"`
 	PollIntervalSec            uint64     `mapstructure:"poll_interval_sec"`
-	PoolSnapshotInterval       uint       `mapstructure:"pool_snapshot_interval"`
+	// TipLagBlocks keeps the collector this many heights behind the node tip. The node
+	// reports a height in /status before its block results are written, so following the
+	// tip inclusive means retrying a height that is merely not ready yet. 0 disables it.
+	TipLagBlocks         uint64 `mapstructure:"tip_lag_blocks"`
+	PoolSnapshotInterval uint   `mapstructure:"pool_snapshot_interval"`
 }
 
 type FcdConfig struct {
@@ -33,6 +38,7 @@ func defaultCollectorConfig() CollectorConfig {
 		},
 		StartHeight:          defaultCollectorStartHeight,
 		PollIntervalSec:      defaultCollectorPollInterval,
+		TipLagBlocks:         defaultCollectorTipLagBlocks,
 		PoolSnapshotInterval: defaultCollectorPoolSnapshotInterval,
 	}
 }

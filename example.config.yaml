@@ -12,6 +12,7 @@ collector:
   pair_factory_contract_address:
   start_height: # uint first source height, default 1
   poll_interval_sec: # uint poll source height every N seconds, default 5
+  tip_lag_blocks: # uint stay N blocks behind the node tip, default 2, 0 to disable
   pool_snapshot_interval: # uint save pool status every interval, default 1000
 
 parser:
@@ -20,8 +21,9 @@ parser:
     factoryAddress: #string
     errTolerance: # uint
     targetApp: # dezswap, terraswap
-    poolSnapshotInterval: # uint save pools' status every interval default 1000
+    poolSnapshotInterval: # uint save pools' status every interval default 1000, 0 to disable
     validationInterval: # uint validate every interval default 1000
+    tipLagBlocks: # uint stay N blocks behind the source tip, default 2, 0 to disable
     quarantineRetryMode: disabled # disabled, startup, every_run
     node:
       rest:
@@ -33,7 +35,7 @@ parser:
         backoffdelay: # retry delay e.g.) 3s, 1m
         noTls: # true - direct IP connection / false - tls is enabled that its cert should be set first
       failover_lcd_host:
-    sameHeightTolerance: # uint
+    sameHeightTolerance: # uint identical source heights tolerated before ErrNoNewHeight, default 3
 
 
 aggregator:
