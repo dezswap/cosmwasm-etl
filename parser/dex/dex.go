@@ -48,6 +48,7 @@ type dexApp struct {
 	validationInterval   uint
 
 	sameHeightTolerance uint
+	tipLagBlocks        uint64
 	lastSrcHeight       uint64
 	sameHeightCount     uint
 
@@ -77,6 +78,7 @@ func NewDexApp(app TargetApp, srcStore SourceDataStore, repo Repo, logger loggin
 		logger:               logger,
 		chainId:              c.ChainId,
 		sameHeightTolerance:  c.SameHeightTolerance,
+		tipLagBlocks:         c.TipLagBlocks,
 		poolSnapshotInterval: c.PoolSnapshotInterval,
 		validationInterval:   c.ValidationInterval,
 		validationSignal:     make(chan struct{}, 1),
@@ -117,11 +119,20 @@ func (app *dexApp) Run() error {
 		return fmt.Errorf("app.Run: %w", err)
 	}
 
+	targetHeight := tipLaggedHeight(srcHeight, app.tipLagBlocks)
+
 	app.signalValidation(localSynced)
 
 	// to avoid skipping validation error
 	if app.isValidationHeight(localSynced) {
 		app.triggerValidation(localSynced)
+	}
+
+	// heights owed, not distance from the tip: the tip lag alone would report a
+	// permanent non zero lag and hide whether the parser is actually falling behind
+	backlog := uint64(0)
+	if targetHeight > localSynced {
+		backlog = targetHeight - localSynced
 	}
 
 	app.logger.WithFields(logrus.Fields{
@@ -130,7 +141,8 @@ func (app *dexApp) Run() error {
 		"chain_id":      app.chainId,
 		"local_height":  localSynced,
 		"source_height": srcHeight,
-		"lag":           srcHeight - localSynced,
+		"target_height": targetHeight,
+		"backlog":       backlog,
 	}).Info("parser sync status")
 
 	processedHeightCount := 0
@@ -138,9 +150,10 @@ func (app *dexApp) Run() error {
 	quarantineCount := 0
 	poolSnapshotCount := 0
 
-	for cur := localSynced + 1; cur <= srcHeight; cur++ {
+	for cur := localSynced + 1; cur <= targetHeight; cur++ {
 		txs, err := app.GetSourceTxs(cur)
 		if err != nil {
+			// only reachable with tipLagBlocks 0; the lag otherwise keeps cur below the tip
 			if strings.Contains(err.Error(), fmt.Sprintf("greater than the current height %d", srcHeight-1)) {
 				app.logger.WithFields(logrus.Fields{
 					"event":         "parser.source_indexing",
@@ -361,6 +374,15 @@ func (app *dexApp) insert(srcHeight uint64, targetHeight uint64, txs []ParsedTx,
 	}
 
 	return nil
+}
+
+// tipLaggedHeight is the newest height the parser may process: tipLag blocks behind the
+// source tip. It returns 0 while the chain has not produced enough blocks to clear the lag.
+func tipLaggedHeight(srcHeight, tipLag uint64) uint64 {
+	if srcHeight <= tipLag {
+		return 0
+	}
+	return srcHeight - tipLag
 }
 
 // checkRemoteHeight implements Dex

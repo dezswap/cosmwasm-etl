@@ -23,6 +23,7 @@ parser:
     targetApp: # dezswap, terraswap
     poolSnapshotInterval: # uint save pools' status every interval default 1000, 0 to disable
     validationInterval: # uint validate every interval default 1000
+    tipLagBlocks: # uint stay N blocks behind the source tip, default 2, 0 to disable
     quarantineRetryMode: disabled # disabled, startup, every_run
     node:
       rest:

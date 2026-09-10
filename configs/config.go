@@ -25,6 +25,7 @@ var defaultConfig = Config{
 			SameHeightTolerance:  defaultParserSameHeightTolerance,
 			PoolSnapshotInterval: defaultParserPoolSnapshotInterval,
 			ValidationInterval:   defaultParserValidationInterval,
+			TipLagBlocks:         defaultParserTipLagBlocks,
 			QuarantineRetryMode:  QuarantineRetryDisabled,
 			NodeConfig: NodeConfig{
 				HttpClientConfig: defaultHttpClientConfig,

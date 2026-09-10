@@ -120,6 +120,39 @@ func Test_srcHeightCheck(t *testing.T) {
 	}
 }
 
+func Test_tipLaggedHeight(t *testing.T) {
+	require.Equal(t, uint64(98), tipLaggedHeight(100, 2))
+	require.Equal(t, uint64(100), tipLaggedHeight(100, 0))
+	require.Equal(t, uint64(1), tipLaggedHeight(3, 2))
+
+	// the lag must not underflow before the chain has produced enough blocks
+	require.Equal(t, uint64(0), tipLaggedHeight(2, 2))
+	require.Equal(t, uint64(0), tipLaggedHeight(1, 2))
+}
+
+func Test_Run_DoesNotReadHeightsInsideTipLag(t *testing.T) {
+	repo := &RepoMock{}
+	srcStore := &RawStoreMock{}
+	app := &dexApp{
+		Repo:                repo,
+		SourceDataStore:     srcStore,
+		logger:              logging.Discard,
+		sameHeightTolerance: 3,
+		tipLagBlocks:        2,
+		quarantineRetryMode: configs.QuarantineRetryDisabled,
+	}
+
+	repo.On("GetTokenExceptions").Return(map[string]bool{}, nil)
+	repo.On("GetSyncedHeight").Return(uint64(99), nil)
+	srcStore.On("GetSourceSyncedHeight").Return(uint64(100), nil)
+
+	require.NoError(t, app.Run())
+
+	repo.AssertExpectations(t)
+	srcStore.AssertExpectations(t)
+	srcStore.AssertNotCalled(t, "GetSourceTxs", mock.Anything)
+}
+
 func Test_Run_SkipsPoolSnapshotWhenIntervalIsZero(t *testing.T) {
 	tx := parser.RawTx{Hash: "tx"}
 	parsed := ParsedTx{
