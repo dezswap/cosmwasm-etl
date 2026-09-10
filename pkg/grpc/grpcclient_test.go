@@ -56,6 +56,16 @@ var testServiceDesc = serviceDescImpl{
 	noTLS:           true,
 }
 
+// A node this client cannot authenticate can forge every block the ETL stores, so
+// certificate verification must stay on and bound to the host being dialed.
+func TestNodeTLSConfigVerifiesAgainstSystemRoots(t *testing.T) {
+	cfg := nodeTLSConfig("node.example.com")
+
+	assert.False(t, cfg.InsecureSkipVerify)
+	assert.Equal(t, "node.example.com", cfg.ServerName)
+	assert.Nil(t, cfg.RootCAs, "verification must fall through to the system roots")
+}
+
 func TestGrpcConnection(t *testing.T) {
 	go func() {
 		initMockGrpcServer()
