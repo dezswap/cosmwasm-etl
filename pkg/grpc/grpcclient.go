@@ -3,7 +3,6 @@ package grpc
 import (
 	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"strconv"
 	"strings"
 	"time"
@@ -54,6 +53,16 @@ func GetServiceDesc(alias string, c configs.GrpcConfig) ServiceDesc {
 	}
 }
 
+// nodeTLSConfig verifies the node against the system roots and deliberately offers
+// no way to skip that: collector and parser write what the node answers straight
+// into the database, so anyone able to pass this check could forge the dataset.
+func nodeTLSConfig(host string) *tls.Config {
+	return &tls.Config{
+		ServerName: host,
+		MinVersion: tls.VersionTLS12,
+	}
+}
+
 // GetConnection returns gRPC client connection
 func (c *serviceDescImpl) GetConnection(opts ...grpc.DialOption) *grpc.ClientConn {
 	return c.GetConnectionWithContext(context.Background(), opts...)
@@ -65,39 +74,22 @@ func (c *serviceDescImpl) GetConnectionWithContext(ctx context.Context, opts ...
 		return c.serviceConn
 	}
 
-	dest := c.destination
+	host := c.destination
 	// Alias to name
-	if dest != "" && !strings.Contains(dest, ".") && dest != "localhost" {
+	if host != "" && !strings.Contains(host, ".") && host != "localhost" {
 		if serviceDomain == "" {
 			panic("service domain is not set")
 		}
-		dest = strings.Join([]string{dest, serviceDomain}, ".")
+		host = strings.Join([]string{host, serviceDomain}, ".")
 	}
 	// Assemble port
-	dest = strings.Join([]string{dest, strconv.Itoa(c.destinationPort)}, ":")
+	dest := strings.Join([]string{host, strconv.Itoa(c.destinationPort)}, ":")
 
 	options := opts
-	if !c.noTLS {
-		// FIXME: it is very slow procedure, we should have cert in local filesystem or cache it
-		conn, err := tls.Dial("tcp", dest, &tls.Config{
-			InsecureSkipVerify: true,
-		})
-		if err != nil {
-			logger.Warn("cannot dial to TLS enabled server:", err)
-			return nil
-		}
-		certs := conn.ConnectionState().PeerCertificates
-		err = conn.Close()
-		if err != nil {
-			logger.Warn("cannot close TLS connection:", err)
-		}
-		pool := x509.NewCertPool()
-		pool.AddCert(certs[0])
-
-		clientCert := credentials.NewClientTLSFromCert(pool, "")
-		options = append(options, grpc.WithTransportCredentials(clientCert))
-	} else {
+	if c.noTLS {
 		options = append(options, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	} else {
+		options = append(options, grpc.WithTransportCredentials(credentials.NewTLS(nodeTLSConfig(host))))
 	}
 
 	backoff := backoff.DefaultConfig

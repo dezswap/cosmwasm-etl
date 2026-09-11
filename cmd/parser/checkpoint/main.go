@@ -28,6 +28,7 @@ import (
 	"github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap/columbusv2"
 	"github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap/phoenix"
 	"github.com/dezswap/cosmwasm-etl/pkg/grpc"
+	"github.com/dezswap/cosmwasm-etl/pkg/httpclient"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 	"github.com/dezswap/cosmwasm-etl/pkg/terra/col4"
 	"github.com/dezswap/cosmwasm-etl/pkg/terra/cosmos45"
@@ -56,6 +57,7 @@ func main() {
 func run(c configs.Config, targetHeight uint64) error {
 	r := repo.New(c.Parser.DexConfig.ChainId, c.Rdb)
 	httpClient := &http.Client{
+		Timeout: httpclient.DefaultTimeout,
 		Transport: &http.Transport{
 			MaxIdleConns:      10,
 			IdleConnTimeout:   30 * time.Second,

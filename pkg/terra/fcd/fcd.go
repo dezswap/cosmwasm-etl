@@ -3,10 +3,11 @@ package fcd
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 
+	"github.com/dezswap/cosmwasm-etl/pkg/httpclient"
+	"github.com/dezswap/cosmwasm-etl/pkg/nodeerr"
 	"github.com/pkg/errors"
 )
 
@@ -61,8 +62,15 @@ func (f *fcdImpl) TxsOf(addr string, option FcdTxsReqQuery) (*FcdTxsRes, error) 
 	if res.StatusCode >= http.StatusInternalServerError {
 		return nil, errors.Wrapf(STATUS_SERVER_ERROR, "fcdImpl.TxsOf: status code %d", res.StatusCode)
 	}
+	// A 4xx body is an error document, and decoding it yields a zero value that reads
+	// like an account with no txs.
+	if res.StatusCode != http.StatusOK {
+		return nil, errors.Errorf(
+			"fcdImpl.TxsOf: status code %d: %s", res.StatusCode, nodeerr.Snippet(httpclient.ReadErrorBody(res.Body)),
+		)
+	}
 
-	data, err := io.ReadAll(res.Body)
+	data, err := httpclient.ReadBody(res.Body)
 	if err != nil {
 		return nil, errors.Wrap(err, "fcdImpl.TxsOf")
 	}

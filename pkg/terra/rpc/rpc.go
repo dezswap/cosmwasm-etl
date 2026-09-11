@@ -3,10 +3,10 @@ package rpc
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"time"
 
+	"github.com/dezswap/cosmwasm-etl/pkg/httpclient"
 	"github.com/dezswap/cosmwasm-etl/pkg/nodeerr"
 )
 
@@ -35,7 +35,9 @@ type rpcImpl struct {
 
 func New(baseUrl string, client *http.Client) Rpc {
 	if client.Timeout == 0 {
-		client.Timeout = defaultRpcTimeout
+		cp := *client
+		cp.Timeout = defaultRpcTimeout
+		client = &cp
 	}
 	return &rpcImpl{baseUrl, nodeerr.HostOf(baseUrl), client}
 }
@@ -106,14 +108,14 @@ func do[T any](r *rpcImpl, op, path string, height ...uint64) (*RpcRes[T], error
 	// CometBFT answers a node error with HTTP 500 carrying the JSON-RPC object, so a
 	// non-200 body still gets decoded. It is bounded because it is an error either
 	// way: a JSON-RPC error object is orders of magnitude below the limit.
-	body := io.Reader(response.Body)
+	var data []byte
 	if response.StatusCode != http.StatusOK {
-		body = io.LimitReader(body, nodeerr.MaxErrorBodyBytes)
-	}
-
-	data, err := io.ReadAll(body)
-	if err != nil {
-		return nil, &nodeerr.Error{Op: op, Transport: nodeerr.TransportRPC, Host: r.host, Status: response.StatusCode, Err: err, Class: nodeerr.ErrRetryable}
+		data = httpclient.ReadErrorBody(response.Body)
+	} else {
+		data, err = httpclient.ReadBody(response.Body)
+		if err != nil {
+			return nil, &nodeerr.Error{Op: op, Transport: nodeerr.TransportRPC, Host: r.host, Status: response.StatusCode, Err: err, Class: nodeerr.ErrRetryable}
+		}
 	}
 
 	var res RpcRes[T]

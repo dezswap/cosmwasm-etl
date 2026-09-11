@@ -7,9 +7,12 @@ import (
 	"github.com/dezswap/cosmwasm-etl/configs"
 )
 
+// DefaultTimeout applies when config leaves the timeout unset.
+const DefaultTimeout = 30 * time.Second
+
 func New(c configs.HttpClientConfig) *http.Client {
-	var timeout time.Duration
-	if c.Timeout != nil {
+	timeout := DefaultTimeout
+	if c.Timeout != nil && c.Timeout.Duration > 0 {
 		timeout = c.Timeout.Duration
 	}
 
