@@ -17,10 +17,9 @@ collector:
 
 parser:
   dex:
-    chainId: # string
+    chainId: # columbus-5, phoenix-1, cube_47-5, dimension_37-1, dorado-1, fetchhub-4
     factoryAddress: #string
     errTolerance: # uint
-    targetApp: # dezswap, terraswap
     poolSnapshotInterval: # uint save pools' status every interval default 1000, 0 to disable
     validationInterval: # uint validate every interval default 1000
     tipLagBlocks: # uint stay N blocks behind the source tip, default 2, 0 to disable

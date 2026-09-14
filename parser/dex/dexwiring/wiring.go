@@ -19,29 +19,29 @@ import (
 	"github.com/dezswap/cosmwasm-etl/pkg/s3client"
 )
 
-// NewTargetApp builds the configured DEX target parser used by parser commands.
+// NewTargetApp builds the DEX target parser of the configured chain, used by parser commands.
 func NewTargetApp(repo p_dex.PairRepo, logger logging.Logger, c configs.ParserDexConfig) (p_dex.TargetApp, error) {
-	switch c.TargetApp {
-	case dex.Terraswap:
+	switch dex.ChainNameOf(c.ChainId) {
+	case dex.ChainNameTerraClassic, dex.ChainNameTerra2:
 		return pts.New(repo, logger, c)
-	case dex.Dezswap:
+	case dex.ChainNameConx:
 		return pds.New(repo, logger, c)
-	case dex.Starfleit:
+	case dex.ChainNameAsiAlliance:
 		return psf.New(repo, logger, c)
 	default:
-		return nil, fmt.Errorf("unknown target app: %s", c.TargetApp)
+		return nil, fmt.Errorf("unsupported chain id: %s", c.ChainId)
 	}
 }
 
-// NewTargetReadStore builds the collector-backed raw read store required by the configured DEX.
+// NewTargetReadStore builds the collector-backed raw read store required by the configured chain.
 func NewTargetReadStore(c configs.Config, dc configs.ParserDexConfig) (datastore.ReadStore, error) {
-	switch dc.TargetApp {
-	case dex.Terraswap:
+	switch dex.ChainNameOf(dc.ChainId) {
+	case dex.ChainNameTerraClassic, dex.ChainNameTerra2:
 		return nil, nil
-	case dex.Dezswap, dex.Starfleit:
+	case dex.ChainNameConx, dex.ChainNameAsiAlliance:
 		return NewCollectorReadStore(c, dc)
 	default:
-		return nil, fmt.Errorf("unknown target app: %s", dc.TargetApp)
+		return nil, fmt.Errorf("unsupported chain id: %s", dc.ChainId)
 	}
 }
 
@@ -79,19 +79,19 @@ func NewCollectorReadStore(c configs.Config, dc configs.ParserDexConfig) (datast
 
 // NewSourceDataStore builds the raw transaction source used by parser commands.
 func NewSourceDataStore(dc configs.ParserDexConfig, rdbc configs.RdbConfig, readStore datastore.ReadStore, logger logging.Logger) (p_dex.SourceDataStore, error) {
-	switch dc.TargetApp {
-	case dex.Terraswap:
+	switch dex.ChainNameOf(dc.ChainId) {
+	case dex.ChainNameTerraClassic, dex.ChainNameTerra2:
 		fallback, err := ts_srcstore.NewFromConfig(dc.NodeConfig, dc.FactoryAddress)
 		if err != nil {
 			return nil, err
 		}
 		return srcstore.NewCollectorFallback(dc.ChainId, collectorrepo.New(rdbc), fallback, logger), nil
-	case dex.Dezswap, dex.Starfleit:
+	case dex.ChainNameConx, dex.ChainNameAsiAlliance:
 		if readStore == nil {
-			return nil, fmt.Errorf("collector read store is required for target app: %s", dc.TargetApp)
+			return nil, fmt.Errorf("collector read store is required for chain id: %s", dc.ChainId)
 		}
 		return srcstore.New(readStore), nil
 	default:
-		return nil, fmt.Errorf("unknown target app: %s", dc.TargetApp)
+		return nil, fmt.Errorf("unsupported chain id: %s", dc.ChainId)
 	}
 }

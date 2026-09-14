@@ -55,6 +55,10 @@ func main() {
 }
 
 func run(c configs.Config, targetHeight uint64) error {
+	if err := c.Parser.DexConfig.Validate(); err != nil {
+		return errors.Wrap(err, "invalid parser dex config")
+	}
+
 	r := repo.New(c.Parser.DexConfig.ChainId, c.Rdb)
 	httpClient := &http.Client{
 		Timeout: httpclient.DefaultTimeout,
@@ -73,7 +77,7 @@ func run(c configs.Config, targetHeight uint64) error {
 func NewSourceDataStore(c configs.Config, httpClient *http.Client) pdex.SourceDataStore {
 	dc := c.Parser.DexConfig
 
-	if dc.TargetApp == dex.Terraswap {
+	if name := dex.ChainNameOf(dc.ChainId); name == dex.ChainNameTerraClassic || name == dex.ChainNameTerra2 {
 		r := rpc.New(dc.NodeConfig.RestClientConfig.RpcHost, httpClient)
 
 		switch terraswap.TerraswapFactory(dc.FactoryAddress) {
