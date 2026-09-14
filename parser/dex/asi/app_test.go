@@ -1,4 +1,4 @@
-package starfleit
+package asi
 
 import (
 	"encoding/json"
@@ -37,7 +37,7 @@ func Test_ParseTxs_CreatePairUpdatesPairState(t *testing.T) {
 	createPairParser.On("parse", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return([]*dex.ParsedTx{createPairTx}, nil)
 
-	app := starfleitApp{
+	app := appImpl{
 		PairRepo:    &repo,
 		Parsers:     &dex.PairParsers{CreatePairParser: &createPairParser},
 		DexMixin:    dex.DexMixin{},
@@ -79,7 +79,7 @@ func Test_ParseTxs_SortsTransferAttributesWhenRandomOrder(t *testing.T) {
 	createPairParser.On("parse", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return([]*dex.ParsedTx{}, nil)
 
-	app := starfleitApp{
+	app := appImpl{
 		PairRepo:    &repo,
 		Parsers:     &dex.PairParsers{CreatePairParser: &createPairParser},
 		DexMixin:    dex.DexMixin{},

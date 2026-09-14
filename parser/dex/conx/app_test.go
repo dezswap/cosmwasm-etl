@@ -1,4 +1,4 @@
-package dezswap
+package conx
 
 import (
 	"encoding/json"
@@ -21,7 +21,7 @@ const (
 	txSender = "sender"
 	txHash   = "hash"
 
-	// real addresses from logfinders_test.go in pkg/dex/dezswap
+	// real addresses from logfinders_test.go in pkg/dex/conx
 	pairAddr = "xpla1ng9mj65a5cunzvkdqctgsv3pewgrx2hvk9tnrww77v3tk2lp7c9qllk0xh"
 	lpAddr   = "xpla1aye7rggr2w0dgpwuwul0y6nyxau2k5jjrpmrxtkcvsd7nlx2nz0su357u5"
 	asset1   = "xpla1w6hv0suf8dmpq8kxd8a6yy9fnmntlh7hh9kl37qmax7kyzfd047qnnp0mm"
@@ -61,7 +61,7 @@ func Test_ParseTxs(t *testing.T) {
 		createPairParser.On("parse", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return([]*dex.ParsedTx{}, nil)
 
-		app := dezswapApp{
+		app := appImpl{
 			PairRepo:    &repo,
 			Parsers:     &dex.PairParsers{CreatePairParser: &createPairParser},
 			DexMixin:    dex.DexMixin{},
@@ -138,7 +138,7 @@ func Test_ParseTxs_CreatePairUpdatesPairState(t *testing.T) {
 	createPairParser.On("parse", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return([]*dex.ParsedTx{createPairTx}, nil)
 
-	app := dezswapApp{
+	app := appImpl{
 		PairRepo:    &repo,
 		Parsers:     &dex.PairParsers{CreatePairParser: &createPairParser},
 		DexMixin:    dex.DexMixin{},
@@ -194,7 +194,7 @@ func Test_ParseTxs_AppendsInitialProvideWhenPairActionHasProvide(t *testing.T) {
 	initialProvideParser.On("parse", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return([]*dex.ParsedTx{initialProvideTx}, nil)
 	repo := dex.RepoMock{}
-	app := dezswapApp{
+	app := appImpl{
 		PairRepo: &repo,
 		Parsers: &dex.PairParsers{
 			CreatePairParser: emptyParser(),
@@ -272,7 +272,7 @@ func Test_ParseTxs_PartialQuarantineKeepsParsedTxsFromSameRawLog(t *testing.T) {
 	emptyParser := parseFunc{parse: func(eventlog.LogResults, parser.Overrider[dex.ParsedTx], ...interface{}) ([]*dex.ParsedTx, error) {
 		return nil, nil
 	}}
-	app := dezswapApp{
+	app := appImpl{
 		PairRepo: &dex.RepoMock{},
 		Parsers: &dex.PairParsers{
 			CreatePairParser: emptyParser,
@@ -339,7 +339,7 @@ func Test_ParseTxs_DoesNotPartialQuarantineCreatePairTransaction(t *testing.T) {
 	emptyParser := parseFunc{parse: func(eventlog.LogResults, parser.Overrider[dex.ParsedTx], ...interface{}) ([]*dex.ParsedTx, error) {
 		return nil, nil
 	}}
-	app := dezswapApp{
+	app := appImpl{
 		PairRepo: &dex.RepoMock{},
 		Parsers: &dex.PairParsers{
 			CreatePairParser: emptyParser,
@@ -411,7 +411,7 @@ func Test_ParseTxs_ReturnsStageAndTxHashOnError(t *testing.T) {
 			setup: func(parsers *dex.PairParsers) {
 				parsers.CreatePairParser = errParser()
 			},
-			expectedMsg: "dezswap.ParseTxs create_pair",
+			expectedMsg: "conx.ParseTxs create_pair",
 		},
 		{
 			stage:      "pair_action",
@@ -419,7 +419,7 @@ func Test_ParseTxs_ReturnsStageAndTxHashOnError(t *testing.T) {
 			setup: func(parsers *dex.PairParsers) {
 				parsers.PairActionParser = errParser()
 			},
-			expectedMsg: "dezswap.ParseTxs pair_action",
+			expectedMsg: "conx.ParseTxs pair_action",
 		},
 		{
 			stage:      "initial_provide",
@@ -428,7 +428,7 @@ func Test_ParseTxs_ReturnsStageAndTxHashOnError(t *testing.T) {
 				parsers.PairActionParser = provideParser()
 				parsers.InitialProvide = errParser()
 			},
-			expectedMsg: "dezswap.ParseTxs initial_provide",
+			expectedMsg: "conx.ParseTxs initial_provide",
 		},
 		{
 			stage:      "wasm_transfer",
@@ -436,7 +436,7 @@ func Test_ParseTxs_ReturnsStageAndTxHashOnError(t *testing.T) {
 			setup: func(parsers *dex.PairParsers) {
 				parsers.WasmTransfer = errParser()
 			},
-			expectedMsg: "dezswap.ParseTxs wasm_transfer",
+			expectedMsg: "conx.ParseTxs wasm_transfer",
 		},
 		{
 			stage:      "transfer",
@@ -444,7 +444,7 @@ func Test_ParseTxs_ReturnsStageAndTxHashOnError(t *testing.T) {
 			setup: func(parsers *dex.PairParsers) {
 				parsers.Transfer = errParser()
 			},
-			expectedMsg: "dezswap.ParseTxs transfer",
+			expectedMsg: "conx.ParseTxs transfer",
 		},
 		{
 			stage:      "burn",
@@ -452,7 +452,7 @@ func Test_ParseTxs_ReturnsStageAndTxHashOnError(t *testing.T) {
 			setup: func(parsers *dex.PairParsers) {
 				parsers.BurnParser = errParser()
 			},
-			expectedMsg: "dezswap.ParseTxs burn",
+			expectedMsg: "conx.ParseTxs burn",
 		},
 	}
 
@@ -468,7 +468,7 @@ func Test_ParseTxs_ReturnsStageAndTxHashOnError(t *testing.T) {
 				BurnParser:       emptyParser(),
 			}
 			tc.setup(parsers)
-			app := dezswapApp{
+			app := appImpl{
 				PairRepo:    &repo,
 				Parsers:     parsers,
 				DexMixin:    dex.DexMixin{},
@@ -488,7 +488,7 @@ func Test_ParseTxs_ReturnsStageAndTxHashOnError(t *testing.T) {
 }
 
 func Test_IsValidationExceptionCandidate(t *testing.T) {
-	app := &dezswapApp{}
+	app := &appImpl{}
 	assert.False(t, app.IsValidationExceptionCandidate("any_address"))
 	assert.False(t, app.IsValidationExceptionCandidate(""))
 }
@@ -507,7 +507,7 @@ func Test_ParseTxs_SortsTransferAttributesWhenRandomOrder(t *testing.T) {
 	createPairParser.On("parse", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return([]*dex.ParsedTx{}, nil)
 
-	inner := dezswapApp{
+	inner := appImpl{
 		PairRepo:    &repo,
 		Parsers:     &dex.PairParsers{CreatePairParser: &createPairParser},
 		DexMixin:    dex.DexMixin{},
@@ -580,7 +580,7 @@ const randomOrderTransferLogStr = `[
 	]}
 ]`
 
-// log strings are taken from pkg/dex/dezswap/logfinders_test.go
+// log strings are taken from pkg/dex/conx/logfinders_test.go
 const swapLogStr = `[
     {
         "type": "execute",

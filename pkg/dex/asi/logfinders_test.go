@@ -1,4 +1,4 @@
-package starfleit
+package asi
 
 import (
 	"encoding/json"

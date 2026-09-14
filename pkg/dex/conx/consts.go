@@ -1,4 +1,10 @@
-package dezswap
+package conx
+
+const (
+	Cw20Prefix            = "xpla1"
+	NativeGovernanceToken = "axpla"
+	IbcPrefix             = "ibc/"
+)
 
 const (
 	MainnetPrefix = "dimension_37"

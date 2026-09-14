@@ -1,4 +1,4 @@
-package dezswap
+package conx
 
 import (
 	"encoding/json"

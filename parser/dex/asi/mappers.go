@@ -1,13 +1,14 @@
-package dezswap
+package asi
 
 import (
 	"fmt"
 	"strings"
 
+	pdex "github.com/dezswap/cosmwasm-etl/pkg/dex"
+
 	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/parser/dex"
-	pdex "github.com/dezswap/cosmwasm-etl/pkg/dex"
-	ds "github.com/dezswap/cosmwasm-etl/pkg/dex/dezswap"
+	"github.com/dezswap/cosmwasm-etl/pkg/dex/asi"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 	"github.com/pkg/errors"
 )
@@ -33,11 +34,11 @@ type wasmTransferMapper struct {
 
 // match implements mapper
 func (m *createPairMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) ([]*dex.ParsedTx, error) {
-	if err := m.CheckResult(res, ds.CreatePairMatchedLen); err != nil {
+	if err := m.CheckResult(res, asi.CreatePairMatchedLen); err != nil {
 		return nil, errors.Wrap(err, "createPairMapper.MatchedToParsedTx")
 	}
 	m.SortResult(res)
-	assets := strings.Split(res[ds.FactoryPairIdx].Value, "-")
+	assets := strings.Split(res[asi.FactoryPairIdx].Value, "-")
 	if len(assets) != 2 {
 		msg := fmt.Sprintf("expected assets length(%d)", 2)
 		return nil, errors.New(msg)
@@ -46,12 +47,12 @@ func (m *createPairMapper) MatchedToParsedTx(res eventlog.MatchedResult, optiona
 	return []*dex.ParsedTx{{
 		Type:         dex.CreatePair,
 		Sender:       "",
-		ContractAddr: res[ds.FactoryPairAddrIdx].Value,
+		ContractAddr: res[asi.FactoryPairAddrIdx].Value,
 		Assets: [2]dex.Asset{
 			{Addr: assets[0]},
 			{Addr: assets[1]},
 		},
-		LpAddr:   res[ds.FactoryLpAddrIdx].Value,
+		LpAddr:   res[asi.FactoryLpAddrIdx].Value,
 		LpAmount: "",
 	}}, nil
 }
@@ -61,38 +62,32 @@ func (m *wasmTransferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optio
 	m.mixin.SortResult(res)
 
 	var cw20Addr string
-	if len(res) > ds.WasmCommonTransferCw20AddrIdx {
-		cw20Addr = res[ds.WasmCommonTransferCw20AddrIdx].Value
+	if len(res) > asi.WasmCommonTransferCw20AddrIdx {
+		cw20Addr = res[asi.WasmCommonTransferCw20AddrIdx].Value
 		if m.tokenExceptions[cw20Addr] {
 			return nil, nil
 		}
 	}
 
-	action := res[ds.WasmCommonTransferActionIdx]
+	action := res[asi.WasmCommonTransferActionIdx]
 
 	switch action.Value {
-	case ds.WasmTransferAction:
-		return m.transferMatchedToParsedTx(res, optionals...)
-	case ds.WasmTransferFromAction:
-		return m.transferFromMatchedToParsedTx(res, optionals...)
+	case asi.WasmTransferAction:
+		return m.v1MatchedToParsedTx(res, optionals...)
+	case asi.WasmTransferFromAction:
+		return m.v2MatchedToParsedTx(res, optionals...)
 	}
 
-	msg := fmt.Sprintf("expected action(%s) or (%s)", ds.WasmTransferAction, ds.WasmTransferFromAction)
+	msg := fmt.Sprintf("expected action(%s) or (%s)", asi.WasmTransferAction, asi.WasmTransferFromAction)
 	return nil, errors.New(msg)
 }
 
-func (m *wasmTransferMapper) transferMatchedToParsedTx(res eventlog.MatchedResult, _ ...interface{}) ([]*dex.ParsedTx, error) {
-	// Validate expected keys exist (filter out CW1155 transfers)
-	// see. https://explorer.xpla.io/mainnet/address/xpla18xsgaqx66wkljvnjcu57pfwq4dtjv4gay662j2pnhy46lvmzqycsxdtz54
-	if len(res) <= ds.WasmTransferToIdx {
-		return nil, nil
+func (m *wasmTransferMapper) v1MatchedToParsedTx(res eventlog.MatchedResult, _ ...interface{}) ([]*dex.ParsedTx, error) {
+	if err := m.mixin.CheckResult(res, asi.WasmV1TransferMatchedLen); err != nil {
+		return nil, errors.Wrap(err, "wasmTransferMapper.v1MatchedToParsedTx")
 	}
-	if res[ds.WasmTransferFromIdx].Key != "from" {
-		return nil, nil
-	}
-
-	from := res[ds.WasmTransferFromIdx].Value
-	to := res[ds.WasmTransferToIdx].Value
+	from := res[asi.WasmTransferFromIdx].Value
+	to := res[asi.WasmTransferToIdx].Value
 
 	pair, fromPair, err := m.mixin.pairBy(m.pairSet, from, to)
 	if err != nil {
@@ -100,20 +95,20 @@ func (m *wasmTransferMapper) transferMatchedToParsedTx(res eventlog.MatchedResul
 			return nil, nil
 		}
 
-		return nil, errors.Wrap(err, "wasmTransferMapper.transferMatchedToParsedTx")
+		return nil, errors.Wrap(err, "wasmTransferMapper.v1MatchedToParsedTx")
 	}
 
 	return m.matchedToParsedTx(
-		pair, from, to, res[ds.WasmCommonTransferCw20AddrIdx].Value, res[ds.WasmTransferAmountIdx].Value, fromPair,
+		pair, from, to, res[asi.WasmCommonTransferCw20AddrIdx].Value, res[asi.WasmTransferAmountIdx].Value, fromPair,
 	)
 }
 
-func (m *wasmTransferMapper) transferFromMatchedToParsedTx(res eventlog.MatchedResult, _ ...interface{}) ([]*dex.ParsedTx, error) {
-	if err := m.mixin.CheckResult(res, ds.WasmTransferFromMatchedLen); err != nil {
-		return nil, errors.Wrap(err, "wasmTransferMapper.transferFromMatchedToParsedTx")
+func (m *wasmTransferMapper) v2MatchedToParsedTx(res eventlog.MatchedResult, _ ...interface{}) ([]*dex.ParsedTx, error) {
+	if err := m.mixin.CheckResult(res, asi.WasmV2TransferMatchedLen); err != nil {
+		return nil, errors.Wrap(err, "wasmTransferMapper.v2MatchedToParsedTx")
 	}
-	from := res[ds.WasmTransferFromFromIdx].Value
-	to := res[ds.WasmTransferFromToIdx].Value
+	from := res[asi.WasmTransferFromFromIdx].Value
+	to := res[asi.WasmTransferFromToIdx].Value
 
 	pair, fromPair, err := m.mixin.pairBy(m.pairSet, from, to)
 	if err != nil {
@@ -121,17 +116,22 @@ func (m *wasmTransferMapper) transferFromMatchedToParsedTx(res eventlog.MatchedR
 			return nil, nil
 		}
 
-		return nil, errors.Wrap(err, "wasmTransferMapper.transferFromMatchedToParsedTx")
+		return nil, errors.Wrap(err, "wasmTransferMapper.v2MatchedToParsedTx")
 	}
 
 	return m.matchedToParsedTx(
-		pair, from, to, res[ds.WasmCommonTransferCw20AddrIdx].Value, res[ds.WasmTransferFromAmountIdx].Value, fromPair,
+		pair, from, to, res[asi.WasmCommonTransferCw20AddrIdx].Value, res[asi.WasmTransferFromAmountIdx].Value, fromPair,
 	)
 }
 
 // match implements mapper
 func (m *transferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) ([]*dex.ParsedTx, error) {
-	if err := m.mixin.CheckResult(res, ds.TransferMatchedLen); err != nil {
+	if err := m.mixin.CheckResult(res, asi.TransferMatchedLen); err != nil {
+		// skip empty value result
+		// see. https://www.mintscan.io/fetchai/tx/C0B649ABBB5C04B8A01567C1E14635856E50CEA22B4A7BDA66F91D2CA8275BA2
+		if errors.As(err, &pdex.ErrEmptyEventValue) {
+			return []*dex.ParsedTx{}, nil
+		}
 		return nil, errors.Wrap(err, "transferMapper.MatchedToParsedTx")
 	}
 	matchMap, err := eventlog.ResultToItemMapForKeys(
@@ -162,15 +162,11 @@ func (m *transferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals
 		{Addr: pair.Assets[0]},
 		{Addr: pair.Assets[1]},
 	}
-	amountValue := matchMap[pdex.TransferAmountKey].Value
-	if amountValue == "" {
-		return nil, errors.New("empty amount")
+	amountStrs := strings.Split(matchMap[pdex.TransferAmountKey].Value, ",")
+	if len(amountStrs) == 0 {
+		return nil, errors.New("empty amount or wrong format(amounts separated by ,)")
 	}
-	amountStrs := strings.Split(amountValue, ",")
 	for _, amountStr := range amountStrs {
-		if amountStr == "" {
-			continue
-		}
 		asset, err := dex.GetAssetFromAmountAssetString(amountStr)
 		if err != nil {
 			return nil, errors.Wrap(err, "transferMapper.MatchedToParsedTx")

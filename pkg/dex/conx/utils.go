@@ -1,9 +1,9 @@
-package xpla
+package conx
 
 import "strings"
 
 func IsCw20(addr string) bool {
-	return strings.HasPrefix(addr, CW20_PREFIX)
+	return strings.HasPrefix(addr, Cw20Prefix)
 }
 
 // IsNativeToken returns true if the given address is native token address.

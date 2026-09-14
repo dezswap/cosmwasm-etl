@@ -1,4 +1,4 @@
-package dezswap
+package conx
 
 import (
 	"fmt"
@@ -7,8 +7,8 @@ import (
 
 	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/parser/dex"
+	"github.com/dezswap/cosmwasm-etl/pkg/dex/conx"
 	el "github.com/dezswap/cosmwasm-etl/pkg/eventlog"
-	"github.com/dezswap/cosmwasm-etl/pkg/xpla"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -402,27 +402,27 @@ func Test_PairV2ProvideMapper_applyRefund(t *testing.T) {
 		errMsg   string
 	}{
 		{
-			[]dex.Asset{{Addr: xpla.NATIVE_GOVERNANCE_TOKEN, Amount: "1000"}, {Addr: fmt.Sprintf("%s%s", xpla.CW20_PREFIX, "Asset2"), Amount: "10000"}},
-			[]dex.Asset{{Addr: xpla.NATIVE_GOVERNANCE_TOKEN, Amount: "0"}, {Addr: fmt.Sprintf("%s%s", xpla.CW20_PREFIX, "Asset2"), Amount: "100"}},
-			[]dex.Asset{{Addr: xpla.NATIVE_GOVERNANCE_TOKEN, Amount: "1000"}, {Addr: fmt.Sprintf("%s%s", xpla.CW20_PREFIX, "Asset2"), Amount: "9900"}},
+			[]dex.Asset{{Addr: conx.NativeGovernanceToken, Amount: "1000"}, {Addr: fmt.Sprintf("%s%s", conx.Cw20Prefix, "Asset2"), Amount: "10000"}},
+			[]dex.Asset{{Addr: conx.NativeGovernanceToken, Amount: "0"}, {Addr: fmt.Sprintf("%s%s", conx.Cw20Prefix, "Asset2"), Amount: "100"}},
+			[]dex.Asset{{Addr: conx.NativeGovernanceToken, Amount: "1000"}, {Addr: fmt.Sprintf("%s%s", conx.Cw20Prefix, "Asset2"), Amount: "9900"}},
 			"",
 		},
 		{
-			[]dex.Asset{{Addr: xpla.NATIVE_GOVERNANCE_TOKEN, Amount: "1234567890"}, {Addr: fmt.Sprintf("%s%s", xpla.CW20_PREFIX, "Asset2"), Amount: "10000"}},
-			[]dex.Asset{{Addr: xpla.NATIVE_GOVERNANCE_TOKEN, Amount: "123456"}, {Addr: fmt.Sprintf("%s%s", xpla.CW20_PREFIX, "Asset2"), Amount: "9999"}},
-			[]dex.Asset{{Addr: xpla.NATIVE_GOVERNANCE_TOKEN, Amount: "1234567890"}, {Addr: fmt.Sprintf("%s%s", xpla.CW20_PREFIX, "Asset2"), Amount: "1"}},
+			[]dex.Asset{{Addr: conx.NativeGovernanceToken, Amount: "1234567890"}, {Addr: fmt.Sprintf("%s%s", conx.Cw20Prefix, "Asset2"), Amount: "10000"}},
+			[]dex.Asset{{Addr: conx.NativeGovernanceToken, Amount: "123456"}, {Addr: fmt.Sprintf("%s%s", conx.Cw20Prefix, "Asset2"), Amount: "9999"}},
+			[]dex.Asset{{Addr: conx.NativeGovernanceToken, Amount: "1234567890"}, {Addr: fmt.Sprintf("%s%s", conx.Cw20Prefix, "Asset2"), Amount: "1"}},
 			"",
 		},
 		{
-			[]dex.Asset{{Addr: xpla.NATIVE_GOVERNANCE_TOKEN, Amount: "1000"}, {Addr: fmt.Sprintf("%s%s", xpla.CW20_PREFIX, "Asset2"), Amount: "10000"}},
-			[]dex.Asset{{Addr: xpla.NATIVE_GOVERNANCE_TOKEN, Amount: "0"}, {Addr: fmt.Sprintf("%s%s", xpla.CW20_PREFIX, "Asset2"), Amount: "9999"}},
-			[]dex.Asset{{Addr: xpla.NATIVE_GOVERNANCE_TOKEN, Amount: "1000"}, {Addr: fmt.Sprintf("%s%s", xpla.CW20_PREFIX, "Asset2"), Amount: "10"}},
+			[]dex.Asset{{Addr: conx.NativeGovernanceToken, Amount: "1000"}, {Addr: fmt.Sprintf("%s%s", conx.Cw20Prefix, "Asset2"), Amount: "10000"}},
+			[]dex.Asset{{Addr: conx.NativeGovernanceToken, Amount: "0"}, {Addr: fmt.Sprintf("%s%s", conx.Cw20Prefix, "Asset2"), Amount: "9999"}},
+			[]dex.Asset{{Addr: conx.NativeGovernanceToken, Amount: "1000"}, {Addr: fmt.Sprintf("%s%s", conx.Cw20Prefix, "Asset2"), Amount: "10"}},
 			"Asset2 must be 1",
 		},
 		{
-			[]dex.Asset{{Addr: xpla.NATIVE_GOVERNANCE_TOKEN, Amount: "1000"}, {Addr: fmt.Sprintf("%s%s", xpla.CW20_PREFIX, "Asset2"), Amount: "10000"}},
-			[]dex.Asset{{Addr: xpla.NATIVE_GOVERNANCE_TOKEN, Amount: "10"}, {Addr: fmt.Sprintf("%s%s", xpla.CW20_PREFIX, "Asset2"), Amount: "9999"}},
-			[]dex.Asset{{Addr: xpla.NATIVE_GOVERNANCE_TOKEN, Amount: "990"}, {Addr: fmt.Sprintf("%s%s", xpla.CW20_PREFIX, "Asset2"), Amount: "1"}},
+			[]dex.Asset{{Addr: conx.NativeGovernanceToken, Amount: "1000"}, {Addr: fmt.Sprintf("%s%s", conx.Cw20Prefix, "Asset2"), Amount: "10000"}},
+			[]dex.Asset{{Addr: conx.NativeGovernanceToken, Amount: "10"}, {Addr: fmt.Sprintf("%s%s", conx.Cw20Prefix, "Asset2"), Amount: "9999"}},
+			[]dex.Asset{{Addr: conx.NativeGovernanceToken, Amount: "990"}, {Addr: fmt.Sprintf("%s%s", conx.Cw20Prefix, "Asset2"), Amount: "1"}},
 			"Native token must not be applied",
 		},
 	}

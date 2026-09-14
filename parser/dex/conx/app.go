@@ -1,18 +1,17 @@
-package dezswap
+package conx
 
 import (
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/parser/dex"
 	pdex "github.com/dezswap/cosmwasm-etl/pkg/dex"
-	ds "github.com/dezswap/cosmwasm-etl/pkg/dex/dezswap"
+	"github.com/dezswap/cosmwasm-etl/pkg/dex/conx"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 	"github.com/pkg/errors"
 )
 
-// runner for terraswap
-type dezswapApp struct {
+type appImpl struct {
 	dex.PairRepo
 	Parsers *dex.PairParsers
 	dex.DexMixin
@@ -23,12 +22,12 @@ type dezswapApp struct {
 	lpPairAddrs map[string]string
 }
 
-var _ dex.TargetApp = &dezswapApp{}
+var _ dex.TargetApp = &appImpl{}
 
 func New(repo dex.PairRepo, _ logging.Logger, c configs.ParserDexConfig) (dex.TargetApp, error) {
-	finder, err := ds.CreateCreatePairRuleFinder(c.FactoryAddress)
+	finder, err := conx.CreateCreatePairRuleFinder(c.FactoryAddress)
 	if err != nil {
-		return nil, errors.Wrap(err, "dezswap.New")
+		return nil, errors.Wrap(err, "conx.New")
 	}
 
 	parsers := &dex.PairParsers{
@@ -41,7 +40,7 @@ func New(repo dex.PairRepo, _ logging.Logger, c configs.ParserDexConfig) (dex.Ta
 
 	pairs, err := repo.GetPairs()
 	if err != nil {
-		return nil, errors.Wrap(err, "dezswap.New")
+		return nil, errors.Wrap(err, "conx.New")
 	}
 
 	lpPairAddrs := make(map[string]string)
@@ -49,15 +48,15 @@ func New(repo dex.PairRepo, _ logging.Logger, c configs.ParserDexConfig) (dex.Ta
 		lpPairAddrs[p.LpAddr] = p.ContractAddr
 	}
 
-	return &dezswapApp{repo, parsers, dex.DexMixin{}, c.ChainId, pairs, lpPairAddrs}, nil
+	return &appImpl{repo, parsers, dex.DexMixin{}, c.ChainId, pairs, lpPairAddrs}, nil
 }
 
-func (p *dezswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx, error) {
+func (p *appImpl) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx, error) {
 	txDtos := []dex.ParsedTx{}
 	partialQuarantine := dex.NewPartialQuarantineRecorder(tx, height)
 	createPairTxs, err := p.Parsers.CreatePairParser.Parse(tx.LogResults, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp}, nil)
 	if err != nil {
-		return nil, errors.Wrapf(err, "dezswap.ParseTxs create_pair tx_hash=%s", tx.Hash)
+		return nil, errors.Wrapf(err, "conx.ParseTxs create_pair tx_hash=%s", tx.Hash)
 	}
 	for _, ctx := range createPairTxs {
 		p.pairs[ctx.ContractAddr] = dex.Pair{
@@ -77,7 +76,7 @@ func (p *dezswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx, e
 	for _, raw := range tx.LogResults {
 		ptxs, err := p.Parsers.PairActionParser.Parse(eventlog.LogResults{raw}, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
 		if err != nil {
-			return nil, errors.Wrapf(err, "dezswap.ParseTxs pair_action tx_hash=%s", tx.Hash)
+			return nil, errors.Wrapf(err, "conx.ParseTxs pair_action tx_hash=%s", tx.Hash)
 		}
 		pairTxs = append(pairTxs, ptxs...)
 
@@ -85,14 +84,14 @@ func (p *dezswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx, e
 		if p.HasProvide(ptxs) {
 			ipTxs, err := p.Parsers.InitialProvide.Parse(eventlog.LogResults{raw}, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
 			if err != nil {
-				return nil, errors.Wrapf(err, "dezswap.ParseTxs initial_provide tx_hash=%s", tx.Hash)
+				return nil, errors.Wrapf(err, "conx.ParseTxs initial_provide tx_hash=%s", tx.Hash)
 			}
 			pairTxs = append(pairTxs, ipTxs...)
 		}
 
 		wtxs, err := p.Parsers.WasmTransfer.Parse(eventlog.LogResults{raw}, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
 		if err != nil {
-			wrapped := errors.Wrapf(err, "dezswap.ParseTxs wasm_transfer tx_hash=%s", tx.Hash)
+			wrapped := errors.Wrapf(err, "conx.ParseTxs wasm_transfer tx_hash=%s", tx.Hash)
 			if !partialQuarantine.Record("wasm_transfer", wrapped) {
 				return nil, wrapped
 			}
@@ -104,19 +103,19 @@ func (p *dezswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx, e
 			// bug tx: 8C4CF31E736AAC477F61704ECCBBB5A5ABBAA2A8A12576EFAA9F8546F1F60FE2 (cube_47-5)
 			sorted, err := pdex.NormalizeTransferAttrs(raw.Attributes)
 			if err != nil {
-				return nil, errors.Wrapf(err, "dezswap.ParseTxs sort_transfer_attrs tx_hash=%s", tx.Hash)
+				return nil, errors.Wrapf(err, "conx.ParseTxs sort_transfer_attrs tx_hash=%s", tx.Hash)
 			}
 			raw.Attributes = sorted
 		}
 		transfers, err := p.Parsers.Transfer.Parse(eventlog.LogResults{raw}, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp}, tx.Sender)
 		if err != nil {
-			return nil, errors.Wrapf(err, "dezswap.ParseTxs transfer tx_hash=%s", tx.Hash)
+			return nil, errors.Wrapf(err, "conx.ParseTxs transfer tx_hash=%s", tx.Hash)
 		}
 		transferTxs = append(transferTxs, transfers...)
 
 		burns, err := p.Parsers.BurnParser.Parse(eventlog.LogResults{raw}, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp})
 		if err != nil {
-			return nil, errors.Wrapf(err, "dezswap.ParseTxs burn tx_hash=%s", tx.Hash)
+			return nil, errors.Wrapf(err, "conx.ParseTxs burn tx_hash=%s", tx.Hash)
 		}
 		burnTxs = append(burnTxs, burns...)
 	}
@@ -136,11 +135,11 @@ func (p *dezswapApp) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx, e
 	return txDtos, nil
 }
 
-func (p *dezswapApp) IsValidationExceptionCandidate(contractAddress string) bool {
+func (p *appImpl) IsValidationExceptionCandidate(contractAddress string) bool {
 	return false
 }
 
-func (p *dezswapApp) UpdateParsers(tokenExceptions map[string]bool, height uint64) error {
+func (p *appImpl) UpdateParsers(tokenExceptions map[string]bool, height uint64) error {
 	pairFilter := make(map[string]bool)
 	for k := range p.pairs {
 		pairFilter[k] = true
@@ -148,7 +147,7 @@ func (p *dezswapApp) UpdateParsers(tokenExceptions map[string]bool, height uint6
 
 	// pair action parser
 	{
-		pairFinder, err := ds.CreatePairAllRulesFinder(pairFilter)
+		pairFinder, err := conx.CreatePairAllRulesFinder(pairFilter)
 		if err != nil {
 			return errors.Wrap(err, "updateParsers")
 		}
@@ -171,7 +170,7 @@ func (p *dezswapApp) UpdateParsers(tokenExceptions map[string]bool, height uint6
 
 	// wasm transfer parser
 	{
-		wasmTransferFinder, err := ds.CreateWasmCommonTransferRuleFinder()
+		wasmTransferFinder, err := conx.CreateWasmCommonTransferRuleFinder()
 		if err != nil {
 			return errors.Wrap(err, "updateParsers")
 		}

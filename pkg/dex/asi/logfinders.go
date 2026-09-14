@@ -1,4 +1,4 @@
-package starfleit
+package asi
 
 import (
 	"github.com/dezswap/cosmwasm-etl/pkg/dex"

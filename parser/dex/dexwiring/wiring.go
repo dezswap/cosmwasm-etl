@@ -7,10 +7,10 @@ import (
 	collectorrepo "github.com/dezswap/cosmwasm-etl/collector/repo"
 	"github.com/dezswap/cosmwasm-etl/configs"
 	p_dex "github.com/dezswap/cosmwasm-etl/parser/dex"
-	pds "github.com/dezswap/cosmwasm-etl/parser/dex/dezswap"
+	"github.com/dezswap/cosmwasm-etl/parser/dex/asi"
+	"github.com/dezswap/cosmwasm-etl/parser/dex/conx"
 	"github.com/dezswap/cosmwasm-etl/parser/dex/srcstore"
 	ts_srcstore "github.com/dezswap/cosmwasm-etl/parser/dex/srcstore/terraswap"
-	psf "github.com/dezswap/cosmwasm-etl/parser/dex/starfleit"
 	pts "github.com/dezswap/cosmwasm-etl/parser/dex/terraswap"
 	"github.com/dezswap/cosmwasm-etl/pkg/dex"
 	"github.com/dezswap/cosmwasm-etl/pkg/grpc"
@@ -25,9 +25,9 @@ func NewTargetApp(repo p_dex.PairRepo, logger logging.Logger, c configs.ParserDe
 	case dex.ChainNameTerraClassic, dex.ChainNameTerra2:
 		return pts.New(repo, logger, c)
 	case dex.ChainNameConx:
-		return pds.New(repo, logger, c)
+		return conx.New(repo, logger, c)
 	case dex.ChainNameAsiAlliance:
-		return psf.New(repo, logger, c)
+		return asi.New(repo, logger, c)
 	default:
 		return nil, fmt.Errorf("unsupported chain id: %s", c.ChainId)
 	}

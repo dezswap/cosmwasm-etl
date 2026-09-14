@@ -1,4 +1,4 @@
-package dezswap
+package conx
 
 import (
 	"github.com/dezswap/cosmwasm-etl/pkg/dex"
