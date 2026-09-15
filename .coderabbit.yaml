@@ -30,7 +30,7 @@ reviews:
 
   - path: "parser/dex/**"
     instructions: |
-      Chain-specific parsing layer (conx, asi, terraswap).
+      Chain-specific parsing layer (conx, asi, terra).
       - Mapper index safety: index-based access to MatchedResult (e.g., res[PairAddrIdx]) panics if shorter than expected; validate length first.
       - Transfer deduplication: check edge cases in RemoveDuplicatedTxs/matchesPairTransferEntry where the same asset appears multiple times in one tx.
 

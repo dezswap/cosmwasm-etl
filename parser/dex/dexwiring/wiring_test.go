@@ -6,7 +6,7 @@ import (
 	"github.com/dezswap/cosmwasm-etl/collector/datastore"
 	"github.com/dezswap/cosmwasm-etl/configs"
 	p_dex "github.com/dezswap/cosmwasm-etl/parser/dex"
-	ts "github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap"
+	"github.com/dezswap/cosmwasm-etl/pkg/dex/terra"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 	"github.com/stretchr/testify/require"
 )
@@ -15,8 +15,8 @@ var chainFixtures = map[string]struct {
 	factory         string
 	collectorBacked bool
 }{
-	"columbus-5":     {factory: string(ts.CLASSIC_V2_FACTORY)},
-	"phoenix-1":      {factory: string(ts.MAINNET_FACTORY)},
+	"columbus-5":     {factory: string(terra.ClassicV2Factory)},
+	"phoenix-1":      {factory: string(terra.MainnetFactory)},
 	"cube_47-5":      {factory: "xpla1j4kgjl6h4rt96uddtzdxdu39h0mhn4vrtydufdrk4uxxnrpsnw2qug2yx2", collectorBacked: true},
 	"dimension_37-1": {factory: "xpla1j33xdql0h4kpgj2mhggy4vutw655u90z7nyj4afhxgj4v5urtadq44e3vd", collectorBacked: true},
 	"dorado-1":       {factory: "fetch1kmag3937lrl6dtsv29mlfsedzngl9egv5c3apnr468q50gu04zrqea398u", collectorBacked: true},
@@ -63,7 +63,7 @@ func Test_NewSourceDataStore_WiresKnownChains(t *testing.T) {
 			dc := configs.ParserDexConfig{ChainId: chainId, FactoryAddress: fixture.factory}
 
 			if !fixture.collectorBacked {
-				// the terraswap branch dials the collector DB, which a unit test cannot provide.
+				// the terra-classic branch dials the collector DB, which a unit test cannot provide.
 				// An unusable factory address fails inside the branch, which still tells it apart
 				// from the default one.
 				dc.FactoryAddress = "terra1nope"

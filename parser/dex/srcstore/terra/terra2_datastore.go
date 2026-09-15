@@ -1,0 +1,90 @@
+package terra
+
+import (
+	"encoding/json"
+
+	"github.com/dezswap/cosmwasm-etl/parser"
+	"github.com/dezswap/cosmwasm-etl/parser/dex"
+	"github.com/dezswap/cosmwasm-etl/pkg/dex/terra"
+	"github.com/dezswap/cosmwasm-etl/pkg/terra/cosmos45"
+	"github.com/dezswap/cosmwasm-etl/pkg/terra/lcd"
+	"github.com/dezswap/cosmwasm-etl/pkg/terra/rpc"
+	"github.com/pkg/errors"
+)
+
+// https://github.com/phoenix-directive/core/releases/tag/v2.17.0
+// https://github.com/cosmos/cosmos-sdk/blob/release/v0.50.x/UPGRADING.md
+const cosmosSdk50StartHeight = 16395000
+
+type cosmos47Resultog struct {
+	MsgIndex int               `json:"msg_index"`
+	Log      string            `json:"log"`
+	Events   []rpc.RpcEventRes `json:"events"`
+}
+
+type terra2SourceDataStore struct {
+	*baseRawDataStoreImpl
+}
+
+var _ dex.SourceDataStore = &terra2SourceDataStore{}
+
+func NewTerra2Store(factoryAddress string, rpc rpc.Rpc, lcd lcd.Lcd[cosmos45.LcdTxRes], client terra.QueryClient) dex.SourceDataStore {
+	return &terra2SourceDataStore{
+		baseRawDataStoreImpl: &baseRawDataStoreImpl{rpc, client, &classicV2ChainDataAdapter{
+			factoryAddress: factoryAddress,
+			mapper:         &mapperImpl{},
+			rpc:            rpc,
+			lcd:            lcd,
+			QueryClient:    client,
+		}},
+	}
+}
+
+func (r *terra2SourceDataStore) GetSourceTxs(height uint64) (parser.RawTxs, error) {
+	rpcRes, err := r.rpc.Block(height)
+	if err != nil {
+		return nil, errors.Wrap(err, "terra2SourceDataStore.GetSourceTxs")
+	}
+	blockRes := rpcRes.Result
+	blockTime := blockRes.Block.Header.Time
+	txHashes := blockRes.TxsHashStrings()
+
+	rpcResultRes, err := r.rpc.BlockResults(height)
+	if err != nil {
+		return nil, errors.Wrap(err, "terra2SourceDataStore.GetSourceTxs")
+	}
+
+	txResults := rpcResultRes.Result.TxsResults
+	if err := verifyBlockResponses(height, blockRes.Block.Header.Height, rpcResultRes.Result.Height, len(txHashes), len(txResults)); err != nil {
+		return nil, errors.Wrap(err, "terra2SourceDataStore.GetSourceTxs")
+	}
+
+	rawTxs := []parser.RawTx{}
+	for i, txHash := range txHashes {
+		if txResults[i].Code != 0 {
+			continue
+		}
+
+		var tx parser.RawTx
+		var err error
+		if height > cosmosSdk50StartHeight {
+			tx, err = r.convertEventsToRawTx(txHash, txResults[i].Events, blockTime)
+		} else {
+			var logs []cosmos47Resultog
+			if err = json.Unmarshal([]byte(txResults[i].Log), &logs); err != nil {
+				return nil, errors.Wrapf(err, "failed to unmarshal log JSON for tx %s", txHash)
+			}
+			var events []rpc.RpcEventRes
+			for _, l := range logs {
+				events = append(events, l.Events...)
+			}
+			tx, err = r.convertEventsToRawTx(txHash, events, blockTime)
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		rawTxs = append(rawTxs, tx)
+	}
+	return rawTxs, nil
+}

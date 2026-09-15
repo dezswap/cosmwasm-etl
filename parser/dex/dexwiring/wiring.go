@@ -10,8 +10,8 @@ import (
 	"github.com/dezswap/cosmwasm-etl/parser/dex/asi"
 	"github.com/dezswap/cosmwasm-etl/parser/dex/conx"
 	"github.com/dezswap/cosmwasm-etl/parser/dex/srcstore"
-	ts_srcstore "github.com/dezswap/cosmwasm-etl/parser/dex/srcstore/terraswap"
-	pts "github.com/dezswap/cosmwasm-etl/parser/dex/terraswap"
+	srcterra "github.com/dezswap/cosmwasm-etl/parser/dex/srcstore/terra"
+	"github.com/dezswap/cosmwasm-etl/parser/dex/terra"
 	"github.com/dezswap/cosmwasm-etl/pkg/dex"
 	"github.com/dezswap/cosmwasm-etl/pkg/grpc"
 	"github.com/dezswap/cosmwasm-etl/pkg/httpclient"
@@ -23,7 +23,7 @@ import (
 func NewTargetApp(repo p_dex.PairRepo, logger logging.Logger, c configs.ParserDexConfig) (p_dex.TargetApp, error) {
 	switch dex.ChainNameOf(c.ChainId) {
 	case dex.ChainNameTerraClassic, dex.ChainNameTerra2:
-		return pts.New(repo, logger, c)
+		return terra.New(repo, logger, c)
 	case dex.ChainNameConx:
 		return conx.New(repo, logger, c)
 	case dex.ChainNameAsiAlliance:
@@ -81,7 +81,7 @@ func NewCollectorReadStore(c configs.Config, dc configs.ParserDexConfig) (datast
 func NewSourceDataStore(dc configs.ParserDexConfig, rdbc configs.RdbConfig, readStore datastore.ReadStore, logger logging.Logger) (p_dex.SourceDataStore, error) {
 	switch dex.ChainNameOf(dc.ChainId) {
 	case dex.ChainNameTerraClassic, dex.ChainNameTerra2:
-		fallback, err := ts_srcstore.NewFromConfig(dc.NodeConfig, dc.FactoryAddress)
+		fallback, err := srcterra.NewFromConfig(dc.NodeConfig, dc.FactoryAddress)
 		if err != nil {
 			return nil, err
 		}
