@@ -31,8 +31,9 @@ func CreatePairCommonRulesFinder(pairs map[string]bool) (eventlog.LogFinder, err
 	return eventlog.NewLogFinder(rule)
 }
 
-// Track cw20 transfer
-func CreateWasmCommonTransferRuleFinder(pairs map[string]bool) (eventlog.LogFinder, error) {
+// Track cw20 transfer. The matched contract_address is the token, not the pair,
+// so there is no pair filter to apply.
+func CreateWasmCommonTransferRuleFinder() (eventlog.LogFinder, error) {
 	return eventlog.NewLogFinder(col4WasmTransferCommonRule)
 }
 

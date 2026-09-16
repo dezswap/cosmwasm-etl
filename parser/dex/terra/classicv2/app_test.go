@@ -10,11 +10,13 @@ import (
 	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/parser/dex"
 	"github.com/dezswap/cosmwasm-etl/pkg/dex/terra"
+	"github.com/dezswap/cosmwasm-etl/pkg/dex/terra/classicv2"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 	"github.com/dezswap/cosmwasm-etl/pkg/faker"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -314,6 +316,90 @@ func Test_pairMapper_PropagatesMsgIndex(t *testing.T) {
 	assert.NoError(err)
 	assert.Len(txs, 1)
 	assert.Equal(1, txs[0].MsgIndex)
+}
+
+func Test_ParseTxs_SameTransactionCreatePairAndInitialProvide(t *testing.T) {
+	const (
+		pairAddr = "PAIR_ADDR"
+		lpAddr   = "Lp"
+		asset0   = "Asset0"
+		asset1   = "Asset1"
+		height   = uint64(100)
+	)
+
+	createPairParser := dex.ParserMock{}
+	createPairParser.On("parse", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return([]*dex.ParsedTx{{
+			Hash:         hash,
+			Type:         dex.CreatePair,
+			ContractAddr: pairAddr,
+			LpAddr:       lpAddr,
+			Assets:       [2]dex.Asset{{Addr: asset0}, {Addr: asset1}},
+		}}, nil)
+
+	repo := dex.RepoMock{}
+
+	// TaxPaymentParser is built by New, not UpdateParsers
+	taxPaymentRule, err := classicv2.CreateTaxPaymentRuleFinder()
+	require.NoError(t, err)
+
+	app := appImpl{
+		PairRepo: &repo,
+		Parsers: &dex.PairParsers{
+			CreatePairParser: &createPairParser,
+			TaxPaymentParser: parser.NewParser(taxPaymentRule, dex.NewTaxPaymentMapper()),
+		},
+		DexMixin:      dex.DexMixin{},
+		pairs:         map[string]dex.Pair{},
+		lpPairAddrs:   map[string]string{},
+		flaggedAssets: map[string]bool{},
+	}
+	// the height loop builds the parsers before the pair exists, so the pair
+	// filters must be refreshed mid-tx for the provide to be found
+	require.NoError(t, app.UpdateParsers(nil, height))
+
+	logs := rawLogs(`[{"type":"wasm","attributes":[
+		{"key":"_contract_address","value":"` + pairAddr + `"},
+		{"key":"action","value":"provide_liquidity"},
+		{"key":"sender","value":"` + sender + `"},
+		{"key":"receiver","value":"` + sender + `"},
+		{"key":"assets","value":"1000` + asset0 + `, 1000` + asset1 + `"},
+		{"key":"share","value":"1000"},
+		{"key":"_contract_address","value":"` + lpAddr + `"},
+		{"key":"action","value":"mint"},
+		{"key":"amount","value":"1000"},
+		{"key":"to","value":"` + pairAddr + `"}
+	]}]`)
+
+	txs, err := app.ParseTxs(parser.RawTx{Sender: sender, Hash: hash, LogResults: logs}, height)
+
+	require.NoError(t, err)
+	require.Len(t, txs, 3)
+	assert.Contains(t, txs, dex.ParsedTx{
+		Hash:         hash,
+		Type:         dex.CreatePair,
+		Sender:       sender,
+		ContractAddr: pairAddr,
+		LpAddr:       lpAddr,
+		Assets:       [2]dex.Asset{{Addr: asset0}, {Addr: asset1}},
+	})
+	assert.Contains(t, txs, dex.ParsedTx{
+		Hash:         hash,
+		Type:         dex.Provide,
+		Sender:       sender,
+		ContractAddr: pairAddr,
+		Assets:       [2]dex.Asset{{Addr: asset0, Amount: "1000"}, {Addr: asset1, Amount: "1000"}},
+		LpAddr:       lpAddr,
+		LpAmount:     "1000",
+	})
+	assert.Contains(t, txs, dex.ParsedTx{
+		Hash:         hash,
+		Type:         dex.InitialProvide,
+		Sender:       sender,
+		ContractAddr: pairAddr,
+		LpAddr:       lpAddr,
+		LpAmount:     "1000",
+	})
 }
 
 func rawLogs(logStr string) eventlog.LogResults {

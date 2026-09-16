@@ -31,7 +31,7 @@ func New(repo dex.PairRepo, _ logging.Logger, c configs.ParserDexConfig) (dex.Ta
 	}
 
 	parsers := &dex.PairParsers{
-		CreatePairParser: parser.NewParser[dex.ParsedTx](finder, &createPairMapper{}),
+		CreatePairParser: parser.NewParser(finder, &createPairMapper{}),
 		PairActionParser: nil,
 		InitialProvide:   nil,
 		WasmTransfer:     nil,
@@ -67,6 +67,11 @@ func (p *appImpl) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx, erro
 		p.lpPairAddrs[ctx.LpAddr] = ctx.ContractAddr
 		ctx.Sender = tx.Sender
 		txDtos = append(txDtos, *ctx)
+	}
+	if len(createPairTxs) > 0 {
+		if err := p.updatePairScopedParsers(height); err != nil {
+			return nil, errors.Wrapf(err, "conx.ParseTxs refresh_pair_parsers tx_hash=%s", tx.Hash)
+		}
 	}
 
 	pairTxs := []*dex.ParsedTx{}
@@ -140,32 +145,8 @@ func (p *appImpl) IsValidationExceptionCandidate(contractAddress string) bool {
 }
 
 func (p *appImpl) UpdateParsers(tokenExceptions map[string]bool, height uint64) error {
-	pairFilter := make(map[string]bool)
-	for k := range p.pairs {
-		pairFilter[k] = true
-	}
-
-	// pair action parser
-	{
-		pairFinder, err := conx.CreatePairAllRulesFinder(pairFilter)
-		if err != nil {
-			return errors.Wrap(err, "updateParsers")
-		}
-
-		pairMapper, err := pairMapperBy(p.chainId, height, p.pairs)
-		if err != nil {
-			return errors.Wrap(err, "updateParsers")
-		}
-		p.Parsers.PairActionParser = parser.NewParser(pairFinder, pairMapper)
-	}
-
-	// initial provide parser
-	{
-		initialProvideFinder, err := pdex.CreatePairInitialProvideRuleFinder(pairFilter)
-		if err != nil {
-			return errors.Wrap(err, "updateParsers")
-		}
-		p.Parsers.InitialProvide = parser.NewParser(initialProvideFinder, dex.NewInitialProvideMapper())
+	if err := p.updatePairScopedParsers(height); err != nil {
+		return err
 	}
 
 	// wasm transfer parser
@@ -201,6 +182,34 @@ func (p *appImpl) UpdateParsers(tokenExceptions map[string]bool, height uint64) 
 		}
 		p.Parsers.BurnParser = parser.NewParser(burnRule, dex.NewBurnMapper())
 	}
+
+	return nil
+}
+
+// pair filters are built from a snapshot of p.pairs, so they must be rebuilt
+// whenever a pair is created mid-height.
+func (p *appImpl) updatePairScopedParsers(height uint64) error {
+	pairFilter := make(map[string]bool)
+	for k := range p.pairs {
+		pairFilter[k] = true
+	}
+
+	pairFinder, err := conx.CreatePairAllRulesFinder(pairFilter)
+	if err != nil {
+		return errors.Wrap(err, "updatePairScopedParsers")
+	}
+
+	pairMapper, err := pairMapperBy(p.chainId, height, p.pairs)
+	if err != nil {
+		return errors.Wrap(err, "updatePairScopedParsers")
+	}
+	p.Parsers.PairActionParser = parser.NewParser(pairFinder, pairMapper)
+
+	initialProvideFinder, err := pdex.CreatePairInitialProvideRuleFinder(pairFilter)
+	if err != nil {
+		return errors.Wrap(err, "updatePairScopedParsers")
+	}
+	p.Parsers.InitialProvide = parser.NewParser(initialProvideFinder, dex.NewInitialProvideMapper())
 
 	return nil
 }

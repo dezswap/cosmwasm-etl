@@ -16,6 +16,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -128,6 +129,69 @@ func Test_parseTxs(t *testing.T) {
 			assert.Equal(append(expected, tc.expected...), txs, msg, err)
 		}
 	}
+}
+
+// classicv1 has no initial provide parser, so only the pair action parser has to
+// pick up the pair created in the same transaction.
+func Test_ParseTxs_SameTransactionCreatePairAndProvide(t *testing.T) {
+	const (
+		pairAddr = "PAIR_ADDR"
+		lpAddr   = "Lp"
+		asset0   = "Asset0"
+		asset1   = "Asset1"
+		height   = uint64(100)
+	)
+
+	createPairParser := dex.ParserMock{}
+	createPairParser.On("parse", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return([]*dex.ParsedTx{{
+			Hash:         hash,
+			Type:         dex.CreatePair,
+			ContractAddr: pairAddr,
+			LpAddr:       lpAddr,
+			Assets:       [2]dex.Asset{{Addr: asset0}, {Addr: asset1}},
+		}}, nil)
+
+	repo := dex.RepoMock{}
+	app := appImpl{
+		PairRepo:      &repo,
+		Parsers:       &dex.PairParsers{CreatePairParser: &createPairParser},
+		DexMixin:      dex.DexMixin{},
+		pairs:         map[string]dex.Pair{},
+		flaggedAssets: map[string]bool{},
+	}
+	// the height loop builds the parsers before the pair exists, so the pair
+	// filter must be refreshed mid-tx for the provide to be found
+	require.NoError(t, app.UpdateParsers(nil, height))
+
+	logs := rawLogs(`[{"type":"from_contract","attributes":[
+		{"key":"contract_address","value":"` + pairAddr + `"},
+		{"key":"action","value":"provide_liquidity"},
+		{"key":"assets","value":"1000` + asset0 + `, 1000` + asset1 + `"},
+		{"key":"share","value":"1000"}
+	]}]`)
+
+	txs, err := app.ParseTxs(parser.RawTx{Sender: sender, Hash: hash, LogResults: logs}, height)
+
+	require.NoError(t, err)
+	require.Len(t, txs, 2)
+	assert.Contains(t, txs, dex.ParsedTx{
+		Hash:         hash,
+		Type:         dex.CreatePair,
+		Sender:       sender,
+		ContractAddr: pairAddr,
+		LpAddr:       lpAddr,
+		Assets:       [2]dex.Asset{{Addr: asset0}, {Addr: asset1}},
+	})
+	assert.Contains(t, txs, dex.ParsedTx{
+		Hash:         hash,
+		Type:         dex.Provide,
+		Sender:       sender,
+		ContractAddr: pairAddr,
+		Assets:       [2]dex.Asset{{Addr: asset0, Amount: "1000"}, {Addr: asset1, Amount: "1000"}},
+		LpAddr:       lpAddr,
+		LpAmount:     "1000",
+	})
 }
 
 func rawLogs(logStr string) eventlog.LogResults {
