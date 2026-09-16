@@ -14,8 +14,8 @@ var ParsableRules = map[string]bool{
 }
 
 var (
-	PAIR_QUERY_POOL_STRING, _        = QueryToJsonStr[PoolInfoReq](PoolInfoReq{})
-	PAIR_QUERY_POOL_BASE64_STRING, _ = QueryToBase64Str[PoolInfoReq](PoolInfoReq{})
+	PAIR_QUERY_POOL_STRING, _        = QueryToJsonStr(PoolInfoReq{})
+	PAIR_QUERY_POOL_BASE64_STRING, _ = QueryToBase64Str(PoolInfoReq{})
 )
 
 var (

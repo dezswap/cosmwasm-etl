@@ -9,7 +9,7 @@ import (
 	"github.com/dezswap/cosmwasm-etl/collector"
 	"github.com/dezswap/cosmwasm-etl/collector/repo"
 	"github.com/dezswap/cosmwasm-etl/configs"
-	"github.com/dezswap/cosmwasm-etl/parser/dex/srcstore/terraswap"
+	"github.com/dezswap/cosmwasm-etl/parser/dex/srcstore/terra"
 	"github.com/dezswap/cosmwasm-etl/pkg/grpc"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 )
@@ -38,7 +38,7 @@ func main() {
 		panic(err)
 	}
 
-	source, err := terraswap.NewFromConfig(c.Collector.NodeConfig, c.Collector.PairFactoryContractAddress)
+	source, err := terra.NewFromConfig(c.Collector.NodeConfig, c.Collector.PairFactoryContractAddress)
 	if err != nil {
 		panic(err)
 	}

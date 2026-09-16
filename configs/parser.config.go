@@ -27,7 +27,6 @@ type ParserConfig struct {
 type ParserDexConfig struct {
 	ChainId              string              `mapstructure:"chainid"`
 	FactoryAddress       string              `mapstructure:"factoryaddress"`
-	TargetApp            dex.DexType         `mapstructure:"targetapp"`
 	SameHeightTolerance  uint                `mapstructure:"sameheighttolerance"`
 	ErrTolerance         uint                `mapstructure:"errtolerance"`
 	PoolSnapshotInterval uint                `mapstructure:"poolsnapshotinterval"`
@@ -41,8 +40,11 @@ type ParserDexConfig struct {
 }
 
 func (c ParserDexConfig) Validate() error {
-	if c.ChainId == "" || c.FactoryAddress == "" || c.TargetApp == dex.Unknown {
+	if c.ChainId == "" || c.FactoryAddress == "" {
 		return errors.New("required field is missing.")
+	}
+	if dex.ChainNameOf(c.ChainId) == dex.ChainNameUnknown {
+		return errors.Errorf("unsupported chain id(%s)", c.ChainId)
 	}
 	if c.QuarantineRetryMode == "" {
 		return nil

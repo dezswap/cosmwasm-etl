@@ -11,7 +11,7 @@ import (
 	fcd_collector "github.com/dezswap/cosmwasm-etl/collector/terra/fcd"
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/pkg/db"
-	"github.com/dezswap/cosmwasm-etl/pkg/dex/terraswap"
+	"github.com/dezswap/cosmwasm-etl/pkg/dex/terra"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 	"github.com/dezswap/cosmwasm-etl/pkg/terra/fcd"
 	"gorm.io/driver/postgres"
@@ -44,7 +44,7 @@ var columbus4_pairs = []string{
 	"terra1zey9knmvs2frfrjnf4cfv4prc4ts3mrsefstrj", "terra1ze5f2lm5clq2cdd9y2ve3lglfrq6ap8cqncld8", "terra1wrwf3um5vm30vpwnlpvjzgwpf5fjknt68nah05",
 }
 
-// TerraSwap Columbus-4 network-specific transaction collector from the FCD server.
+// columbus-4 network-specific transaction collector from the FCD server.
 func main() {
 	cfg := configs.New()
 	fcdCfg := cfg.Collector.FcdConfig
@@ -71,7 +71,7 @@ func main() {
 
 	// default setting is for columbus-4 network
 	targets := columbus4_pairs
-	cfg.Collector.UntilHeight = terraswap.COLUMBUS_4_END_HEIGHT
+	cfg.Collector.UntilHeight = terra.Columbus4EndHeight
 
 	app := fcd_collector.New(repo, store)
 	logger := logging.New("col4_collector", cfg.Log)

@@ -382,7 +382,6 @@ func Test_ParserConfig_QuarantineRetryMode(t *testing.T) {
 	base := ParserDexConfig{
 		ChainId:        "phoenix-1",
 		FactoryAddress: "terra1factory",
-		TargetApp:      "terraswap",
 	}
 
 	for _, mode := range []QuarantineRetryMode{
@@ -399,6 +398,15 @@ func Test_ParserConfig_QuarantineRetryMode(t *testing.T) {
 	config := base
 	config.QuarantineRetryMode = "sometimes"
 	require.EqualError(t, config.Validate(), "invalid quarantine retry mode(sometimes)")
+}
+
+func Test_ParserConfig_UnsupportedChainId(t *testing.T) {
+	config := ParserDexConfig{
+		ChainId:        "mars-1",
+		FactoryAddress: "terra1factory",
+	}
+
+	require.EqualError(t, config.Validate(), "unsupported chain id(mars-1)")
 }
 
 func Test_ParserConfig_QuarantineRetryModeDefault(t *testing.T) {

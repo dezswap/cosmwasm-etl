@@ -20,6 +20,7 @@ main
 # editors
 .vscode
 .idea
+.zed
 
 # database
 /db/data
