@@ -54,13 +54,12 @@ before SDK 0.50, and `events`, one flat list per tx, from 0.50 on, where `msg_in
 arrives as an event attribute that `skipKeys` in `pkg/eventlog/finder.go` steps over.
 Event types and attribute keys are unchanged across that boundary.
 
-Each chain crosses it on its own terms:
-
-- classic, `columbusCosmosSdk50StartHeight` (28,214,400) in `base_datastore.go`: below the
-  boundary the grouped `log` is read as is, so `msg_index` survives.
-- terra2, `cosmosSdk50StartHeight` (16,395,000) in `terra2_datastore.go`: both sides go
-  through `convertEventsToRawTx`, and below the boundary the grouped `log` is flattened
-  first, so `msg_index` is always dropped.
+Each chain crosses it at its own height: classic at `columbusCosmosSdk50StartHeight`
+(28,214,400) in `base_datastore.go`, terra2 at `cosmosSdk50StartHeight` (16,395,000) in
+`terra2_datastore.go`. Below it classic reads the grouped `log` as is and keeps
+`msg_index`, while terra2 flattens it into `convertEventsToRawTx` and drops it. That loss
+is harmless: rule boundaries come from `Until: "_contract_address"`, not `msg_index`, and
+nothing reads `ParsedTx.MsgIndex` on terra2.
 
 ### Requires
 - Filtered raw data store
