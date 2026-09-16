@@ -33,7 +33,10 @@ func (c *cosmos45QueryClient) QueryPool(pairAddr string, height ...uint64) (*dex
 
 func (c *cosmos45QueryClient) QueryPairs(factoryAddr string, startAfter []dex.AssetInfo, height ...uint64) (*dex.FactoryPairsRes, error) {
 	pairsReq := dex.FactoryPairsReq{}
-	if startAfter != nil {
+	if len(startAfter) > 0 {
+		if len(startAfter) != 2 {
+			return nil, errors.New("startAfter must contain exactly two assets")
+		}
 		pairsReq.Pairs.StartAfter = (*[2]dex.AssetInfo)(startAfter)
 	}
 
