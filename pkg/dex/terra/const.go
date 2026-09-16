@@ -28,6 +28,8 @@ const (
 	PairActionIdx
 )
 
+const PairCommonMatchedLen = PairActionIdx + 1
+
 const (
 	PairAddrKey   = "_contract_address"
 	PairActionKey = "action"

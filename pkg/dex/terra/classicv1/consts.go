@@ -13,6 +13,7 @@ const (
 )
 
 const (
+	PairCommonMatchedLen   = PairActionIdx + 1
 	PairSwapMatchedLen     = PairSwapCommissionAmountIdx + 1
 	PairProvideMatchedLen  = PairProvideShareIdx + 1
 	PairWithdrawMatchedLen = PairWithdrawRefundAssetsIdx + 1

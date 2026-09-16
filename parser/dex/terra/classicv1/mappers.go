@@ -24,6 +24,10 @@ type pairMapper struct {
 
 // match implements mapper
 func (m *pairMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) ([]*dex.ParsedTx, error) {
+	if len(res) < classicv1.PairCommonMatchedLen {
+		msg := fmt.Sprintf("results length must bigger than %d", classicv1.PairCommonMatchedLen)
+		return nil, errors.New(msg)
+	}
 	pair, ok := m.pairSet[res[classicv1.PairAddrIdx].Value]
 	if !ok {
 		msg := fmt.Sprintf("pairMapper.MatchedToParsedTx no pair(%s)", res[classicv1.PairAddrIdx].Value)

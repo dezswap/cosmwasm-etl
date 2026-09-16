@@ -68,6 +68,9 @@ func (m *wasmTransferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optio
 		}
 	}
 
+	if err := m.mixin.CheckResult(res, conx.WasmCommonTransferMatchedLen); err != nil {
+		return nil, errors.Wrap(err, "wasmTransferMapper.MatchedToParsedTx")
+	}
 	action := res[conx.WasmCommonTransferActionIdx]
 
 	switch action.Value {
