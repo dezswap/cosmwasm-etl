@@ -86,7 +86,7 @@ func Test_LogFinders(t *testing.T) {
 		// Withdraw
 		{PairWithdrawRawLogStr, nil, CreatePairCommonRulesFinder, 1, "must match once"},
 		// WasmTransfer
-		{WasmTransferRawLogStr, nil, CreateWasmCommonTransferRuleFinder, 1, "must match once"},
+		{WasmTransferRawLogStr, nil, func(map[string]bool) (eventlog.LogFinder, error) { return CreateWasmCommonTransferRuleFinder() }, 1, "must match once"},
 		// Transfer
 		{TransferRawLogStr, nil, dex.CreateTransferRuleFinder, 1, "must match once"},
 	}

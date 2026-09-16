@@ -41,6 +41,7 @@ func Test_ParseTxs_CreatePairUpdatesPairState(t *testing.T) {
 		PairRepo:    &repo,
 		Parsers:     &dex.PairParsers{CreatePairParser: &createPairParser},
 		DexMixin:    dex.DexMixin{},
+		chainId:     "dorado-1",
 		pairs:       map[string]dex.Pair{},
 		lpPairAddrs: map[string]string{},
 	}
@@ -63,6 +64,87 @@ func Test_ParseTxs_CreatePairUpdatesPairState(t *testing.T) {
 		Assets:       []string{asset0Addr, asset1Addr},
 	}, app.pairs[pairAddr])
 	assert.Equal(t, pairAddr, app.lpPairAddrs[lpAddr])
+}
+
+func Test_ParseTxs_SameTransactionCreatePairAndInitialProvide(t *testing.T) {
+	const (
+		txHash   = "hash"
+		txSender = "sender"
+		pairAddr = "pair"
+		lpAddr   = "lp"
+		asset0   = "asset0"
+		asset1   = "asset1"
+		height   = uint64(100)
+	)
+
+	createPairParser := dex.ParserMock{}
+	createPairParser.On("parse", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return([]*dex.ParsedTx{{
+			Hash:         txHash,
+			Type:         dex.CreatePair,
+			ContractAddr: pairAddr,
+			LpAddr:       lpAddr,
+			Assets:       [2]dex.Asset{{Addr: asset0}, {Addr: asset1}},
+		}}, nil)
+
+	repo := dex.RepoMock{}
+	app := appImpl{
+		PairRepo:    &repo,
+		Parsers:     &dex.PairParsers{CreatePairParser: &createPairParser},
+		DexMixin:    dex.DexMixin{},
+		chainId:     "dorado-1",
+		pairs:       map[string]dex.Pair{},
+		lpPairAddrs: map[string]string{},
+	}
+	// the height loop builds the parsers before the pair exists, so the pair
+	// filters must be refreshed mid-tx for the provide to be found
+	require.NoError(t, app.UpdateParsers(nil, height))
+
+	logs := eventlog.LogResults{{
+		Type: eventlog.WasmType,
+		Attributes: eventlog.Attributes{
+			{Key: "_contract_address", Value: pairAddr},
+			{Key: "action", Value: "provide_liquidity"},
+			{Key: "assets", Value: "1000" + asset0 + ", 2000" + asset1},
+			{Key: "receiver", Value: txSender},
+			{Key: "sender", Value: txSender},
+			{Key: "share", Value: "1414"},
+			{Key: "_contract_address", Value: lpAddr},
+			{Key: "action", Value: "mint"},
+			{Key: "amount", Value: "1000"},
+			{Key: "to", Value: pairAddr},
+		},
+	}}
+
+	txs, err := app.ParseTxs(parser.RawTx{Sender: txSender, Hash: txHash, LogResults: logs}, height)
+
+	require.NoError(t, err)
+	require.Len(t, txs, 3)
+	assert.Contains(t, txs, dex.ParsedTx{
+		Hash:         txHash,
+		Type:         dex.CreatePair,
+		Sender:       txSender,
+		ContractAddr: pairAddr,
+		LpAddr:       lpAddr,
+		Assets:       [2]dex.Asset{{Addr: asset0}, {Addr: asset1}},
+	})
+	assert.Contains(t, txs, dex.ParsedTx{
+		Hash:         txHash,
+		Type:         dex.Provide,
+		Sender:       txSender,
+		ContractAddr: pairAddr,
+		Assets:       [2]dex.Asset{{Addr: asset0, Amount: "1000"}, {Addr: asset1, Amount: "2000"}},
+		LpAddr:       lpAddr,
+		LpAmount:     "1414",
+	})
+	assert.Contains(t, txs, dex.ParsedTx{
+		Hash:         txHash,
+		Type:         dex.InitialProvide,
+		Sender:       txSender,
+		ContractAddr: pairAddr,
+		LpAddr:       lpAddr,
+		LpAmount:     "1000",
+	})
 }
 
 func Test_ParseTxs_SortsTransferAttributesWhenRandomOrder(t *testing.T) {

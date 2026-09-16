@@ -237,6 +237,91 @@ func Test_ParseTxs_AppendsInitialProvideWhenPairActionHasProvide(t *testing.T) {
 	}, txs)
 }
 
+func Test_ParseTxs_SameTransactionCreatePairAndInitialProvide(t *testing.T) {
+	const newPairAddr = "xpla103d6vvltryc8hxa3v73m6kw8ecjl9sgp0kwsdngg6w520funckwqel7vy8"
+	const newLpAddr = "xpla1tnq4ed895c40z2qr6sjdgzcz9cy2lfy4xnxl6cwlsl9eds8uq63sdhvzcg"
+	const newAsset0 = "xpla1afvwdjapg5pehl6wa630k0nqv02puzwu2kjzj9qtu2agrshg0xrsgts8r4"
+	const newAsset1 = "axpla"
+	const height = uint64(21818133)
+
+	createPairParser := dex.ParserMock{}
+	createPairParser.On("parse", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return([]*dex.ParsedTx{{
+			Hash:         txHash,
+			Type:         dex.CreatePair,
+			ContractAddr: newPairAddr,
+			LpAddr:       newLpAddr,
+			Assets:       [2]dex.Asset{{Addr: newAsset0}, {Addr: newAsset1}},
+		}}, nil)
+
+	repo := dex.RepoMock{}
+	app := appImpl{
+		PairRepo:    &repo,
+		Parsers:     &dex.PairParsers{CreatePairParser: &createPairParser},
+		DexMixin:    dex.DexMixin{},
+		chainId:     chainId,
+		pairs:       map[string]dex.Pair{},
+		lpPairAddrs: map[string]string{},
+	}
+	// the height loop builds the parsers before the pair exists, so the pair
+	// filters must be refreshed mid-tx for the provide to be found
+	require.NoError(t, app.UpdateParsers(nil, height))
+
+	logs := eventlog.LogResults{{
+		Type: eventlog.WasmType,
+		Attributes: eventlog.Attributes{
+			{Key: "_contract_address", Value: newPairAddr},
+			{Key: "action", Value: "provide_liquidity"},
+			{Key: "assets", Value: "10000000000000000000" + newAsset0 + ", 10000000000000000000" + newAsset1},
+			{Key: "receiver", Value: txSender},
+			{Key: "refund_assets", Value: "0" + newAsset0 + ", 0" + newAsset1},
+			{Key: "sender", Value: txSender},
+			{Key: "share", Value: "9999999999999999000"},
+			{Key: "_contract_address", Value: newLpAddr},
+			{Key: "action", Value: "mint"},
+			{Key: "amount", Value: "1000"},
+			{Key: "to", Value: newPairAddr},
+			{Key: "_contract_address", Value: newLpAddr},
+			{Key: "action", Value: "mint"},
+			{Key: "amount", Value: "9999999999999999000"},
+			{Key: "to", Value: txSender},
+		},
+	}}
+
+	txs, err := app.ParseTxs(parser.RawTx{Sender: txSender, Hash: txHash, LogResults: logs}, height)
+
+	require.NoError(t, err)
+	require.Len(t, txs, 3)
+	assert.Contains(t, txs, dex.ParsedTx{
+		Hash:         txHash,
+		Type:         dex.CreatePair,
+		Sender:       txSender,
+		ContractAddr: newPairAddr,
+		LpAddr:       newLpAddr,
+		Assets:       [2]dex.Asset{{Addr: newAsset0}, {Addr: newAsset1}},
+	})
+	assert.Contains(t, txs, dex.ParsedTx{
+		Hash:         txHash,
+		Type:         dex.Provide,
+		Sender:       txSender,
+		ContractAddr: newPairAddr,
+		Assets:       [2]dex.Asset{{Addr: newAsset0, Amount: "10000000000000000000"}, {Addr: newAsset1, Amount: "10000000000000000000"}},
+		LpAddr:       newLpAddr,
+		LpAmount:     "9999999999999999000",
+		Meta: map[string]interface{}{
+			"refund_assets": []dex.Asset{{Addr: newAsset0, Amount: "0"}, {Addr: newAsset1, Amount: "0"}},
+		},
+	})
+	assert.Contains(t, txs, dex.ParsedTx{
+		Hash:         txHash,
+		Type:         dex.InitialProvide,
+		Sender:       txSender,
+		ContractAddr: newPairAddr,
+		LpAddr:       newLpAddr,
+		LpAmount:     "1000",
+	})
+}
+
 func Test_ParseTxs_PartialQuarantineKeepsParsedTxsFromSameRawLog(t *testing.T) {
 	pairActionParser := parseFunc{parse: func(eventlog.LogResults, parser.Overrider[dex.ParsedTx], ...interface{}) ([]*dex.ParsedTx, error) {
 		return []*dex.ParsedTx{{

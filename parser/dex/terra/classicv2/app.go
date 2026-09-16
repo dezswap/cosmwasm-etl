@@ -77,6 +77,11 @@ func (p *appImpl) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx, erro
 		ctx.Sender = tx.Sender
 		txDtos = append(txDtos, *ctx)
 	}
+	if len(createPairTxs) > 0 {
+		if err := p.updatePairScopedParsers(); err != nil {
+			return nil, errors.Wrapf(err, "classicv2.ParseTxs refresh_pair_parsers tx_hash=%s", tx.Hash)
+		}
+	}
 
 	pairTxs := []*dex.ParsedTx{}
 	wasmTxs := []*dex.ParsedTx{}
@@ -323,24 +328,11 @@ func (p *appImpl) IsValidationExceptionCandidate(contractAddress string) bool {
 }
 
 func (p *appImpl) UpdateParsers(tokenExceptions map[string]bool, height uint64) error {
-	pairFilter := make(map[string]bool)
-	for k := range p.pairs {
-		pairFilter[k] = true
+	if err := p.updatePairScopedParsers(); err != nil {
+		return err
 	}
 
-	pairFinder, err := dexterra.CreatePairCommonRulesFinder(pairFilter)
-	if err != nil {
-		return errors.Wrap(err, "updateParsers")
-	}
-	p.Parsers.PairActionParser = parser.NewParser(pairFinder, &pairMapper{pairSet: p.pairs})
-
-	initialProvideFinder, err := pdex.CreatePairInitialProvideRuleFinder(pairFilter)
-	if err != nil {
-		return errors.Wrap(err, "updateParsers")
-	}
-	p.Parsers.InitialProvide = parser.NewParser(initialProvideFinder, dex.NewInitialProvideMapper())
-
-	wasmTransferFinder, err := dexterra.CreateWasmCommonTransferRuleFinder(pairFilter)
+	wasmTransferFinder, err := dexterra.CreateWasmCommonTransferRuleFinder()
 	if err != nil {
 		return errors.Wrap(err, "updateParsers")
 	}
@@ -368,6 +360,29 @@ func (p *appImpl) UpdateParsers(tokenExceptions map[string]bool, height uint64) 
 		}
 		p.Parsers.BurnParser = parser.NewParser(burnRule, dex.NewBurnMapper())
 	}
+
+	return nil
+}
+
+// pair filters are built from a snapshot of p.pairs, so they must be rebuilt
+// whenever a pair is created mid-height.
+func (p *appImpl) updatePairScopedParsers() error {
+	pairFilter := make(map[string]bool)
+	for k := range p.pairs {
+		pairFilter[k] = true
+	}
+
+	pairFinder, err := dexterra.CreatePairCommonRulesFinder(pairFilter)
+	if err != nil {
+		return errors.Wrap(err, "updatePairScopedParsers")
+	}
+	p.Parsers.PairActionParser = parser.NewParser(pairFinder, &pairMapper{pairSet: p.pairs})
+
+	initialProvideFinder, err := pdex.CreatePairInitialProvideRuleFinder(pairFilter)
+	if err != nil {
+		return errors.Wrap(err, "updatePairScopedParsers")
+	}
+	p.Parsers.InitialProvide = parser.NewParser(initialProvideFinder, dex.NewInitialProvideMapper())
 
 	return nil
 }

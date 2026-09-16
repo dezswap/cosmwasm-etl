@@ -62,6 +62,11 @@ func (p *appImpl) ParseTxs(tx parser.RawTx, height uint64) ([]p_dex.ParsedTx, er
 		ctx.Sender = tx.Sender
 		txDtos = append(txDtos, *ctx)
 	}
+	if len(createPairTxs) > 0 {
+		if err := p.updatePairScopedParsers(); err != nil {
+			return nil, errors.Wrapf(err, "classicv1.ParseTxs refresh_pair_parsers tx_hash=%s", tx.Hash)
+		}
+	}
 
 	pairTxs := []*p_dex.ParsedTx{}
 	wasmTxs := []*p_dex.ParsedTx{}
@@ -117,18 +122,11 @@ func (p *appImpl) IsValidationExceptionCandidate(contractAddress string) bool {
 }
 
 func (p *appImpl) UpdateParsers(tokenExceptions map[string]bool, height uint64) error {
-	pairFilter := make(map[string]bool)
-	for k := range p.pairs {
-		pairFilter[k] = true
+	if err := p.updatePairScopedParsers(); err != nil {
+		return err
 	}
 
-	pairFinder, err := classicv1.CreatePairCommonRulesFinder(pairFilter)
-	if err != nil {
-		return errors.Wrap(err, "createParsers")
-	}
-	p.Parsers.PairActionParser = parser.NewParser[p_dex.ParsedTx](pairFinder, &pairMapper{pairSet: p.pairs})
-
-	wasmTransferFinder, err := classicv1.CreateWasmCommonTransferRuleFinder(pairFilter)
+	wasmTransferFinder, err := classicv1.CreateWasmCommonTransferRuleFinder()
 	if err != nil {
 		return errors.Wrap(err, "createParsers")
 	}
@@ -147,5 +145,22 @@ func (p *appImpl) UpdateParsers(tokenExceptions map[string]bool, height uint64) 
 		return errors.Wrap(err, "createParsers")
 	}
 	p.Parsers.Transfer = parser.NewParser[p_dex.ParsedTx](transferRule, p_dex.NewTransferMapper(p.pairs))
+	return nil
+}
+
+// the pair filter is built from a snapshot of p.pairs, so it must be rebuilt
+// whenever a pair is created mid-height.
+func (p *appImpl) updatePairScopedParsers() error {
+	pairFilter := make(map[string]bool)
+	for k := range p.pairs {
+		pairFilter[k] = true
+	}
+
+	pairFinder, err := classicv1.CreatePairCommonRulesFinder(pairFilter)
+	if err != nil {
+		return errors.Wrap(err, "updatePairScopedParsers")
+	}
+	p.Parsers.PairActionParser = parser.NewParser(pairFinder, &pairMapper{pairSet: p.pairs})
+
 	return nil
 }
