@@ -633,10 +633,18 @@ type routerSrcRepoStub struct {
 	unrouted    bool
 	err         error
 	statusCalls int
+
+	hidden             []string
+	hiddenErr          error
+	hiddenBeforeStatus bool
+	syncErr            error
+	syncCalls          int
+	hiddenCalls        int
 }
 
 func (r *routerSrcRepoStub) PairStatus(context.Context) (int, bool, error) {
 	r.statusCalls++
+	r.hiddenBeforeStatus = r.hiddenCalls > 0
 	if r.err != nil {
 		return 0, false, r.err
 	}
@@ -646,6 +654,20 @@ func (r *routerSrcRepoStub) PairStatus(context.Context) (int, bool, error) {
 
 func (r *routerSrcRepoStub) Pairs(context.Context) ([]router.Pair, error) {
 	return r.pairs, nil
+}
+
+func (r *routerSrcRepoStub) HiddenTokens(context.Context) ([]string, error) {
+	r.hiddenCalls++
+	if r.hiddenErr != nil {
+		return nil, r.hiddenErr
+	}
+
+	return append([]string(nil), r.hidden...), nil
+}
+
+func (r *routerSrcRepoStub) SyncHiddenRoutes(context.Context) error {
+	r.syncCalls++
+	return r.syncErr
 }
 
 func (*routerSrcRepoStub) UpdateRoutes(context.Context, map[int]string, map[int]map[int][][]int) error {
@@ -887,6 +909,141 @@ func TestRouterTaskReadsHeightBeforePairStatus(t *testing.T) {
 
 	require.ErrorIs(t, task.Execute(context.Background(), time.Time{}, time.Time{}), expectedErr)
 	require.Zero(t, db.statusCalls, "the height must be read before the pair set")
+	require.Zero(t, rt.updates)
+}
+
+// Nothing else touches those routes: Pairs stops yielding the pair, and hiding shrinks
+// the pair count instead of growing it, so no rebuild is triggered either.
+func TestRouterTaskSyncsRoutesWhenTheHiddenListMoves(t *testing.T) {
+	db := &routerSrcRepoStub{pairs: []router.Pair{
+		{Contract: "pair0", AssetInfos: []string{"uusd", "uluna"}},
+	}}
+	rt := &routerStub{}
+	task := newRouterTaskWithHeightForTest(db, rt, &repoMock{syncedHeight: 100})
+
+	// a previous process may have left rows either way
+	require.NoError(t, task.Execute(context.Background(), time.Time{}, time.Time{}))
+	require.Equal(t, 1, db.syncCalls)
+
+	require.NoError(t, task.Execute(context.Background(), time.Time{}, time.Time{}))
+	require.Equal(t, 1, db.syncCalls)
+
+	db.hidden = []string{"token0"}
+	require.NoError(t, task.Execute(context.Background(), time.Time{}, time.Time{}))
+	require.Equal(t, 2, db.syncCalls)
+
+	db.hidden = nil
+	require.NoError(t, task.Execute(context.Background(), time.Time{}, time.Time{}))
+	require.Equal(t, 3, db.syncCalls, "restoring the routes is this task's job too")
+}
+
+// A token hidden between the two reads would leave a stale count, which the pairCnt reset
+// then freezes as the high-water mark.
+func TestRouterTaskSyncsHiddenRoutesBeforePairStatus(t *testing.T) {
+	db := &routerSrcRepoStub{
+		pairs:  []router.Pair{{Contract: "pair0", AssetInfos: []string{"uusd", "uluna"}}},
+		hidden: []string{"token0"},
+	}
+	rt := &routerStub{}
+	task := newRouterTaskWithHeightForTest(db, rt, &repoMock{syncedHeight: 100})
+
+	require.NoError(t, task.Execute(context.Background(), time.Time{}, time.Time{}))
+
+	require.True(t, db.hiddenBeforeStatus)
+}
+
+// A token hidden while the aggregator was down leaves routes nobody else will retire.
+func TestRouterTaskSyncsHiddenRoutesOnTheFirstRound(t *testing.T) {
+	db := &routerSrcRepoStub{
+		pairs:  []router.Pair{{Contract: "pair0", AssetInfos: []string{"uusd", "uluna"}}},
+		hidden: []string{"token0"},
+	}
+	rt := &routerStub{}
+	task := newRouterTaskWithHeightForTest(db, rt, &repoMock{syncedHeight: 100})
+
+	require.NoError(t, task.Execute(context.Background(), time.Time{}, time.Time{}))
+
+	require.Equal(t, 1, db.syncCalls)
+}
+
+// A failed sync must not be recorded as applied, or the retry never comes.
+func TestRouterTaskRetriesHiddenRouteSyncAfterFailure(t *testing.T) {
+	expectedErr := errors.New("sync failed")
+	db := &routerSrcRepoStub{
+		pairs:   []router.Pair{{Contract: "pair0", AssetInfos: []string{"uusd", "uluna"}}},
+		hidden:  []string{"token0"},
+		syncErr: expectedErr,
+	}
+	rt := &routerStub{}
+	task := newRouterTaskWithHeightForTest(db, rt, &repoMock{syncedHeight: 100})
+
+	require.ErrorIs(t, task.Execute(context.Background(), time.Time{}, time.Time{}), expectedErr)
+	require.Zero(t, task.LastProcessedHeight(), "a round that could not sync covers nothing")
+
+	db.syncErr = nil
+	require.NoError(t, task.Execute(context.Background(), time.Time{}, time.Time{}))
+	require.Equal(t, 2, db.syncCalls)
+}
+
+// pairCnt is a high-water mark and hiding shrinks the pair set, so without a reset a
+// later pair never pushes the count past the old mark.
+func TestRouterTaskRebuildsForAPairAddedAfterATokenWasHidden(t *testing.T) {
+	db := &routerSrcRepoStub{pairs: []router.Pair{
+		{Contract: "pair0", AssetInfos: []string{"uusd", "uluna"}},
+		{Contract: "pair1", AssetInfos: []string{"uluna", "token0"}},
+	}}
+	rt := &routerStub{}
+	task := newRouterTaskWithHeightForTest(db, rt, &repoMock{syncedHeight: 100})
+
+	require.NoError(t, task.Execute(context.Background(), time.Time{}, time.Time{}))
+	require.Zero(t, rt.updates, "the route table already covers both pairs")
+
+	db.hidden = []string{"token0"}
+	db.pairs = db.pairs[:1]
+	require.NoError(t, task.Execute(context.Background(), time.Time{}, time.Time{}))
+	require.Zero(t, rt.updates)
+
+	db.pairs = append(db.pairs, router.Pair{Contract: "pair2", AssetInfos: []string{"uusd", "ukrw"}})
+	require.NoError(t, task.Execute(context.Background(), time.Time{}, time.Time{}))
+
+	require.Equal(t, 1, rt.updates, "a pair added after the hiding must still rebuild")
+}
+
+// The pair count only returns to what it was, so nothing else would rebuild the pairs
+// whose routes were retired.
+func TestRouterTaskRebuildsWhenAHiddenTokenIsRestored(t *testing.T) {
+	db := &routerSrcRepoStub{pairs: []router.Pair{
+		{Contract: "pair0", AssetInfos: []string{"uusd", "uluna"}},
+		{Contract: "pair1", AssetInfos: []string{"uluna", "token0"}},
+	}}
+	rt := &routerStub{}
+	task := newRouterTaskWithHeightForTest(db, rt, &repoMock{syncedHeight: 100})
+
+	require.NoError(t, task.Execute(context.Background(), time.Time{}, time.Time{}))
+
+	db.hidden = []string{"token0"}
+	db.pairs = db.pairs[:1]
+	require.NoError(t, task.Execute(context.Background(), time.Time{}, time.Time{}))
+	require.Zero(t, rt.updates)
+
+	db.hidden = nil
+	db.pairs = append(db.pairs, router.Pair{Contract: "pair1", AssetInfos: []string{"uluna", "token0"}})
+	db.unrouted = true
+	require.NoError(t, task.Execute(context.Background(), time.Time{}, time.Time{}))
+
+	require.Equal(t, 1, rt.updates, "the restored pair has no route row left")
+}
+
+func TestRouterTaskReturnsHiddenTokensError(t *testing.T) {
+	expectedErr := errors.New("hidden tokens query failed")
+	db := &routerSrcRepoStub{
+		pairs:     []router.Pair{{Contract: "pair0", AssetInfos: []string{"uusd", "uluna"}}},
+		hiddenErr: expectedErr,
+	}
+	rt := &routerStub{}
+	task := newRouterTaskWithHeightForTest(db, rt, &repoMock{syncedHeight: 100})
+
+	require.ErrorIs(t, task.Execute(context.Background(), time.Time{}, time.Time{}), expectedErr)
 	require.Zero(t, rt.updates)
 }
 

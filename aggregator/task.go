@@ -3,6 +3,7 @@ package aggregator
 import (
 	"context"
 	"math"
+	"slices"
 	"strconv"
 	"sync/atomic"
 	"time"
@@ -78,6 +79,10 @@ type routerTask struct {
 	srcDb   parser.ReadRepository
 	db      router.SrcRepo
 	pairCnt int
+
+	// hiddenLoaded separates "no token is hidden" from "never looked"
+	hiddenTokens []string
+	hiddenLoaded bool
 
 	reportedMissingRoutes bool
 }
@@ -266,9 +271,22 @@ func (t *routerTask) Execute(ctx context.Context, _ time.Time, _ time.Time) erro
 		return err
 	}
 
+	// Before PairStatus, whose count leaves out hidden pairs: a stale count would be
+	// frozen as the high-water mark below, and no later pair could push past it.
+	hiddenChanged, err := t.syncHiddenRoutes(ctx)
+	if err != nil {
+		return err
+	}
+
 	pairCount, unrouted, err := t.db.PairStatus(ctx)
 	if err != nil {
 		return err
+	}
+
+	// pairCnt is a high-water mark and hiding shrinks the pair set, so leaving it would
+	// stop every later rebuild. Zero makes the block below decide again.
+	if hiddenChanged {
+		t.pairCnt = 0
 	}
 
 	// pairCnt starts at 0, so without this a restart rebuilds a route table that is
@@ -301,6 +319,29 @@ func (t *routerTask) Execute(ctx context.Context, _ time.Time, _ time.Time) erro
 	t.advanceHeight(syncedHeight)
 
 	return nil
+}
+
+// syncHiddenRoutes retires the routes reaching a hidden token and restores them once it
+// is visible again; a rebuild does neither, since Pairs stops yielding a hidden pair. It
+// scans the chain's routes, hence only on a change, which includes the first round.
+func (t *routerTask) syncHiddenRoutes(ctx context.Context) (bool, error) {
+	hidden, err := t.db.HiddenTokens(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	if t.hiddenLoaded && slices.Equal(t.hiddenTokens, hidden) {
+		return false, nil
+	}
+
+	if err := t.db.SyncHiddenRoutes(ctx); err != nil {
+		return false, err
+	}
+
+	t.hiddenTokens = hidden
+	t.hiddenLoaded = true
+
+	return true, nil
 }
 
 func newPriceTask(ctx context.Context, config configs.AggregatorConfig, destRepo repo.Repo, priceRepo price.SrcRepo, logger logging.Logger, parentTasks []task) (task, error) {

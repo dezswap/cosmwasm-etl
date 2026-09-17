@@ -1,0 +1,6 @@
+DROP INDEX CONCURRENTLY IF EXISTS route_chain_id_deleted_at_idx;
+
+BEGIN;
+ALTER TABLE route DROP COLUMN IF EXISTS deleted_at;
+
+COMMIT;

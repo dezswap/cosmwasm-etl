@@ -24,8 +24,8 @@ func (SyncedHeight) TableName() string {
 func (PairValidationException) TableName() string {
 	return "pair_validation_exception"
 }
-func (TokenParseException) TableName() string {
-	return "token_parse_exception"
+func (TokenException) TableName() string {
+	return "token_exception"
 }
 func (ParseQuarantine) TableName() string {
 	return "parse_quarantine"

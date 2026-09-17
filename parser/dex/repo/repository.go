@@ -169,8 +169,8 @@ func (r *repoImpl) ParsedPoolsInfo(from, to uint64) ([]dex.PoolInfo, error) {
 
 // GetTokenExceptions implements dex.PairRepo.
 func (r *repoImpl) GetTokenExceptions() (map[string]bool, error) {
-	var rows []schemas.TokenParseException
-	result := r.db.Where("chain_id = ?", r.chainId).Find(&rows)
+	var rows []schemas.TokenException
+	result := r.db.Where("chain_id = ? AND skip_parse", r.chainId).Find(&rows)
 	if result.Error != nil {
 		return nil, errors.Wrap(result.Error, "repo.GetTokenExceptions")
 	}

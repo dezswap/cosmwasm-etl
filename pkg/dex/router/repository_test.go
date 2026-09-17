@@ -189,3 +189,85 @@ func TestPairStatus_DBError(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "repo.PairStatus")
 }
+
+// Otherwise every route through that token is rebuilt right after it was retired.
+func TestPairsExcludesHiddenTokens(t *testing.T) {
+	gormDB, mock := setupMockDB(t)
+	repo := &srcRepoImpl{db: gormDB, chainId: "test-chain"}
+
+	mock.ExpectQuery(regexp.QuoteMeta(`token_exception`)).
+		WillReturnRows(sqlmock.NewRows([]string{"chain_id", "contract", "asset0", "asset1"}).
+			AddRow("test-chain", "pair0", "asset0", "asset1"))
+
+	pairs, err := repo.Pairs(context.Background())
+
+	require.NoError(t, err)
+	require.Len(t, pairs, 1)
+	assert.Equal(t, []string{"asset0", "asset1"}, pairs[0].AssetInfos)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// Hidden pairs get no route row by design, so counting them would report the table as
+// permanently unrouted: a warning every round, and no restart shortcut.
+func TestPairStatusExcludesHiddenTokens(t *testing.T) {
+	gormDB, mock := setupMockDB(t)
+	repo := &srcRepoImpl{db: gormDB, chainId: "test-chain"}
+
+	mock.ExpectQuery(regexp.QuoteMeta(`token_exception`)).
+		WithArgs("test-chain").
+		WillReturnRows(sqlmock.NewRows([]string{"total", "unrouted"}).AddRow(2, false))
+
+	count, unrouted, err := repo.PairStatus(context.Background())
+
+	require.NoError(t, err)
+	assert.Equal(t, 2, count)
+	assert.False(t, unrouted)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestHiddenTokens(t *testing.T) {
+	gormDB, mock := setupMockDB(t)
+	repo := &srcRepoImpl{db: gormDB, chainId: "test-chain"}
+
+	mock.ExpectQuery(regexp.QuoteMeta(`"token_exception"`)).
+		WithArgs("test-chain").
+		WillReturnRows(sqlmock.NewRows([]string{"contract"}).AddRow("token0").AddRow("token1"))
+
+	tokens, err := repo.HiddenTokens(context.Background())
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"token0", "token1"}, tokens)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// Retiring and restoring belong to one transaction.
+func TestSyncHiddenRoutes(t *testing.T) {
+	gormDB, mock := setupMockDB(t)
+	repo := &srcRepoImpl{db: gormDB, chainId: "test-chain"}
+
+	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta(`set deleted_at = extract(epoch from now())`)).
+		WithArgs("test-chain").
+		WillReturnResult(sqlmock.NewResult(0, 3))
+	mock.ExpectExec(regexp.QuoteMeta(`set deleted_at = null`)).
+		WithArgs("test-chain").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	require.NoError(t, repo.SyncHiddenRoutes(context.Background()))
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestSyncHiddenRoutes_DBError(t *testing.T) {
+	gormDB, mock := setupMockDB(t)
+	repo := &srcRepoImpl{db: gormDB, chainId: "test-chain"}
+
+	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta(`update route`)).WillReturnError(errors.New("db error"))
+	mock.ExpectRollback()
+
+	err := repo.SyncHiddenRoutes(context.Background())
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "repo.SyncHiddenRoutes")
+}

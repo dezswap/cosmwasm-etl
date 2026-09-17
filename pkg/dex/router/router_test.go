@@ -36,6 +36,10 @@ func (r *srcRepoStub) PairStatus(context.Context) (int, bool, error) {
 	return len(r.pairs), true, nil
 }
 
+func (*srcRepoStub) HiddenTokens(context.Context) ([]string, error) { return nil, nil }
+
+func (*srcRepoStub) SyncHiddenRoutes(context.Context) error { return nil }
+
 func (r *srcRepoStub) UpdateRoutes(context.Context, map[int]string, map[int]map[int][][]int) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
