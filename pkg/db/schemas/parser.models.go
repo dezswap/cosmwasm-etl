@@ -63,9 +63,13 @@ type PairValidationException struct {
 	Contract string `json:"contract"`
 }
 
-type TokenParseException struct {
-	ChainId  string `json:"chainId"`
-	Contract string `json:"contract"`
+// TokenException carries two independent decisions: SkipParse drops the token's
+// transfers while parsing, Hidden keeps it out of routes and out of the API.
+type TokenException struct {
+	ChainId   string `json:"chainId"`
+	Contract  string `json:"contract"`
+	SkipParse bool   `json:"skipParse"`
+	Hidden    bool   `json:"hidden"`
 }
 
 type ParseQuarantine struct {

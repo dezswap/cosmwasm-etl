@@ -27,8 +27,8 @@ func (r *transactionRepo) WithinTx(_ context.Context, fn func(SrcRepo) error) er
 	return err
 }
 
-func (r *transactionRepo) LatestRouteUpdateTimestamp(context.Context) (float64, error) {
-	return 0, r.err
+func (r *transactionRepo) RouteRevision(context.Context) (RouteRevision, error) {
+	return RouteRevision{}, r.err
 }
 
 func TestRunUsesTransactionAndPreservesFailure(t *testing.T) {
@@ -45,14 +45,14 @@ func TestRunUsesTransactionAndPreservesFailure(t *testing.T) {
 
 type routeCachingRepo struct {
 	SrcRepo
-	routeUpdatedTs float64
-	routeCalls     int
+	revision   RouteRevision
+	routeCalls int
 }
 
 func (r *routeCachingRepo) WithinTx(_ context.Context, fn func(SrcRepo) error) error { return fn(r) }
 
-func (r *routeCachingRepo) LatestRouteUpdateTimestamp(context.Context) (float64, error) {
-	return r.routeUpdatedTs, nil
+func (r *routeCachingRepo) RouteRevision(context.Context) (RouteRevision, error) {
+	return r.revision, nil
 }
 
 func (r *routeCachingRepo) Route(context.Context, string) (map[string][][]string, error) {
@@ -65,16 +65,33 @@ func (r *routeCachingRepo) Txs(context.Context, uint64) ([]schemas.ParsedTx, err
 }
 
 func TestRunKeepsRouteCacheAcrossHeights(t *testing.T) {
-	repo := &routeCachingRepo{routeUpdatedTs: 100}
+	repo := &routeCachingRepo{revision: RouteRevision{UpdatedAt: 100}}
 	tracker := &priceImpl{repo: repo, priceToken: "uusd"}
 
 	require.NoError(t, tracker.Run(context.Background(), 1))
 	require.NoError(t, tracker.Run(context.Background(), 2))
 	require.Equal(t, 1, repo.routeCalls, "route table must not be reloaded while the router has published nothing newer")
 
-	repo.routeUpdatedTs = 200
+	repo.revision.UpdatedAt = 200
 	require.NoError(t, tracker.Run(context.Background(), 3))
 	require.Equal(t, 2, repo.routeCalls, "a newer router update must invalidate the cache")
+}
+
+// Retiring a route publishes nothing, so the timestamp alone would keep the cached
+// routes alive for the life of the process.
+func TestRunReloadsRoutesWhenHiddenTokensChange(t *testing.T) {
+	repo := &routeCachingRepo{revision: RouteRevision{UpdatedAt: 100}}
+	tracker := &priceImpl{repo: repo, priceToken: "uusd"}
+
+	require.NoError(t, tracker.Run(context.Background(), 1))
+	require.Equal(t, 1, repo.routeCalls)
+
+	repo.revision.HiddenDigest = "digest-after-hiding"
+	require.NoError(t, tracker.Run(context.Background(), 2))
+	require.Equal(t, 2, repo.routeCalls, "a hidden token must invalidate the cached routes")
+
+	require.NoError(t, tracker.Run(context.Background(), 3))
+	require.Equal(t, 2, repo.routeCalls, "an unchanged revision must not reload")
 }
 
 type skippingRepo struct {
@@ -85,7 +102,9 @@ type skippingRepo struct {
 
 func (r *skippingRepo) WithinTx(_ context.Context, fn func(SrcRepo) error) error { return fn(r) }
 
-func (r *skippingRepo) LatestRouteUpdateTimestamp(context.Context) (float64, error) { return 0, nil }
+func (r *skippingRepo) RouteRevision(context.Context) (RouteRevision, error) {
+	return RouteRevision{}, nil
+}
 
 func (r *skippingRepo) Route(context.Context, string) (map[string][][]string, error) {
 	return map[string][][]string{}, nil

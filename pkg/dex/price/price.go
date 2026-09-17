@@ -4,7 +4,6 @@ import (
 	"context"
 	"strconv"
 	"strings"
-	"time"
 
 	"cosmossdk.io/math"
 	"github.com/pkg/errors"
@@ -27,10 +26,12 @@ type priceImpl struct {
 	priceToken string
 	logger     logging.Logger
 
-	tokenDecimals               map[string]int64
-	priceRoutes                 map[string][][]string
-	latestRouteUpdatedTimestamp time.Time
-	skips                       map[string]*skipRecord
+	tokenDecimals map[string]int64
+	priceRoutes   map[string][][]string
+	// routeLoaded separates "nothing published yet" from "never looked"
+	routeRevision RouteRevision
+	routeLoaded   bool
+	skips         map[string]*skipRecord
 }
 
 // skipRecord is what became of one token the task could not price. count holds the
@@ -136,21 +137,25 @@ func (p *priceImpl) run(ctx context.Context, repo SrcRepo, height uint64) error 
 	return nil
 }
 
-// updatePriceRoute reloads the route table only when the router has published a
-// newer one.
+// updatePriceRoute reloads the route table only when the revision moved. Equality rather
+// than "newer": retiring a route publishes nothing, so the timestamp can stay put or even
+// go backwards while the routes change.
 func (p *priceImpl) updatePriceRoute(ctx context.Context, repo SrcRepo) error {
-	ts, err := repo.LatestRouteUpdateTimestamp(ctx)
+	revision, err := repo.RouteRevision(ctx)
 	if err != nil {
 		return err
 	}
-	lruts := util.ToTime(ts)
-	if lruts.After(p.latestRouteUpdatedTimestamp) {
-		p.priceRoutes, err = repo.Route(ctx, p.priceToken)
-		if err != nil {
-			return err
-		}
-		p.latestRouteUpdatedTimestamp = lruts
+
+	if p.routeLoaded && revision == p.routeRevision {
+		return nil
 	}
+
+	p.priceRoutes, err = repo.Route(ctx, p.priceToken)
+	if err != nil {
+		return err
+	}
+	p.routeRevision = revision
+	p.routeLoaded = true
 
 	return nil
 }

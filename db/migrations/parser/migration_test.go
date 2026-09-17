@@ -13,6 +13,7 @@ import (
 	"github.com/dezswap/cosmwasm-etl/pkg/faker"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
 
@@ -83,6 +84,39 @@ func Test_ParserMigration(t *testing.T) {
 	assert.Len(actualPoolInfos, len(poolInfos))
 	assert.Len(actualSyncedHeights, len(syncedHeights))
 
+}
+
+// The two flags are independent, and the parser reads only the skip_parse rows.
+func Test_TokenException(t *testing.T) {
+	c := configs.NewWithFileName("config.test")
+	assertLocalTestDB(t, c.Rdb)
+
+	dbCon, err := db.OpenGormPostgres(c.Rdb)
+	require.NoError(t, err)
+
+	tx := dbCon.Begin()
+	require.NoError(t, tx.Error)
+	defer tx.Rollback()
+
+	const chainId = "token-exception-chain"
+	rows := []schemas.TokenException{
+		{ChainId: chainId, Contract: "hidden-only", SkipParse: false, Hidden: true},
+		{ChainId: chainId, Contract: "parse-only", SkipParse: true, Hidden: false},
+	}
+	require.NoError(t, tx.Create(&rows).Error)
+
+	actual := []schemas.TokenException{}
+	require.NoError(t, tx.Where("chain_id = ?", chainId).Order("contract").Find(&actual).Error)
+	require.Len(t, actual, 2)
+	assert.True(t, actual[0].Hidden)
+	assert.False(t, actual[0].SkipParse)
+	assert.False(t, actual[1].Hidden)
+	assert.True(t, actual[1].SkipParse)
+
+	parsed := []string{}
+	require.NoError(t, tx.Model(&schemas.TokenException{}).Where(
+		"chain_id = ? and skip_parse", chainId).Pluck("contract", &parsed).Error)
+	assert.Equal(t, []string{"parse-only"}, parsed)
 }
 
 type Batchable interface {

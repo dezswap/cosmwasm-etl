@@ -39,6 +39,9 @@ type Route struct {
 	Asset1   string         `json:"asset1"`
 	HopCount int            `json:"hopCount"`
 	Route    pq.StringArray `gorm:"type:varchar[]" json:"route"`
+	// DeletedAt retires a route reaching a hidden token. Rows stay because price rows
+	// point at them by id, so readers must skip retired ones.
+	DeletedAt *float64 `json:"deletedAt"`
 }
 
 type ParsedTxWithPrice struct {

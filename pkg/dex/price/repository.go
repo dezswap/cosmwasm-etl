@@ -2,6 +2,7 @@ package price
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/pkg/db"
@@ -20,7 +21,7 @@ type SrcRepo interface {
 	NextHeight(ctx context.Context, minHeight uint64) (int64, error)
 	Txs(ctx context.Context, height uint64) ([]schemas.ParsedTx, error)
 	Decimals(ctx context.Context, asset string) (int64, error)
-	LatestRouteUpdateTimestamp(ctx context.Context) (float64, error)
+	RouteRevision(ctx context.Context) (RouteRevision, error)
 	Route(ctx context.Context, endToken string) (map[string][][]string, error)
 	Liquidity(ctx context.Context, height uint64, token string, priceToken string) (string, string, error)
 	UpdateDirectPrice(ctx context.Context, height uint64, txId uint64, token string, price string, priceToken string, isReverse bool) error
@@ -92,8 +93,21 @@ select coalesce(max(height), 0) from parsed_tx where chain_id = ?
 	return height, nil
 }
 
+// hiddenAssetFilter drops parsed txs holding a hidden token. The cursor and the read of a
+// height have to agree on it.
+func hiddenAssetFilter(txAlias string) string {
+	return fmt.Sprintf(`not exists (
+	select 1
+	from token_exception te
+	where te.chain_id = %[1]s.chain_id
+		and te.hidden
+		and (te.contract = %[1]s.asset0 or te.contract = %[1]s.asset1))`, txAlias)
+}
+
+// NextHeight advances past max(price.height), so a height whose swaps are all hidden
+// writes nothing and would be handed back on every later round.
 func (r *srcRepoImpl) NextHeight(ctx context.Context, minHeight uint64) (int64, error) {
-	query := `
+	query := fmt.Sprintf(`
 select coalesce(min(pt.height), ?)
 from parsed_tx pt
 	left join ( -- include first provision
@@ -105,7 +119,8 @@ where pt.chain_id = ?
 	and (pt.type = 'swap' or t.height is not null)
 	and pt.height > (select coalesce(max(height), 0) from price where chain_id = ?)
 	and pt.height > ?
-`
+	and %s
+`, hiddenAssetFilter("pt"))
 	height := NaValue
 	tx := r.conn(ctx).Raw(query, NaValue, r.chainId, r.chainId, r.chainId, minHeight).Find(&height)
 	if tx.Error != nil {
@@ -115,6 +130,8 @@ where pt.chain_id = ?
 	return height, nil
 }
 
+// Txs leaves out swaps holding a hidden token. Retiring their routes is not enough: a
+// pool the token shares with the price token is priced directly, without any route.
 func (r *srcRepoImpl) Txs(ctx context.Context, height uint64) ([]schemas.ParsedTx, error) {
 	var res []schemas.ParsedTx
 	tx := r.conn(ctx).Model(
@@ -122,7 +139,7 @@ func (r *srcRepoImpl) Txs(ctx context.Context, height uint64) ([]schemas.ParsedT
 		"left join (select contract, min(height) height from parsed_tx where type = 'provide' and chain_id = ? group by contract) t "+ // include first provision
 			"on parsed_tx.contract = t.contract and parsed_tx.height = t.height and parsed_tx.type = 'provide'", r.chainId).Where(
 		"parsed_tx.chain_id = ? and parsed_tx.height = ? and (type = 'swap' or t.height is not null)",
-		r.chainId, height).Order("parsed_tx.id asc").Find(&res)
+		r.chainId, height).Where(hiddenAssetFilter("parsed_tx")).Order("parsed_tx.id asc").Find(&res)
 	if tx.Error != nil {
 		return nil, errors.Wrap(tx.Error, "srcRepoImpl.Txs")
 	}
@@ -147,20 +164,42 @@ func (r *srcRepoImpl) Decimals(ctx context.Context, asset string) (int64, error)
 	return res, nil
 }
 
-func (r *srcRepoImpl) LatestRouteUpdateTimestamp(ctx context.Context) (float64, error) {
-	var ts float64
-	// max, not min: routes are inserted with ON CONFLICT DO NOTHING, so only the
-	// newest row says whether the router has published anything since the last reload
-	if tx := r.conn(ctx).Model(schemas.Route{}).Where(
-		"chain_id = ?", r.chainId).Select(
-		"coalesce(max(created_at), 0)").Find(&ts); tx.Error != nil {
-		return 0, errors.Wrap(tx.Error, "srcRepoImpl.LatestRouteUpdateTimestamp")
+// RouteRevision identifies the route set a caller holds. One query reads both parts,
+// because it runs once per height.
+type RouteRevision struct {
+	// Max, not min: routes are inserted with ON CONFLICT DO NOTHING, so only the newest
+	// row says whether the router has published anything since the last reload.
+	UpdatedAt float64
+	// Retiring a route leaves UpdatedAt where it was, hence the second part. Digested
+	// from the rows because the table is edited by hand: an updated_at column there would
+	// need a trigger to be trustworthy.
+	HiddenDigest string
+}
+
+func (r *srcRepoImpl) RouteRevision(ctx context.Context) (RouteRevision, error) {
+	query := `
+select
+	coalesce((select max(created_at) from route where chain_id = ?), 0) as updated_at,
+	coalesce((select md5(string_agg(contract, ',' order by contract))
+		from token_exception where chain_id = ? and hidden), '') as hidden_digest
+`
+	var res RouteRevision
+	if tx := r.conn(ctx).Raw(query, r.chainId, r.chainId).Find(&res); tx.Error != nil {
+		return RouteRevision{}, errors.Wrap(tx.Error, "srcRepoImpl.RouteRevision")
 	}
 
-	return ts, nil
+	return res, nil
 }
 
 func (r *srcRepoImpl) Route(ctx context.Context, endToken string) (map[string][][]string, error) {
+	// covers the window between a token being hidden and the router retiring its rows
+	hiddenRouteFilter := `not exists (
+	select 1
+	from token_exception te
+	where te.chain_id = route.chain_id
+		and te.hidden
+		and (te.contract = route.asset0 or te.contract = route.asset1 or te.contract = any(route.route)))`
+
 	type result struct {
 		Asset0 string
 		Route  pq.StringArray `gorm:"column:route;type:text[]"`
@@ -168,7 +207,8 @@ func (r *srcRepoImpl) Route(ctx context.Context, endToken string) (map[string][]
 	var res []result
 	tx := r.conn(ctx).Model(schemas.Route{}).Select(
 		"asset0, route").Where(
-		"chain_id = ? and asset1 = ?", r.chainId, endToken).Order(
+		"chain_id = ? and asset1 = ? and deleted_at is null", r.chainId, endToken).Where(
+		hiddenRouteFilter).Order(
 		"hop_count asc").Find( // hop_count ordering is essential for routes comparison, refer to priceImpl.selectRoute(...)
 		&res)
 	if tx.Error != nil {
@@ -228,7 +268,7 @@ func (r *srcRepoImpl) UpdateDirectPrice(ctx context.Context, height uint64, txId
 			"tokens.id token_id, tr.token_id price_token_id, tr.route_id").Joins(
 			"join (select t.id token_id, t.chain_id, r.asset1, r.id route_id "+
 				"from tokens t join route r on t.chain_id = r.chain_id and t.address = r.asset0 "+
-				"where t.chain_id = ? and t.address = ? and r.hop_count = 0) tr "+
+				"where t.chain_id = ? and t.address = ? and r.hop_count = 0 and r.deleted_at is null) tr "+
 				"on tr.chain_id = tokens.chain_id and tr.asset1 = tokens.address", r.chainId, priceToken).Where(
 			"tokens.address = ?", token).Find(&res)
 	} else {
@@ -237,7 +277,7 @@ func (r *srcRepoImpl) UpdateDirectPrice(ctx context.Context, height uint64, txId
 			"tr.token_id, tokens.id price_token_id, tr.route_id").Joins(
 			"join (select t.id token_id, t.chain_id, r.asset1, r.id route_id "+
 				"from tokens t join route r on t.chain_id = r.chain_id and t.address = r.asset0 "+
-				"where t.chain_id = ? and t.address = ? and r.hop_count = 0) tr "+
+				"where t.chain_id = ? and t.address = ? and r.hop_count = 0 and r.deleted_at is null) tr "+
 				"on tr.chain_id = tokens.chain_id and tr.asset1 = tokens.address", r.chainId, token).Where(
 			"tokens.address = ?", priceToken).Find(&res)
 	}
@@ -280,7 +320,7 @@ func (r *srcRepoImpl) UpdateRoutePrice(ctx context.Context, height uint64, txId 
 		"tr.token_id, tokens.id price_token_id, tr.route_id").Joins(
 		"join (select t.id token_id, t.chain_id, r.asset1, r.id route_id "+
 			"from tokens t join route r on t.chain_id = r.chain_id and t.address = r.asset0 "+
-			"where t.chain_id = ? and t.address = ? and r.route = ?) tr "+
+			"where t.chain_id = ? and t.address = ? and r.route = ? and r.deleted_at is null) tr "+
 			"on tr.chain_id = tokens.chain_id and tr.asset1 = tokens.address", r.chainId, token, pq.StringArray(route)).Where(
 		"tokens.address = ?", priceToken).Find(&res)
 
