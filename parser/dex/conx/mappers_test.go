@@ -163,7 +163,7 @@ func Test_TransferMapper(t *testing.T) {
 
 		tx, err := tc.mapper.MatchedToParsedTx(tc.matchedResults)
 		if tc.errMsg != "" {
-			assert.Error(err, errMsg, tc.errMsg)
+			assert.Error(err, "%s: %s", errMsg, tc.errMsg)
 		}
 		assert.Equal(tc.expectedTx, tx, errMsg)
 	}
@@ -242,7 +242,7 @@ func Test_CreatePairMapper(t *testing.T) {
 
 		tx, err := tc.mapper.MatchedToParsedTx(tc.matchedResults)
 		if tc.errMsg != "" {
-			assert.Error(err, errMsg, tc.errMsg)
+			assert.Error(err, "%s: %s", errMsg, tc.errMsg)
 		}
 		assert.Equal(tc.expectedTx, tx, errMsg)
 	}
@@ -404,7 +404,7 @@ func Test_PairMapper(t *testing.T) {
 
 		tx, err := tc.mapper.MatchedToParsedTx(tc.matchedResults)
 		if tc.errMsg != "" {
-			assert.Error(err, errMsg, tc.errMsg)
+			assert.Error(err, "%s: %s", errMsg, tc.errMsg)
 		} else {
 			assert.NoError(err, err)
 			assert.Equal(tc.expectedTx, tx, errMsg)

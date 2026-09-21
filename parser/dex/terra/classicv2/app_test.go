@@ -112,13 +112,13 @@ func Test_parseTxs(t *testing.T) {
 
 		txs, err := app.ParseTxs(tx, uint64(height))
 		if tc.errMsg != "" {
-			assert.Error(err, msg, err)
+			assert.Error(err, msg)
 		} else {
 			expected := []dex.ParsedTx{}
 			for _, tx := range createTxs {
 				expected = append(expected, *tx)
 			}
-			assert.Equal(append(expected, tc.expected...), txs, msg, err)
+			assert.Equal(append(expected, tc.expected...), txs, "%s: err=%v", msg, err)
 		}
 	}
 }
