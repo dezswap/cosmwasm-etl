@@ -10,6 +10,7 @@ import (
 
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/parser"
+	pdex "github.com/dezswap/cosmwasm-etl/pkg/dex"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 	"github.com/pkg/errors"
@@ -33,6 +34,18 @@ func (*quarantineTargetApp) IsValidationExceptionCandidate(string) bool {
 
 func (*quarantineTargetApp) UpdateParsers(map[string]bool, uint64) error {
 	return nil
+}
+
+// expectNoInsert registers a permissive Insert expectation so that an unwanted call is
+// reported by AssertNumberOfCalls instead of panicking and aborting the whole package run.
+// AssertNotCalled cannot express this: its argument diff never matches a 6 argument call.
+func expectNoInsert(repo *RepoMock) {
+	repo.On("Insert", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+}
+
+// expectNoQuarantineResolve mirrors expectNoInsert for quarantine replay assertions.
+func expectNoQuarantineResolve(repo *RepoMock) {
+	repo.On("ResolveParseQuarantine", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 }
 
 // insert implements parser
@@ -247,6 +260,59 @@ func Test_Run_QuarantinesAmbiguousTransactionAndAdvancesHeight(t *testing.T) {
 	srcStore.AssertExpectations(t)
 }
 
+func Test_Run_QuarantinesEmptyEventValueTransactionAndAdvancesHeight(t *testing.T) {
+	emptyTx := parser.RawTx{Hash: "empty-value"}
+	normalTx := parser.RawTx{Hash: "normal"}
+	expectedTx := ParsedTx{
+		Hash:         normalTx.Hash,
+		Type:         Transfer,
+		Sender:       "sender",
+		ContractAddr: "pair",
+		Assets:       [2]Asset{{Addr: "asset0", Amount: "1"}, {Addr: "asset1", Amount: "0"}},
+	}
+
+	target := &quarantineTargetApp{parse: func(tx parser.RawTx, _ uint64) ([]ParsedTx, error) {
+		if tx.Hash == emptyTx.Hash {
+			return nil, errors.Wrapf(pdex.ErrEmptyEventValue, "conx.ParseTxs pair_action tx_hash=%s", tx.Hash)
+		}
+		return []ParsedTx{expectedTx}, nil
+	}}
+	repo := &RepoMock{}
+	srcStore := &RawStoreMock{}
+	app := &dexApp{
+		TargetApp:            target,
+		Repo:                 repo,
+		SourceDataStore:      srcStore,
+		logger:               logging.Discard,
+		poolSnapshotInterval: 100,
+		sameHeightTolerance:  3,
+		quarantineRetryMode:  configs.QuarantineRetryDisabled,
+	}
+
+	repo.On("GetTokenExceptions").Return(map[string]bool{}, nil)
+	repo.On("GetSyncedHeight").Return(uint64(0), nil)
+	srcStore.On("GetSourceSyncedHeight").Return(uint64(1), nil)
+	srcStore.On("GetSourceTxs", uint64(1)).Return(parser.RawTxs{emptyTx, normalTx}, nil)
+	expectedQuarantines := mock.MatchedBy(func(qs []ParseQuarantine) bool {
+		if len(qs) != 1 {
+			return false
+		}
+		q := qs[0]
+		return q.Height == 1 &&
+			q.Hash == emptyTx.Hash &&
+			q.Stage == "pair_action" &&
+			q.Contract == "" &&
+			q.Action == "" &&
+			q.Error != "" &&
+			q.RawTx.Hash == emptyTx.Hash
+	})
+	repo.On("Insert", uint64(0), uint64(1), []ParsedTx{expectedTx}, []PoolInfo{}, []Pair{}, expectedQuarantines).Return(nil)
+
+	require.NoError(t, app.Run())
+	repo.AssertExpectations(t)
+	srcStore.AssertExpectations(t)
+}
+
 func Test_Run_DoesNotQuarantineCreatePairTransaction(t *testing.T) {
 	tx := parser.RawTx{
 		Hash: "create-pair",
@@ -276,10 +342,47 @@ func Test_Run_DoesNotQuarantineCreatePairTransaction(t *testing.T) {
 	repo.On("GetSyncedHeight").Return(uint64(0), nil)
 	srcStore.On("GetSourceSyncedHeight").Return(uint64(1), nil)
 	srcStore.On("GetSourceTxs", uint64(1)).Return(parser.RawTxs{tx}, nil)
+	expectNoInsert(repo)
 
 	err := app.Run()
 	require.Error(t, err)
-	repo.AssertNotCalled(t, "Insert", mock.Anything)
+	repo.AssertNumberOfCalls(t, "Insert", 0)
+}
+
+func Test_Run_DoesNotQuarantineCreatePairTransactionOnEmptyEventValue(t *testing.T) {
+	tx := parser.RawTx{
+		Hash: "create-pair",
+		LogResults: eventlog.LogResults{{
+			Type: eventlog.WasmType,
+			Attributes: eventlog.Attributes{
+				{Key: "action", Value: string(CreatePair)},
+			},
+		}},
+	}
+	target := &quarantineTargetApp{parse: func(tx parser.RawTx, _ uint64) ([]ParsedTx, error) {
+		return nil, errors.Wrapf(pdex.ErrEmptyEventValue, "conx.ParseTxs create_pair tx_hash=%s", tx.Hash)
+	}}
+	repo := &RepoMock{}
+	srcStore := &RawStoreMock{}
+	app := &dexApp{
+		TargetApp:            target,
+		Repo:                 repo,
+		SourceDataStore:      srcStore,
+		logger:               logging.Discard,
+		poolSnapshotInterval: 100,
+		sameHeightTolerance:  3,
+		quarantineRetryMode:  configs.QuarantineRetryDisabled,
+	}
+
+	repo.On("GetTokenExceptions").Return(map[string]bool{}, nil)
+	repo.On("GetSyncedHeight").Return(uint64(0), nil)
+	srcStore.On("GetSourceSyncedHeight").Return(uint64(1), nil)
+	srcStore.On("GetSourceTxs", uint64(1)).Return(parser.RawTxs{tx}, nil)
+	expectNoInsert(repo)
+
+	err := app.Run()
+	require.Error(t, err)
+	repo.AssertNumberOfCalls(t, "Insert", 0)
 }
 
 func Test_Run_UpsertsPartialQuarantineAndInsertsParsedTxs(t *testing.T) {
@@ -440,9 +543,34 @@ func Test_retryPendingQuarantines_LeavesAmbiguousReplayPending(t *testing.T) {
 		Hash:   rawTx.Hash,
 		RawTx:  rawTx,
 	}}, nil)
+	expectNoQuarantineResolve(repo)
 
 	require.NoError(t, app.retryPendingQuarantines(map[string]bool{}))
-	repo.AssertNotCalled(t, "ResolveParseQuarantine", mock.Anything)
+	repo.AssertNumberOfCalls(t, "ResolveParseQuarantine", 0)
+}
+
+func Test_retryPendingQuarantines_LeavesEmptyEventValueReplayPending(t *testing.T) {
+	rawTx := parser.RawTx{Hash: "still-empty-value"}
+	target := &quarantineTargetApp{parse: func(tx parser.RawTx, _ uint64) ([]ParsedTx, error) {
+		return nil, errors.Wrapf(pdex.ErrEmptyEventValue, "conx.ParseTxs pair_action tx_hash=%s", tx.Hash)
+	}}
+	repo := &RepoMock{}
+	app := &dexApp{
+		TargetApp: target,
+		Repo:      repo,
+		logger:    logging.Discard,
+	}
+	repo.On("PendingParseQuarantines").Return([]ParseQuarantine{{
+		ID:     10,
+		Height: 13,
+		Hash:   rawTx.Hash,
+		Stage:  "pair_action",
+		RawTx:  rawTx,
+	}}, nil)
+	expectNoQuarantineResolve(repo)
+
+	require.NoError(t, app.retryPendingQuarantines(map[string]bool{}))
+	repo.AssertNumberOfCalls(t, "ResolveParseQuarantine", 0)
 }
 
 func Test_retryPendingQuarantines_SkipsPartialQuarantine(t *testing.T) {

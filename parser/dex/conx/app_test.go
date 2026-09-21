@@ -10,6 +10,7 @@ import (
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/parser/dex"
+	pdex "github.com/dezswap/cosmwasm-etl/pkg/dex"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 	"github.com/stretchr/testify/assert"
@@ -625,6 +626,63 @@ func Test_ParseTxs_SortsTransferAttributesWhenRandomOrder(t *testing.T) {
 	}}, txs)
 }
 
+func Test_ParseTxs_PartialQuarantinesTransferWithEmptyAmount(t *testing.T) {
+	const nativeAsset = "axpla"
+	nativePair := dex.Pair{
+		ContractAddr: pairAddr,
+		LpAddr:       lpAddr,
+		Assets:       []string{nativeAsset, asset2},
+	}
+
+	createPairParser := dex.ParserMock{}
+	repo := dex.RepoMock{}
+	rawStore := dex.RawStoreMock{}
+	createPairParser.On("parse", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return([]*dex.ParsedTx{}, nil)
+
+	inner := appImpl{
+		PairRepo:    &repo,
+		Parsers:     &dex.PairParsers{CreatePairParser: &createPairParser},
+		DexMixin:    dex.DexMixin{},
+		chainId:     chainId,
+		pairs:       map[string]dex.Pair{pairAddr: nativePair},
+		lpPairAddrs: map[string]string{lpAddr: pairAddr},
+	}
+	dexApp := dex.NewDexApp(&inner, &rawStore, &repo, logging.New("test", configs.LogConfig{}), configs.ParserDexConfig{})
+	app := dexApp.(dex.DexParserApp)
+
+	require.NoError(t, app.UpdateParsers(make(map[string]bool), 100))
+
+	var logs eventlog.LogResults
+	require.NoError(t, json.Unmarshal([]byte(emptyAmountTransferLogStr), &logs))
+	var pairLogs eventlog.LogResults
+	require.NoError(t, json.Unmarshal([]byte(randomOrderTransferLogStr), &pairLogs))
+
+	tx := parser.RawTx{Sender: txSender, Hash: txHash, LogResults: append(logs, pairLogs...)}
+	txs, err := app.ParseTxs(tx, 100)
+
+	var partial *dex.PartialParseQuarantineError
+	require.ErrorAs(t, err, &partial)
+	assert.Equal(t, "partial_transfer", partial.Quarantine.Stage)
+	assert.Equal(t, txHash, partial.Quarantine.Hash)
+	assert.True(t, errors.Is(err, pdex.ErrEmptyEventValue))
+
+	// the pair transfer in the same tx must survive the quarantined event
+	expected := []dex.ParsedTx{{
+		Hash:         txHash,
+		Type:         dex.Transfer,
+		Sender:       txSender,
+		ContractAddr: pairAddr,
+		Assets: [2]dex.Asset{
+			{Addr: nativeAsset, Amount: "1000"},
+			{Addr: asset2, Amount: ""},
+		},
+		Meta: map[string]interface{}{"recipient": pairAddr},
+	}}
+	assert.Equal(t, expected, txs)
+	assert.Equal(t, expected, partial.ParsedTxs)
+}
+
 var (
 	swapTx = dex.ParsedTx{
 		Hash: txHash, Timestamp: time.Time{},
@@ -654,6 +712,19 @@ var (
 		LpAddr: lpAddr, LpAmount: "1098669138945462355",
 	}
 )
+
+// emptyAmountTransferLogStr reproduces dimension_37-1 tx
+// 50857632488F2B1D63F85CAC0011CB0F3857124AB2C9FB76E7356783F9C31D57, an EVM tx whose IBC
+// output emits a transfer event with an empty amount. The transfer finder is unfiltered,
+// so it matches this non DEX event too.
+const emptyAmountTransferLogStr = `[
+	{"type":"transfer","attributes":[
+		{"key":"recipient","value":"xpla1a53udazy8ayufvy0s434pfwjcedzqv34gt6eqa"},
+		{"key":"sender","value":"xpla1rs3cw8c43mhggydwchvpmmmshzve7y62hsgazm"},
+		{"key":"amount","value":""},
+		{"key":"msg_index","value":"0"}
+	]}
+]`
 
 // randomOrderTransferLogStr has transfer event attributes in a random order (sender, amount, recipient)
 // to verify that SortAttributes normalises them before parsing.

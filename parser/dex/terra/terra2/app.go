@@ -116,7 +116,10 @@ func (p *appImpl) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx, erro
 		}
 		transfers, err := p.Parsers.Transfer.Parse(eventlog.LogResults{raw}, dex.ParsedTx{Hash: tx.Hash, Timestamp: tx.Timestamp}, tx.Sender)
 		if err != nil {
-			return nil, errors.Wrapf(err, "dexterra.ParseTxs transfer tx_hash=%s", tx.Hash)
+			wrapped := errors.Wrapf(err, "dexterra.ParseTxs transfer tx_hash=%s", tx.Hash)
+			if !partialQuarantine.Record("transfer", wrapped) {
+				return nil, wrapped
+			}
 		}
 		transferTxs = append(transferTxs, transfers...)
 
