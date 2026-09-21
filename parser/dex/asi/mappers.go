@@ -132,7 +132,7 @@ func (m *transferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals
 	if err := m.mixin.CheckResult(res, asi.TransferMatchedLen); err != nil {
 		// skip empty value result
 		// see. https://www.mintscan.io/fetchai/tx/C0B649ABBB5C04B8A01567C1E14635856E50CEA22B4A7BDA66F91D2CA8275BA2
-		if errors.As(err, &pdex.ErrEmptyEventValue) {
+		if errors.Is(err, pdex.ErrEmptyEventValue) {
 			return []*dex.ParsedTx{}, nil
 		}
 		return nil, errors.Wrap(err, "transferMapper.MatchedToParsedTx")

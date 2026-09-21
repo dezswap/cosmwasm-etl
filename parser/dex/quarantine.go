@@ -1,11 +1,9 @@
 package dex
 
 import (
-	"errors"
 	"strings"
 
 	"github.com/dezswap/cosmwasm-etl/parser"
-	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 )
 
 const (
@@ -48,36 +46,30 @@ func IsPartialQuarantineStage(stage string) bool {
 }
 
 type PartialQuarantineRecorder struct {
-	tx                 parser.RawTx
-	height             uint64
-	containsCreatePair bool
-	quarantine         *ParseQuarantine
-	err                error
+	tx         parser.RawTx
+	height     uint64
+	quarantine *ParseQuarantine
+	err        error
 }
 
 func NewPartialQuarantineRecorder(tx parser.RawTx, height uint64) PartialQuarantineRecorder {
 	return PartialQuarantineRecorder{
-		tx:                 tx,
-		height:             height,
-		containsCreatePair: RawTxContainsCreatePair(tx),
+		tx:     tx,
+		height: height,
 	}
 }
 
+// Record reports whether the stage failure can be quarantined, which lets the caller keep
+// the parsed txs the other stages produced. It shares newParseQuarantineFromError so both
+// quarantine paths classify a failure the same way.
 func (r *PartialQuarantineRecorder) Record(stage string, err error) bool {
-	var ambiguity *eventlog.AmbiguousEventError
-	if !errors.As(err, &ambiguity) || r.containsCreatePair {
+	quarantine, ok := newParseQuarantineFromError(r.tx, r.height, err)
+	if !ok {
 		return false
 	}
 	if r.quarantine == nil {
-		r.quarantine = &ParseQuarantine{
-			Height:   r.height,
-			Hash:     r.tx.Hash,
-			Stage:    PartialQuarantineStagePrefix + stage,
-			Contract: ambiguity.Contract,
-			Action:   ambiguity.Action,
-			Error:    err.Error(),
-			RawTx:    r.tx,
-		}
+		quarantine.Stage = PartialQuarantineStagePrefix + stage
+		r.quarantine = &quarantine
 		r.err = err
 	}
 	return true

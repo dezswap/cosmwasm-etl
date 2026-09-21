@@ -9,6 +9,7 @@ import (
 
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/parser"
+	pdex "github.com/dezswap/cosmwasm-etl/pkg/dex"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 	"github.com/sirupsen/logrus"
@@ -194,27 +195,17 @@ func (app *dexApp) Run() error {
 					parsedTxs = append(parsedTxs, partial.ParsedTxs...)
 					continue
 				}
-				var ambiguity *eventlog.AmbiguousEventError
-				if errors.As(err, &ambiguity) && !RawTxContainsCreatePair(tx) {
-					// Raw transactions remain available, so parser progress does not prevent deterministic replay.
-					parseQuarantines = append(parseQuarantines, ParseQuarantine{
-						Height:   cur,
-						Hash:     tx.Hash,
-						Stage:    parseStage(err),
-						Contract: ambiguity.Contract,
-						Action:   ambiguity.Action,
-						Error:    err.Error(),
-						RawTx:    tx,
-					})
+				if quarantine, ok := newParseQuarantineFromError(tx, cur, err); ok {
+					parseQuarantines = append(parseQuarantines, quarantine)
 					app.logger.WithFields(logrus.Fields{
 						"event":             "parse_quarantine.created",
 						"operation":         "parse_txs",
 						"chain_id":          app.chainId,
 						"height":            cur,
 						"tx_hash":           tx.Hash,
-						"stage":             parseStage(err),
-						"contract":          ambiguity.Contract,
-						"action":            ambiguity.Action,
+						"stage":             quarantine.Stage,
+						"contract":          quarantine.Contract,
+						"action":            quarantine.Action,
 						"quarantine_status": QuarantineStatusPending,
 						"err":               logging.NewErrorField(err),
 					}).Warn("parse quarantine created")
@@ -307,8 +298,7 @@ func (app *dexApp) retryPendingQuarantines(tokenExceptions map[string]bool) erro
 		}
 		txs, err := app.ParseTxs(quarantine.RawTx, quarantine.Height)
 		if err != nil {
-			var ambiguity *eventlog.AmbiguousEventError
-			if errors.As(err, &ambiguity) {
+			if isQuarantinableParseError(err) {
 				continue
 			}
 			return fmt.Errorf("reparse quarantine id=%d tx_hash=%s: %w", quarantine.ID, quarantine.Hash, err)
@@ -330,6 +320,49 @@ func (app *dexApp) retryPendingQuarantines(tokenExceptions map[string]bool) erro
 		}).Info("parse quarantine resolved")
 	}
 	return nil
+}
+
+// newParseQuarantineFromError builds a quarantine row for the parse failures a height
+// may skip, and reports false for every failure that must stay fatal.
+func newParseQuarantineFromError(tx parser.RawTx, height uint64, err error) (ParseQuarantine, bool) {
+	// Skipping a create_pair tx drops the pair from the parser's pair set, and the
+	// pair scoped log finders then silently ignore every later action on that pair.
+	if RawTxContainsCreatePair(tx) {
+		return ParseQuarantine{}, false
+	}
+
+	quarantine := ParseQuarantine{
+		Height: height,
+		Hash:   tx.Hash,
+		Stage:  parseStage(err),
+		Error:  err.Error(),
+		RawTx:  tx,
+	}
+
+	if errors.Is(err, pdex.ErrEmptyEventValue) {
+		return quarantine, true
+	}
+
+	var ambiguity *eventlog.AmbiguousEventError
+	if errors.As(err, &ambiguity) {
+		quarantine.Contract = ambiguity.Contract
+		quarantine.Action = ambiguity.Action
+		return quarantine, true
+	}
+
+	return ParseQuarantine{}, false
+}
+
+// isQuarantinableParseError reports whether a reparse failure should leave the row
+// pending. It needs no create_pair guard: such txs are never quarantined in the first
+// place, and failing hard here would block every later run on an existing row.
+func isQuarantinableParseError(err error) bool {
+	if errors.Is(err, pdex.ErrEmptyEventValue) {
+		return true
+	}
+
+	var ambiguity *eventlog.AmbiguousEventError
+	return errors.As(err, &ambiguity)
 }
 
 // parseStage extracts the explicit ParseTxs wrapper stage for quarantine diagnostics.

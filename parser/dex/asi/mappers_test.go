@@ -1,12 +1,14 @@
 package asi
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 	"time"
 
 	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/parser/dex"
+	pdex "github.com/dezswap/cosmwasm-etl/pkg/dex"
 	el "github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 	"github.com/stretchr/testify/assert"
 )
@@ -229,7 +231,7 @@ func Test_TransferMapper(t *testing.T) {
 
 		tx, err := tc.mapper.MatchedToParsedTx(tc.matchedResults)
 		if tc.errMsg != "" {
-			assert.Error(err, errMsg, tc.errMsg)
+			assert.Error(err, "%s: %s", errMsg, tc.errMsg)
 		}
 		assert.Equal(tc.expectedTx, tx, errMsg)
 	}
@@ -261,6 +263,20 @@ func Test_TransferMapper_OptionalSender(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Len(t, txs, 1)
 	assert.Equal(t, "", txs[0].Sender)
+}
+
+// The empty value skip must match only ErrEmptyEventValue. errors.As with a *error target
+// matched every error instead, and assigned it to the shared sentinel that
+// dexApp.newParseQuarantineFromError compares against.
+func Test_TransferMapper_KeepsEmptyEventValueSentinelIntact(t *testing.T) {
+	m := &transferMapper{pairSet: map[string]dex.Pair{}}
+
+	txs, err := m.MatchedToParsedTx(el.MatchedResult{{Key: "amount", Value: "1000Asset1"}})
+
+	assert.Nil(t, txs)
+	assert.Error(t, err)
+	assert.False(t, errors.Is(err, pdex.ErrEmptyEventValue))
+	assert.Equal(t, "empty event value", pdex.ErrEmptyEventValue.Error())
 }
 
 func Test_CreatePairMapper(t *testing.T) {
@@ -328,7 +344,7 @@ func Test_CreatePairMapper(t *testing.T) {
 
 		tx, err := tc.mapper.MatchedToParsedTx(tc.matchedResults)
 		if tc.errMsg != "" {
-			assert.Error(err, errMsg, tc.errMsg)
+			assert.Error(err, "%s: %s", errMsg, tc.errMsg)
 		}
 		assert.Equal(tc.expectedTx, tx, errMsg)
 	}
@@ -551,7 +567,7 @@ func Test_PairMapper(t *testing.T) {
 
 		tx, err := tc.mapper.MatchedToParsedTx(tc.matchedResults)
 		if tc.errMsg != "" {
-			assert.Error(err, errMsg, tc.errMsg)
+			assert.Error(err, "%s: %s", errMsg, tc.errMsg)
 		} else {
 			assert.NoError(err, err)
 			assert.Equal(tc.expectedTx, tx, errMsg)

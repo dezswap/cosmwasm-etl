@@ -51,7 +51,7 @@ func Test_CheckResult(t *testing.T) {
 
 		err := mapperMixin.CheckResult(tc.matchedResults, tc.expectedLen)
 		if tc.errMsg != "" {
-			assert.Error(err, errMsg, tc.errMsg)
+			assert.Error(err, "%s: %s", errMsg, tc.errMsg)
 		} else {
 			assert.NoError(err, errMsg)
 		}
