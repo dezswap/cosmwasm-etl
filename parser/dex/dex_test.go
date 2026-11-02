@@ -785,39 +785,45 @@ func Test_matchesPairTransferEntry(t *testing.T) {
 		// pair -> user
 		{
 			entry:    transferPopEntry{pairAddr, "terra1sepfj7s0aeg5967uxnfk4thzlerrsktkpelm5s", "-500"},
-			transfer: ParsedTx{Sender: pairAddr, Assets: [2]Asset{{"TokenA", ""}, {"terra1sepfj7s0aeg5967uxnfk4thzlerrsktkpelm5s", "490"}}},
+			transfer: ParsedTx{Sender: pairAddr, ContractAddr: pairAddr, Assets: [2]Asset{{"TokenA", ""}, {"terra1sepfj7s0aeg5967uxnfk4thzlerrsktkpelm5s", "-490"}}},
 			expected: true,
-			explain:  "pair->user transfer of CW20 token with different amount must match (no amount check)",
+			explain:  "pair->user transfer of CW20 token with different amount must match when signs agree",
+		},
+		{
+			entry:    transferPopEntry{pairAddr, "terra1sepfj7s0aeg5967uxnfk4thzlerrsktkpelm5s", "-500"},
+			transfer: ParsedTx{Sender: pairAddr, ContractAddr: pairAddr, Assets: [2]Asset{{"terra1sepfj7s0aeg5967uxnfk4thzlerrsktkpelm5s", "490"}, {}}},
+			expected: false,
+			explain:  "CW20 inflow must not consume an outflow entry even when both addresses match",
 		},
 		{
 			entry:    transferPopEntry{pairAddr, "uusd", "-500"},
-			transfer: ParsedTx{Sender: pairAddr, Assets: [2]Asset{{"uusd", "-500"}, {}}},
+			transfer: ParsedTx{Sender: pairAddr, ContractAddr: pairAddr, Assets: [2]Asset{{"uusd", "-500"}, {}}},
 			expected: true,
 			explain:  "pair->user transfer of native token with exact amount must match",
 		},
 		{
 			entry:    transferPopEntry{pairAddr, "uusd", "-500"},
-			transfer: ParsedTx{Sender: pairAddr, Assets: [2]Asset{{"uusd", "-490"}, {}}},
+			transfer: ParsedTx{Sender: pairAddr, ContractAddr: pairAddr, Assets: [2]Asset{{"uusd", "-490"}, {}}},
 			expected: false,
 			explain:  "pair->user transfer of native token with different amount must not match",
 		},
 		{
 			entry:    transferPopEntry{pairAddr, "ibc/B3504E092456BA618CC28AC671A71FB08C6CA0FD0BE7C8A5B5A3E2DD933CC9E4", "-500"},
-			transfer: ParsedTx{Sender: pairAddr, Assets: [2]Asset{{"ibc/B3504E092456BA618CC28AC671A71FB08C6CA0FD0BE7C8A5B5A3E2DD933CC9E4", "-500"}, {}}},
+			transfer: ParsedTx{Sender: pairAddr, ContractAddr: pairAddr, Assets: [2]Asset{{"ibc/B3504E092456BA618CC28AC671A71FB08C6CA0FD0BE7C8A5B5A3E2DD933CC9E4", "-500"}, {}}},
 			expected: true,
 			explain:  "pair->user transfer of IBC token with exact amount must match",
 		},
 		{
 			entry:    transferPopEntry{pairAddr, "ibc/B3504E092456BA618CC28AC671A71FB08C6CA0FD0BE7C8A5B5A3E2DD933CC9E4", "-500"},
-			transfer: ParsedTx{Sender: pairAddr, Assets: [2]Asset{{"ibc/B3504E092456BA618CC28AC671A71FB08C6CA0FD0BE7C8A5B5A3E2DD933CC9E4", "-490"}, {}}},
+			transfer: ParsedTx{Sender: pairAddr, ContractAddr: pairAddr, Assets: [2]Asset{{"ibc/B3504E092456BA618CC28AC671A71FB08C6CA0FD0BE7C8A5B5A3E2DD933CC9E4", "-490"}, {}}},
 			expected: false,
 			explain:  "pair->user transfer of IBC token with different amount must not match",
 		},
 		{
-			entry:    transferPopEntry{pairAddr, "TokenB", "500"},
-			transfer: ParsedTx{Sender: pairAddr, Assets: [2]Asset{{"TokenA", ""}, {"TokenB", "500"}}},
+			entry:    transferPopEntry{pairAddr, "terra1sepfj7s0aeg5967uxnfk4thzlerrsktkpelm5s", "500"},
+			transfer: ParsedTx{Sender: pairAddr, ContractAddr: pairAddr, Assets: [2]Asset{{"terra1sepfj7s0aeg5967uxnfk4thzlerrsktkpelm5s", "-490"}, {}}},
 			expected: false,
-			explain:  "pair->user transfer with positive sign must not match",
+			explain:  "CW20 outflow must not consume an inflow entry",
 		},
 		{
 			entry:    transferPopEntry{pairAddr, "TokenA", "1000"},
@@ -854,19 +860,19 @@ func Test_removeDuplicatedTxs(t *testing.T) {
 		},
 		{
 			pairTxs:     []*ParsedTx{{ContractAddr: pairAddr, Assets: [2]Asset{{"TokenA", "1000"}, {"terra1sepfj7s0aeg5967uxnfk4thzlerrsktkpelm5s", "-500"}}}},
-			transferTxs: []*ParsedTx{{Sender: pairAddr, Assets: [2]Asset{{"TokenA", ""}, {"terra1sepfj7s0aeg5967uxnfk4thzlerrsktkpelm5s", "-490"}}}},
+			transferTxs: []*ParsedTx{{Sender: pairAddr, ContractAddr: pairAddr, Assets: [2]Asset{{"TokenA", ""}, {"terra1sepfj7s0aeg5967uxnfk4thzlerrsktkpelm5s", "-490"}}}},
 			expected:    0,
 			explain:     "pair->user transfer of CW20 token with amount mismatch must be removed",
 		},
 		{
 			pairTxs:     []*ParsedTx{{ContractAddr: pairAddr, Assets: [2]Asset{{"TokenA", "1000"}, {"uusd", "-500"}}}},
-			transferTxs: []*ParsedTx{{Sender: pairAddr, Assets: [2]Asset{{"TokenA", ""}, {"uusd", "-500"}}}},
+			transferTxs: []*ParsedTx{{Sender: pairAddr, ContractAddr: pairAddr, Assets: [2]Asset{{"TokenA", ""}, {"uusd", "-500"}}}},
 			expected:    0,
 			explain:     "pair->user transfer of native token with exact amount must be removed",
 		},
 		{
 			pairTxs:     []*ParsedTx{{ContractAddr: pairAddr, Assets: [2]Asset{{"TokenA", "1000"}, {"uusd", "-500"}}}},
-			transferTxs: []*ParsedTx{{Sender: pairAddr, Assets: [2]Asset{{"TokenA", ""}, {"uusd", "-490"}}}},
+			transferTxs: []*ParsedTx{{Sender: pairAddr, ContractAddr: pairAddr, Assets: [2]Asset{{"TokenA", ""}, {"uusd", "-490"}}}},
 			expected:    1,
 			explain:     "pair->user transfer of native token with amount mismatch must be kept (native transfers are exact)",
 		},
@@ -900,6 +906,44 @@ func Test_removeDuplicatedTxs(t *testing.T) {
 		result := mixin.RemoveDuplicatedTxs(tc.pairTxs, tc.transferTxs)
 		assert.Len(t, result, tc.expected, tc.explain)
 	}
+}
+
+func Test_removeDuplicatedTxs_SwapThenProvidePreservesFeeOutflow(t *testing.T) {
+	// Regression for cube_47-5 height 22503109, tx 3535373A78877413610993A6043D7E598FDB41D2FCE5AC90F04AD08727A410A3.
+	const pair = "xpla1gayg9t87lwwf3cqn5cmdzekj6xypnd2p94ws3fk90nw70llfknpsw8z3wv"
+	const token = "xpla1k7zgw96k7q875s2y70s44s06f5um28tt3j7jze77zfvdx8f87s8qdk98jl"
+	const router = "xpla1pc9cgw8c2tejq9p4hmq78074svy6rkf2gnaf3883vvrrecvq34dsdutkqe"
+
+	pairTxs := []*ParsedTx{
+		{
+			Type: Swap, ContractAddr: pair,
+			Assets: [2]Asset{{Addr: "axpla", Amount: "25395686727984610"}, {Addr: token, Amount: "-5843160270930"}},
+		},
+		{
+			Type: Provide, ContractAddr: pair,
+			Assets: [2]Asset{{Addr: "axpla", Amount: "914604313272013791"}, {Addr: token, Amount: "194637845030609"}},
+		},
+	}
+	transfer := func(sender string, assetIdx int, amount string) *ParsedTx {
+		tx := &ParsedTx{
+			Type: Transfer, Sender: sender, ContractAddr: pair,
+			Assets: [2]Asset{{Addr: "axpla"}, {Addr: token}},
+		}
+		tx.Assets[assetIdx].Amount = amount
+		return tx
+	}
+	swapOutflow := transfer(pair, 1, "-5843160270930")
+	feeOutflow := transfer(pair, 1, "-2930371249")
+	provideInflow := transfer(router, 1, "194637845030609")
+	swapInflow := transfer(router, 0, "25395686727984610")
+	provideNativeInflow := transfer(router, 0, "914604313272013791")
+	refund := transfer(pair, 0, "-4370")
+
+	got := (&DexMixin{}).RemoveDuplicatedTxs(pairTxs, []*ParsedTx{
+		swapOutflow, feeOutflow, provideInflow, swapInflow, provideNativeInflow, refund,
+	})
+
+	assert.Equal(t, []ParsedTx{*feeOutflow, *refund}, got)
 }
 
 func Test_collectLpBurnTxs(t *testing.T) {
