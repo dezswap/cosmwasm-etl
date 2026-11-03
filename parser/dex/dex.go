@@ -818,16 +818,18 @@ func (mixin *DexMixin) RemoveDuplicatedTxs(pairTxs []*ParsedTx, transferTxs []*P
 
 // matchesPairTransferEntry reports whether tx corresponds to a transfer entry.
 func (mixin *DexMixin) matchesPairTransferEntry(entry transferPopEntry, transferTx *ParsedTx) bool {
-	isPairSendTx := entry.pairAddr == transferTx.Sender
-	isPairReceiveTx := entry.pairAddr == transferTx.ContractAddr
-	isEntryOutflow := strings.HasPrefix(entry.amount, "-")
-
-	if (!isEntryOutflow && !isPairReceiveTx) || (isEntryOutflow && !isPairSendTx) {
+	if entry.pairAddr != transferTx.ContractAddr {
 		return false
 	}
+	isPairSendTx := entry.pairAddr == transferTx.Sender
+	isEntryOutflow := strings.HasPrefix(entry.amount, "-")
 
 	for _, asset := range transferTx.Assets {
 		if asset.Addr != entry.assetAddr || asset.Amount == "" {
+			continue
+		}
+		// Outflows always have Sender == ContractAddr == pair, so only the sign tells direction.
+		if strings.HasPrefix(asset.Amount, "-") != isEntryOutflow {
 			continue
 		}
 
