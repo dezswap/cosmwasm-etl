@@ -10,7 +10,6 @@ import (
 	"github.com/dezswap/cosmwasm-etl/configs"
 	"github.com/dezswap/cosmwasm-etl/parser"
 	"github.com/dezswap/cosmwasm-etl/parser/dex"
-	pdex "github.com/dezswap/cosmwasm-etl/pkg/dex"
 	"github.com/dezswap/cosmwasm-etl/pkg/eventlog"
 	"github.com/dezswap/cosmwasm-etl/pkg/logging"
 	"github.com/stretchr/testify/assert"
@@ -28,6 +27,8 @@ const (
 	asset1   = "xpla1w6hv0suf8dmpq8kxd8a6yy9fnmntlh7hh9kl37qmax7kyzfd047qnnp0mm"
 	asset2   = "xpla1v2ezcmgzmvwdtp9m0nyfy38p85dnkn0excnyy6dqylm65fhft0qsrzmktv"
 	chainId  = "cube_47-5"
+
+	feeRecipient = "fee-recipient"
 )
 
 var testPair = dex.Pair{ContractAddr: pairAddr, LpAddr: lpAddr, Assets: []string{asset1, asset2}}
@@ -626,7 +627,7 @@ func Test_ParseTxs_SortsTransferAttributesWhenRandomOrder(t *testing.T) {
 	}}, txs)
 }
 
-func Test_ParseTxs_PartialQuarantinesTransferWithEmptyAmount(t *testing.T) {
+func Test_ParseTxs_SkipsEmptyAmountTransferInSharedLog(t *testing.T) {
 	const nativeAsset = "axpla"
 	nativePair := dex.Pair{
 		ContractAddr: pairAddr,
@@ -655,32 +656,35 @@ func Test_ParseTxs_PartialQuarantinesTransferWithEmptyAmount(t *testing.T) {
 
 	var logs eventlog.LogResults
 	require.NoError(t, json.Unmarshal([]byte(emptyAmountTransferLogStr), &logs))
-	var pairLogs eventlog.LogResults
-	require.NoError(t, json.Unmarshal([]byte(randomOrderTransferLogStr), &pairLogs))
 
-	tx := parser.RawTx{Sender: txSender, Hash: txHash, LogResults: append(logs, pairLogs...)}
+	tx := parser.RawTx{Sender: txSender, Hash: txHash, LogResults: logs}
 	txs, err := app.ParseTxs(tx, 100)
 
-	var partial *dex.PartialParseQuarantineError
-	require.ErrorAs(t, err, &partial)
-	assert.Equal(t, "partial_transfer", partial.Quarantine.Stage)
-	assert.Equal(t, txHash, partial.Quarantine.Hash)
-	assert.True(t, errors.Is(err, pdex.ErrEmptyEventValue))
-
-	// the pair transfer in the same tx must survive the quarantined event
-	expected := []dex.ParsedTx{{
-		Hash:         txHash,
-		Type:         dex.Transfer,
-		Sender:       txSender,
-		ContractAddr: pairAddr,
-		Assets: [2]dex.Asset{
-			{Addr: nativeAsset, Amount: "1000"},
-			{Addr: asset2, Amount: ""},
+	require.NoError(t, err)
+	assert.Equal(t, []dex.ParsedTx{
+		{
+			Hash:         txHash,
+			Type:         dex.Transfer,
+			Sender:       pairAddr,
+			ContractAddr: pairAddr,
+			Assets: [2]dex.Asset{
+				{Addr: nativeAsset, Amount: "-1000"},
+				{Addr: asset2, Amount: ""},
+			},
+			Meta: map[string]interface{}{"recipient": txSender},
 		},
-		Meta: map[string]interface{}{"recipient": pairAddr},
-	}}
-	assert.Equal(t, expected, txs)
-	assert.Equal(t, expected, partial.ParsedTxs)
+		{
+			Hash:         txHash,
+			Type:         dex.Transfer,
+			Sender:       pairAddr,
+			ContractAddr: pairAddr,
+			Assets: [2]dex.Asset{
+				{Addr: nativeAsset, Amount: "-5"},
+				{Addr: asset2, Amount: ""},
+			},
+			Meta: map[string]interface{}{"recipient": feeRecipient},
+		},
+	}, txs)
 }
 
 var (
@@ -714,14 +718,21 @@ var (
 )
 
 // emptyAmountTransferLogStr reproduces dimension_37-1 tx
-// 50857632488F2B1D63F85CAC0011CB0F3857124AB2C9FB76E7356783F9C31D57, an EVM tx whose IBC
-// output emits a transfer event with an empty amount. The transfer finder is unfiltered,
-// so it matches this non DEX event too.
+// 0740155B25C9FB24A5B680FEA8A9B5EF1172D310EF70BE632E067ECB71C52BF8: the chain flattens every
+// bank transfer of a tx into one log, so a zero-coin send sits between the pair's outflows.
 const emptyAmountTransferLogStr = `[
 	{"type":"transfer","attributes":[
-		{"key":"recipient","value":"xpla1a53udazy8ayufvy0s434pfwjcedzqv34gt6eqa"},
-		{"key":"sender","value":"xpla1rs3cw8c43mhggydwchvpmmmshzve7y62hsgazm"},
+		{"key":"recipient","value":"` + txSender + `"},
+		{"key":"sender","value":"` + pairAddr + `"},
+		{"key":"amount","value":"1000axpla"},
+		{"key":"msg_index","value":"0"},
+		{"key":"recipient","value":"` + asset2 + `"},
+		{"key":"sender","value":"` + txSender + `"},
 		{"key":"amount","value":""},
+		{"key":"msg_index","value":"0"},
+		{"key":"amount","value":"5axpla"},
+		{"key":"recipient","value":"` + feeRecipient + `"},
+		{"key":"sender","value":"` + pairAddr + `"},
 		{"key":"msg_index","value":"0"}
 	]}
 ]`
