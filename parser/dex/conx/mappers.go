@@ -134,6 +134,13 @@ func (m *wasmTransferMapper) transferFromMatchedToParsedTx(res eventlog.MatchedR
 
 // match implements mapper
 func (m *transferMapper) MatchedToParsedTx(res eventlog.MatchedResult, optionals ...interface{}) ([]*dex.ParsedTx, error) {
+	// A zero-coin send moves nothing; failing it would drop every transfer in the same log.
+	// bug tx: 0740155B25C9FB24A5B680FEA8A9B5EF1172D310EF70BE632E067ECB71C52BF8 (dimension_37-1)
+	for _, item := range res {
+		if item.Key == pdex.TransferAmountKey && item.Value == "" {
+			return nil, nil
+		}
+	}
 	if err := m.mixin.CheckResult(res, conx.TransferMatchedLen); err != nil {
 		return nil, errors.Wrap(err, "transferMapper.MatchedToParsedTx")
 	}

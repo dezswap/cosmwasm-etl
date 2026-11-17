@@ -116,7 +116,6 @@ func (p *appImpl) ParseTxs(tx parser.RawTx, height uint64) ([]dex.ParsedTx, erro
 		if err != nil {
 			// The transfer finder is unfiltered, so an unreadable event that is not even a DEX
 			// transfer must not cost the whole tx.
-			// bug tx: 50857632488F2B1D63F85CAC0011CB0F3857124AB2C9FB76E7356783F9C31D57 (dimension_37-1)
 			wrapped := errors.Wrapf(err, "conx.ParseTxs transfer tx_hash=%s", tx.Hash)
 			if !partialQuarantine.Record("transfer", wrapped) {
 				return nil, wrapped

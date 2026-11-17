@@ -70,16 +70,13 @@ func Test_TransferMapper(t *testing.T) {
 			nil,
 			"wrong asset must return error",
 		},
-		// An empty value fails here whether or not a known pair is involved. Which of those
-		// failures costs the tx is decided by the caller: conx.ParseTxs routes the transfer
-		// stage into a partial quarantine, so the rest of the tx still parses.
 		{
 			&transferMapper{pairSet: pairSet},
 			el.MatchedResult{
 				{Key: "recipient", Value: pair.ContractAddr}, {Key: "sender", Value: userAddr}, {Key: "amount", Value: ""},
 			},
 			nil,
-			"empty amount must return error",
+			"",
 		},
 		{
 			&transferMapper{pairSet: pairSet},
@@ -95,7 +92,16 @@ func Test_TransferMapper(t *testing.T) {
 				{Key: "recipient", Value: "not-a-pair"}, {Key: "sender", Value: userAddr}, {Key: "amount", Value: ""},
 			},
 			nil,
-			"empty amount must return error even with no known pair involved",
+			"",
+		},
+		// An empty amount moves nothing, so it is skipped even when another value is empty too.
+		{
+			&transferMapper{pairSet: pairSet},
+			el.MatchedResult{
+				{Key: "recipient", Value: ""}, {Key: "sender", Value: pair.ContractAddr}, {Key: "amount", Value: ""},
+			},
+			nil,
+			"",
 		},
 		// wasm transfer
 		{
@@ -164,6 +170,8 @@ func Test_TransferMapper(t *testing.T) {
 		tx, err := tc.mapper.MatchedToParsedTx(tc.matchedResults)
 		if tc.errMsg != "" {
 			assert.Error(err, "%s: %s", errMsg, tc.errMsg)
+		} else {
+			assert.NoError(err, errMsg)
 		}
 		assert.Equal(tc.expectedTx, tx, errMsg)
 	}
